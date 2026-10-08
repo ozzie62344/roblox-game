@@ -32,6 +32,14 @@ return {
 		MinFallSpeed = 35, -- softer landings make no sound
 	},
 
+	-- Deployable cover slamming into place (placeholder: the landing thud, pitched down to sound heavy)
+	CoverDeploy = {
+		Id = "rbxasset://sounds/action_jump_land.mp3",
+		Range = 80,
+		Volume = 1,
+		Pitch = 0.55,
+	},
+
 	-- Gunshots are set per weapon in Weapons.luau (FireSound); this is how far they carry
 	GunshotRange = 450,
 

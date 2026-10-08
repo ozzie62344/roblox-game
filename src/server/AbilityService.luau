@@ -4,6 +4,7 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local Abilities = require(ReplicatedStorage.Shared.Abilities)
@@ -135,27 +136,42 @@ local handlers: { [string]: Handler } = {
 
 		local size = Vector3.new(6, 4, 0.8)
 		local base = ground.Position + Vector3.new(0, size.Y / 2, 0)
+		local finalCFrame = CFrame.lookAt(base, base + forward)
+
 		local cover = Instance.new("Part")
 		cover.Name = "DeployableCover"
 		cover.Size = size
-		cover.CFrame = CFrame.lookAt(base, base + forward)
+		-- Starts sunk into the ground, then rises into place (see tween below)
+		cover.CFrame = finalCFrame * CFrame.new(0, -size.Y, 0)
 		cover.Anchored = true
 		cover.Material = Enum.Material.DiamondPlate
 		cover.Color = Color3.fromRGB(85, 90, 100)
 		cover:SetAttribute("Owner", player.UserId)
 
+		-- Welded to the cover so it rides along with the rise animation
 		local stripe = Instance.new("Part")
 		stripe.Name = "TeamStripe"
 		stripe.Size = Vector3.new(size.X, 0.15, size.Z + 0.02)
 		stripe.CFrame = cover.CFrame * CFrame.new(0, size.Y / 2 - 0.2, 0)
-		stripe.Anchored = true
+		stripe.Anchored = false
+		stripe.Massless = true
 		stripe.CanCollide = false
 		stripe.CanQuery = false
 		stripe.Material = Enum.Material.Neon
 		stripe.Color = if player.Team then player.Team.TeamColor.Color else Color3.new(1, 1, 1)
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = cover
+		weld.Part1 = stripe
+		weld.Parent = stripe
 		stripe.Parent = cover
 
 		cover.Parent = getDeployables()
+		TweenService:Create(
+			cover,
+			TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+			{ CFrame = finalCFrame }
+		):Play()
+		AbilityEffect:FireAllClients("CoverDeployed", base)
 		return true
 	end,
 }

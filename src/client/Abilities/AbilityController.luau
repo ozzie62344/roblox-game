@@ -10,6 +10,8 @@ local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local Abilities = require(ReplicatedStorage.Shared.Abilities)
+local Sounds = require(ReplicatedStorage.Shared.Sounds)
+local Sound3D = require(script.Parent.Parent.Audio.Sound3D)
 local state = require(script.Parent.Parent.PlayerState)
 local Hud = require(script.Parent.Parent.Combat.Hud)
 local Effects = require(script.Parent.Parent.Combat.Effects)
@@ -101,6 +103,10 @@ function AbilityController.Start()
 			pulseWave(origin, radius)
 		elseif kind == "Scanned" then
 			Hud.ShowStatus("YOU'VE BEEN SCANNED", 2, REVEAL_COLOR)
+		elseif kind == "CoverDeployed" then
+			local position = ...
+			local sound = Sounds.CoverDeploy
+			Sound3D.Play(sound.Id, position, { volume = sound.Volume, range = sound.Range, pitch = sound.Pitch })
 		elseif kind == "GhostStep" then
 			local duration = ...
 			Hud.ShowStatus("GHOST STEP — SILENT", duration, Color3.fromRGB(150, 200, 255))

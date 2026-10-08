@@ -104,7 +104,46 @@ local function update(dt: number)
 	end
 end
 
+-- Roblox's default character sounds (in the HumanoidRootPart) double up with ours. Mute them on
+-- every character, including ones that get added later.
+local DEFAULT_SOUND_NAMES = {
+	Running = true,
+	Jumping = true,
+	Landing = true,
+	FreeFalling = true,
+	Climbing = true,
+	GettingUp = true,
+	Swimming = true,
+	Splash = true,
+	Died = true,
+}
+
+local function muteDefaultSounds(character: Model)
+	local function mute(instance: Instance)
+		if instance:IsA("Sound") and DEFAULT_SOUND_NAMES[instance.Name] and instance.Parent
+			and instance.Parent.Name == "HumanoidRootPart"
+		then
+			instance.Volume = 0
+		end
+	end
+	for _, descendant in character:GetDescendants() do
+		mute(descendant)
+	end
+	character.DescendantAdded:Connect(mute)
+end
+
 function Footsteps.Start()
+	local function watchPlayer(player: Player)
+		if player.Character then
+			muteDefaultSounds(player.Character)
+		end
+		player.CharacterAdded:Connect(muteDefaultSounds)
+	end
+	for _, player in Players:GetPlayers() do
+		watchPlayer(player)
+	end
+	Players.PlayerAdded:Connect(watchPlayer)
+
 	RunService.Heartbeat:Connect(update)
 end
 
