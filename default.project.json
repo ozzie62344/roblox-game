@@ -12,6 +12,8 @@
       },
       "Remotes": {
         "KillFeed": { "$className": "RemoteEvent" },
+        "LoadoutOffer": { "$className": "RemoteEvent" },
+        "DraftPick": { "$className": "RemoteEvent" },
         "$className": "Folder",
         "Fire": { "$className": "RemoteEvent" },
         "Reload": { "$className": "RemoteEvent" },

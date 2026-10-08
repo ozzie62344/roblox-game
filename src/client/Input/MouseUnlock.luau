@@ -22,7 +22,7 @@ local hint: TextLabel
 local frozenLook: Vector3? = nil
 
 local function isFree(): boolean
-	return state.mouseUnlocked or state.devPanelOpen
+	return state.mouseUnlocked or state.devPanelOpen or state.draftOpen
 end
 
 local function update()

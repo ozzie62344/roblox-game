@@ -14,6 +14,8 @@ local hitMarkerToken = 0
 local ammoLabel: TextLabel
 local healthFill: Frame
 local healthLabel: TextLabel
+local loadoutLabel: TextLabel
+local scope: Frame
 
 local WHITE = Color3.new(1, 1, 1)
 local RED = Color3.fromRGB(255, 70, 70)
@@ -53,6 +55,32 @@ function Hud.Start()
 
 	local center = UDim2.fromScale(0.5, 0.5)
 
+	-- Scope overlay: a transparent circle whose huge black outline covers the rest of the screen
+	scope = Instance.new("Frame")
+	scope.AnchorPoint = Vector2.new(0.5, 0.5)
+	scope.Position = center
+	scope.Size = UDim2.fromScale(0.9, 0.9)
+	scope.BackgroundTransparency = 1
+	scope.ZIndex = 0
+	scope.Visible = false
+	scope.Parent = gui
+	local aspect = Instance.new("UIAspectRatioConstraint")
+	aspect.AspectRatio = 1
+	aspect.DominantAxis = Enum.DominantAxis.Height
+	aspect.Parent = scope
+	local round = Instance.new("UICorner")
+	round.CornerRadius = UDim.new(0.5, 0)
+	round.Parent = scope
+	local blackout = Instance.new("UIStroke")
+	blackout.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	blackout.Color = Color3.new(0, 0, 0)
+	blackout.Thickness = 4000
+	blackout.Parent = scope
+	for _, size in { UDim2.new(1, 0, 0, 1), UDim2.new(0, 1, 1, 0) } do
+		local line = frame(scope, size, center, Color3.new(0, 0, 0))
+		line.ZIndex = 0
+	end
+
 	-- Crosshair: 4 bars around the center (top, bottom, left, right)
 	for i = 1, 4 do
 		local vertical = i <= 2
@@ -74,6 +102,9 @@ function Hud.Start()
 	end
 
 	ammoLabel = label(gui, UDim2.new(1, -40, 1, -40), Vector2.new(1, 1), 32)
+	loadoutLabel = label(gui, UDim2.new(1, -40, 1, -78), Vector2.new(1, 1), 16)
+	loadoutLabel.TextColor3 = Color3.fromRGB(200, 205, 215)
+	loadoutLabel.Size = UDim2.fromOffset(320, 24)
 
 	local healthBack = frame(gui, UDim2.fromOffset(240, 10), UDim2.new(0, 160, 1, -40), Color3.fromRGB(30, 30, 30))
 	healthBack.BackgroundTransparency = 0.3
@@ -96,6 +127,15 @@ function Hud.Start()
 		task.spawn(watchHealth, player.Character)
 	end
 	player.CharacterAdded:Connect(watchHealth)
+end
+
+function Hud.SetScoped(scoped: boolean)
+	scope.Visible = scoped
+end
+
+-- e.g. "SMG" and "[F] Dash" → "SMG  ·  [F] Dash"
+function Hud.SetLoadout(weaponName: string, abilityText: string?)
+	loadoutLabel.Text = if abilityText then `{string.upper(weaponName)}  ·  {abilityText}` else string.upper(weaponName)
 end
 
 -- gap = distance in pixels from the center to each bar

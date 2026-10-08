@@ -28,5 +28,6 @@ return {
 	-- UI
 	devPanelOpen = false,
 	mouseUnlocked = false,
+	draftOpen = false, -- loadout cards on screen
 	spectating = false,
 }

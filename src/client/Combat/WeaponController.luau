@@ -1,6 +1,7 @@
--- Your gun: firing, aiming down sights, recoil, spread, reloading.
+-- Your gun: firing, aiming down sights, recoil, spread, reloading, scopes.
 -- Shots are raycast here for instant feedback, then sent to the server, which
 -- double-checks them and applies the damage.
+-- Your current weapon follows the "Weapon" attribute the server sets (loadouts / dev panel).
 
 local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
@@ -8,6 +9,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
+local Abilities = require(ReplicatedStorage.Shared.Abilities)
 local Config = require(ReplicatedStorage.Shared.MovementConfig)
 local Sounds = require(ReplicatedStorage.Shared.Sounds)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
@@ -71,15 +73,40 @@ local function computeSpread(): number
 	return spread
 end
 
--- Random direction inside a cone of `spreadDegrees` around the camera's aim
-local function spreadDirection(cameraCFrame: CFrame, spreadDegrees: number): Vector3
+-- Random direction inside a cone of `spreadDegrees` around `cframe`'s look direction
+local function spreadDirection(cframe: CFrame, spreadDegrees: number): Vector3
 	local spin = random:NextNumber(0, math.pi * 2)
 	local tilt = math.rad(spreadDegrees) * math.sqrt(random:NextNumber())
-	return (cameraCFrame * CFrame.Angles(0, 0, spin) * CFrame.Angles(tilt, 0, 0)).LookVector
+	return (cframe * CFrame.Angles(0, 0, spin) * CFrame.Angles(tilt, 0, 0)).LookVector
 end
 
 local function updateAmmoHud()
 	Hud.SetAmmo(ammo, weapon.MagazineSize, reloading)
+end
+
+local function updateLoadoutHud()
+	local abilityName = player:GetAttribute("Ability")
+	local ability = abilityName and Abilities[abilityName]
+	Hud.SetLoadout(weapon.Name, if ability then `[{ability.Key}] {ability.Name}` else nil)
+end
+
+local function setWeapon(weaponName: string)
+	local newWeapon = Weapons[weaponName]
+	if not newWeapon then
+		return
+	end
+	weapon = newWeapon
+	reloadToken += 1
+	reloading = false
+	ammo = weapon.MagazineSize
+	triggerHeld = false
+	state.recoilPitch, state.recoilYaw = 0, 0
+	if viewmodel then
+		viewmodel:Destroy()
+	end
+	viewmodel = Viewmodel.new(weapon)
+	updateAmmoHud()
+	updateLoadoutHud()
 end
 
 local function reload()
@@ -110,31 +137,48 @@ local function fire(character: Model)
 
 	local camera = Workspace.CurrentCamera
 	local origin = camera.CFrame.Position
-	local direction = spreadDirection(camera.CFrame, currentSpread)
+	-- One aim direction (spread), then each pellet scatters around it (shotguns)
+	local aimDirection = spreadDirection(camera.CFrame, currentSpread)
+	local aimCFrame = CFrame.lookAt(origin, origin + aimDirection)
 
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	params.FilterDescendantsInstances = { character }
-	local result = Workspace:Raycast(origin, direction * weapon.Range, params)
 
-	local endPosition = if result then result.Position else origin + direction * weapon.Range
-	local hitPart = if result then result.Instance else nil
-	FireRemote:FireServer(origin, direction, hitPart, endPosition)
+	local shots = {}
+	local hitKind: string? = nil
+	for _ = 1, weapon.Pellets do
+		local direction = if weapon.Pellets > 1 then spreadDirection(aimCFrame, weapon.PelletSpread) else aimDirection
+		local result = Workspace:Raycast(origin, direction * weapon.Range, params)
+		local endPosition = if result then result.Position else origin + direction * weapon.Range
+		table.insert(shots, { direction, if result then result.Instance else nil, endPosition })
 
-	-- Instant feedback (server confirms damage separately)
+		-- Instant feedback (server confirms damage separately)
+		if viewmodel and viewmodel.model.Parent then
+			Effects.Tracer(viewmodel:GetMuzzlePosition(), endPosition)
+		end
+		if result then
+			local humanoid = findHumanoid(result.Instance)
+			if humanoid and humanoid.Health > 0 then
+				if result.Instance.Name == "Head" then
+					hitKind = "head"
+				elseif not hitKind then
+					hitKind = "body"
+				end
+			else
+				Effects.Impact(result.Position, result.Normal)
+			end
+		end
+	end
+	FireRemote:FireServer(origin, shots)
+
+	if hitKind then
+		Hud.HitMarker(hitKind)
+	end
 	if viewmodel then
-		Effects.Tracer(viewmodel:GetMuzzlePosition(), endPosition)
 		viewmodel:Kick(weapon.ViewKick)
 	end
 	Effects.Sound(weapon.FireSound)
-	if result then
-		local humanoid = findHumanoid(result.Instance)
-		if humanoid and humanoid.Health > 0 then
-			Hud.HitMarker(if result.Instance.Name == "Head" then "head" else "body")
-		else
-			Effects.Impact(result.Position, result.Normal)
-		end
-	end
 
 	-- Recoil: aiming controls it a bit better
 	local control = 1 - state.aimAlpha * 0.3
@@ -150,17 +194,19 @@ end
 
 local function update(dt: number)
 	local character = getAliveCharacter()
-	if viewmodel then
-		viewmodel:SetVisible(character ~= nil)
-	end
 	if not character then
+		if viewmodel then
+			viewmodel:SetVisible(false)
+		end
 		state.aiming = false
 		state.aimAlpha = 0
 		Hud.SetCrosshair(0, false)
+		Hud.SetScoped(false)
 		return
 	end
 
-	state.aiming = aimHeld and not reloading and not state.devPanelOpen and not state.mouseUnlocked
+	local uiOpen = state.devPanelOpen or state.mouseUnlocked or state.draftOpen
+	state.aiming = aimHeld and not reloading and not uiOpen
 	local aimStep = dt / weapon.AdsTime
 	state.aimAlpha = math.clamp(state.aimAlpha + (if state.aiming then aimStep else -aimStep), 0, 1)
 	state.adsFovScale = weapon.AdsFovScale
@@ -179,7 +225,6 @@ local function update(dt: number)
 	local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	local frozen = root ~= nil and root.Anchored
 
-	local uiOpen = state.devPanelOpen or state.mouseUnlocked
 	if triggerHeld and not frozen and not uiOpen and not reloading and now >= nextFireTime then
 		if ammo > 0 then
 			fire(character)
@@ -188,10 +233,18 @@ local function update(dt: number)
 		end
 	end
 
-	-- Crosshair gap in pixels for the current spread
+	-- Scoped weapons swap the gun model for a scope overlay once fully aimed in
+	local scoped = weapon.Scope and state.aimAlpha > 0.9
+	Hud.SetScoped(scoped)
+	if viewmodel then
+		viewmodel:SetVisible(not scoped)
+	end
+
+	-- Crosshair gap in pixels for the current spread (shotguns show their pellet cone)
 	local camera = Workspace.CurrentCamera
 	local halfFov = math.rad(camera.FieldOfView / 2)
-	local gap = math.tan(math.rad(currentSpread)) / math.tan(halfFov) * camera.ViewportSize.Y / 2
+	local shownSpread = currentSpread + (if weapon.Pellets > 1 then weapon.PelletSpread else 0)
+	local gap = math.tan(math.rad(shownSpread)) / math.tan(halfFov) * camera.ViewportSize.Y / 2
 	Hud.SetCrosshair(gap, state.aimAlpha < 0.5)
 
 	if viewmodel then
@@ -213,7 +266,11 @@ function WeaponController.Refill()
 end
 
 function WeaponController.Start()
-	viewmodel = Viewmodel.new()
+	setWeapon(player:GetAttribute("Weapon") or "Rifle")
+	player:GetAttributeChangedSignal("Weapon"):Connect(function()
+		setWeapon(player:GetAttribute("Weapon") or "Rifle")
+	end)
+	player:GetAttributeChangedSignal("Ability"):Connect(updateLoadoutHud)
 
 	ContextActionService:BindAction("Fire", function(_, inputState)
 		triggerHeld = inputState == Enum.UserInputState.Begin
@@ -238,18 +295,22 @@ function WeaponController.Start()
 		state.recoilPitch, state.recoilYaw = 0, 0
 	end)
 
-	-- Other players' shots: tracer, impact and 3D gunshot sound
-	ShotFired.OnClientEvent:Connect(function(shooter: Player, origin: Vector3, endPosition: Vector3, weaponName: string)
-		if shooter == player then
-			return
+	-- Other players' shots: tracers, impacts and a 3D gunshot sound
+	ShotFired.OnClientEvent:Connect(
+		function(shooter: Player, origin: Vector3, endPositions: { Vector3 }, weaponName: string)
+			if shooter == player then
+				return
+			end
+			for _, endPosition in endPositions do
+				Effects.Tracer(origin, endPosition)
+				Effects.Impact(endPosition)
+			end
+			local shooterWeapon = Weapons[weaponName]
+			if shooterWeapon then
+				Sound3D.Play(shooterWeapon.FireSound, origin, { volume = 1, range = Sounds.GunshotRange })
+			end
 		end
-		local shooterWeapon = Weapons[weaponName]
-		Effects.Tracer(origin, endPosition)
-		Effects.Impact(endPosition)
-		if shooterWeapon then
-			Sound3D.Play(shooterWeapon.FireSound, origin, { volume = 1, range = Sounds.GunshotRange })
-		end
-	end)
+	)
 
 	HitConfirmed.OnClientEvent:Connect(function(_damage: number, _headshot: boolean, killed: boolean)
 		if killed then
@@ -257,7 +318,6 @@ function WeaponController.Start()
 		end
 	end)
 
-	updateAmmoHud()
 	RunService:BindToRenderStep("Weapon", Enum.RenderPriority.Camera.Value + 3, update)
 end
 

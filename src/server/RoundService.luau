@@ -8,6 +8,7 @@ local Teams = game:GetService("Teams")
 local Workspace = game:GetService("Workspace")
 
 local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
+local LoadoutService = require(script.Parent.LoadoutService)
 
 local KillFeed = ReplicatedStorage.Remotes.KillFeed :: RemoteEvent
 local MatchState = ReplicatedStorage.MatchState
@@ -120,6 +121,7 @@ local function resetToFreeRoam()
 	for _, player in Players:GetPlayers() do
 		player.Team = nil
 		player.Neutral = true
+		LoadoutService.Reset(player)
 		task.spawn(player.LoadCharacterAsync, player)
 	end
 end
@@ -140,8 +142,20 @@ local function runRound(round: number): string?
 		startedWith[teamName] = #teams[teamName]:GetPlayers()
 	end
 
-	setPhase("PreRound", MatchConfig.PreRoundTime, `ROUND {round}`)
-	task.wait(MatchConfig.PreRoundTime)
+	-- Loadouts are handed out (or drafted) during the freeze
+	local loadoutMode = MatchState:GetAttribute("LoadoutMode") or MatchConfig.DefaultLoadoutMode
+	local freezeTime = if loadoutMode == "Draft" then MatchConfig.DraftTime else MatchConfig.PreRoundTime
+	local roundPlayers = {}
+	for _, teamName in MatchConfig.TeamOrder do
+		for _, player in teams[teamName]:GetPlayers() do
+			table.insert(roundPlayers, player)
+		end
+	end
+	LoadoutService.StartRound(roundPlayers, loadoutMode, freezeTime)
+
+	setPhase("PreRound", freezeTime, `ROUND {round}`)
+	task.wait(freezeTime)
+	LoadoutService.FinishRound()
 	unfreezeAll()
 
 	setPhase("Action", MatchConfig.RoundTime)
@@ -290,8 +304,15 @@ function RoundService.StopMatch()
 	end
 end
 
+function RoundService.SetLoadoutMode(mode: string)
+	if mode == "Draft" or mode == "Random" then
+		MatchState:SetAttribute("LoadoutMode", mode)
+	end
+end
+
 function RoundService.Start()
 	Players.CharacterAutoLoads = false
+	MatchState:SetAttribute("LoadoutMode", MatchConfig.DefaultLoadoutMode)
 
 	for _, name in MatchConfig.TeamOrder do
 		local team = Instance.new("Team")

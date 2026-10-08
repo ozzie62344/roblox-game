@@ -1,7 +1,10 @@
 -- The gun you see in first person. Built from parts for now (swap in a real model later).
 -- Follows the camera with hip / aim / sprint / reload poses, walk bob and shot kick.
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
+
+local Weapons = require(ReplicatedStorage.Shared.Weapons)
 
 local Viewmodel = {}
 Viewmodel.__index = Viewmodel
@@ -30,14 +33,37 @@ local function makePart(model: Model, name: string, size: Vector3, offset: CFram
 	return part
 end
 
-function Viewmodel.new()
+-- Builds a blocky gun from the weapon's Look (body / barrel / stock lengths, mag size, color)
+function Viewmodel.new(weapon: Weapons.Weapon)
+	local look = weapon.Look
 	local model = Instance.new("Model")
 	model.Name = "Viewmodel"
 
-	local body = makePart(model, "Body", Vector3.new(0.25, 0.35, 1.4), CFrame.new())
-	local barrel = makePart(model, "Barrel", Vector3.new(0.1, 0.1, 0.8), CFrame.new(0, 0.06, -1.05))
-	makePart(model, "Mag", Vector3.new(0.18, 0.45, 0.25), CFrame.new(0, -0.35, -0.15) * CFrame.Angles(0.2, 0, 0))
-	makePart(model, "Stock", Vector3.new(0.2, 0.3, 0.5), CFrame.new(0, -0.05, 0.9))
+	local bodyLength, barrelLength, stockLength = look.BodyLength, look.BarrelLength, look.StockLength
+	local body = makePart(model, "Body", Vector3.new(0.25, 0.35, bodyLength), CFrame.new(), look.Color)
+	local barrel = makePart(
+		model,
+		"Barrel",
+		Vector3.new(0.1, 0.1, barrelLength),
+		CFrame.new(0, 0.06, -(bodyLength + barrelLength) / 2),
+		look.Color
+	)
+	makePart(
+		model,
+		"Mag",
+		look.MagSize,
+		CFrame.new(0, -0.15 - look.MagSize.Y / 2, -bodyLength * 0.15) * CFrame.Angles(0.15, 0, 0),
+		look.Color
+	)
+	if stockLength > 0 then
+		makePart(
+			model,
+			"Stock",
+			Vector3.new(0.2, 0.3, stockLength),
+			CFrame.new(0, -0.05, (bodyLength + stockLength) / 2),
+			look.Color
+		)
+	end
 	makePart(model, "Sight", Vector3.new(0.08, 0.12, 0.2), CFrame.new(0, 0.24, -0.1), Color3.fromRGB(20, 20, 22))
 	local sightDot =
 		makePart(model, "SightDot", Vector3.new(0.02, 0.02, 0.02), CFrame.new(0, 0.3, -0.1), Color3.fromRGB(255, 60, 60))
@@ -46,7 +72,7 @@ function Viewmodel.new()
 
 	local muzzle = Instance.new("Attachment")
 	muzzle.Name = "Muzzle"
-	muzzle.Position = Vector3.new(0, 0, -0.42)
+	muzzle.Position = Vector3.new(0, 0, -barrelLength / 2 - 0.02)
 	muzzle.Parent = barrel
 
 	local flash = Instance.new("PointLight")
@@ -83,7 +109,10 @@ function Viewmodel:Kick(amount: number)
 end
 
 function Viewmodel:SetVisible(visible: boolean)
-	self.model.Parent = if visible then Workspace.CurrentCamera else nil
+	local parent = if visible then Workspace.CurrentCamera else nil
+	if self.model.Parent ~= parent then
+		self.model.Parent = parent
+	end
 end
 
 type Pose = {

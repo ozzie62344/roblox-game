@@ -1,4 +1,5 @@
 require(script.WeaponService).Start()
+require(script.LoadoutService).Start()
 require(script.PoseService).Start()
 require(script.DevService).Start()
 require(script.TestArena).Build()

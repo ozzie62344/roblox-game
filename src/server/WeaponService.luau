@@ -1,5 +1,6 @@
 -- Server side of shooting. Never trusts the client blindly: checks fire rate, ammo,
--- where the shot came from, and that the hit is actually possible before dealing damage.
+-- where the shot came from, and that each hit is actually possible before dealing damage.
+-- Each player's current weapon is stored in their "Weapon" attribute (set by loadouts / dev panel).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -13,6 +14,7 @@ local ReloadRemote = Remotes.Reload :: RemoteEvent
 local ShotFired = Remotes.ShotFired :: RemoteEvent
 local HitConfirmed = Remotes.HitConfirmed :: RemoteEvent
 
+local DEFAULT_WEAPON = "Rifle"
 local MAX_ORIGIN_DISTANCE = 8 -- studs between the player's head and where they claim to shoot from
 local HIT_TOLERANCE = 5 -- extra studs allowed between the claimed hit point and the part (for lag)
 local RELOAD_TOLERANCE = 0.15
@@ -31,7 +33,7 @@ type PlayerData = {
 local playerData: { [Player]: PlayerData } = {}
 
 local function resetData(player: Player)
-	local weapon = Weapons.Rifle
+	local weapon = Weapons[player:GetAttribute("Weapon") or DEFAULT_WEAPON] or Weapons[DEFAULT_WEAPON]
 	playerData[player] = {
 		weapon = weapon,
 		ammo = weapon.MagazineSize,
@@ -73,11 +75,63 @@ local function isBlocked(origin: Vector3, target: Vector3, shooter: Model): bool
 	return result ~= nil and findHumanoid(result.Instance) == nil
 end
 
-local function onFire(player: Player, origin: any, direction: any, hitPart: any, endPosition: any)
-	if typeof(origin) ~= "Vector3" or typeof(direction) ~= "Vector3" or typeof(endPosition) ~= "Vector3" then
-		return
+type Hit = { humanoid: Humanoid, damage: number, headshot: boolean }
+
+-- Validates one bullet/pellet. Returns its end position (for tracers) and the hit, if any.
+local function checkShot(player: Player, character: Model, weapon: Weapons.Weapon, origin: Vector3, shot: any): (Vector3?, Hit?)
+	if typeof(shot) ~= "table" then
+		return nil, nil
+	end
+	local direction, hitPart, endPosition = shot[1], shot[2], shot[3]
+	if typeof(direction) ~= "Vector3" or typeof(endPosition) ~= "Vector3" then
+		return nil, nil
 	end
 	if hitPart ~= nil and not (typeof(hitPart) == "Instance" and hitPart:IsA("BasePart")) then
+		return nil, nil
+	end
+	if direction.Magnitude < 0.5 then
+		return nil, nil
+	end
+	direction = direction.Unit
+	local toEnd = endPosition - origin
+	local distance = toEnd.Magnitude
+	if distance > weapon.Range + 5 then
+		return nil, nil
+	end
+	if distance > 1 and toEnd.Unit:Dot(direction) < 0.98 then
+		return nil, nil
+	end
+	if not hitPart then
+		return endPosition, nil
+	end
+
+	local targetHumanoid = findHumanoid(hitPart)
+	if not targetHumanoid or targetHumanoid.Health <= 0 or targetHumanoid.Parent == character then
+		return endPosition, nil
+	end
+	if (endPosition - hitPart.Position).Magnitude > hitPart.Size.Magnitude / 2 + HIT_TOLERANCE then
+		return endPosition, nil
+	end
+	if isBlocked(origin, endPosition, character) then
+		return endPosition, nil
+	end
+	-- No friendly fire
+	local targetPlayer = Players:GetPlayerFromCharacter(targetHumanoid.Parent)
+	if targetPlayer and not player.Neutral and targetPlayer.Team == player.Team then
+		return endPosition, nil
+	end
+
+	local headshot = hitPart.Name == "Head"
+	local damage = damageAtDistance(weapon, distance)
+	if headshot then
+		damage *= weapon.HeadshotMultiplier
+	end
+	return endPosition, { humanoid = targetHumanoid, damage = damage, headshot = headshot }
+end
+
+-- shots = { { direction, hitPart, endPosition }, ... }  (one entry per pellet)
+local function onFire(player: Player, origin: any, shots: any)
+	if typeof(origin) ~= "Vector3" or typeof(shots) ~= "table" then
 		return
 	end
 
@@ -94,6 +148,9 @@ local function onFire(player: Player, origin: any, direction: any, hitPart: any,
 		return
 	end
 	local weapon = data.weapon
+	if #shots < 1 or #shots > weapon.Pellets then
+		return
+	end
 	local now = os.clock()
 
 	-- Reload finishing
@@ -118,55 +175,36 @@ local function onFire(player: Player, origin: any, direction: any, hitPart: any,
 	data.shotBudget -= 1
 	data.ammo -= 1
 
-	-- Shot must start near the shooter's head and go where they say it went
+	-- Shot must start near the shooter's head
 	if (origin - head.Position).Magnitude > MAX_ORIGIN_DISTANCE then
 		return
 	end
-	if direction.Magnitude < 0.5 then
-		return
-	end
-	direction = direction.Unit
-	local toEnd = endPosition - origin
-	local distance = toEnd.Magnitude
-	if distance > weapon.Range + 5 then
-		return
-	end
-	if distance > 1 and toEnd.Unit:Dot(direction) < 0.98 then
-		return
+
+	local endPositions = {}
+	local totals: { [Humanoid]: { damage: number, headshot: boolean } } = {}
+	for _, shot in shots do
+		local endPosition, hit = checkShot(player, character :: Model, weapon, origin, shot)
+		if endPosition then
+			table.insert(endPositions, endPosition)
+		end
+		if hit then
+			local total = totals[hit.humanoid] or { damage = 0, headshot = false }
+			total.damage += hit.damage
+			total.headshot = total.headshot or hit.headshot
+			totals[hit.humanoid] = total
+		end
 	end
 
-	ShotFired:FireAllClients(player, origin, endPosition, weapon.Name)
-
-	if not hitPart then
-		return
-	end
-	local targetHumanoid = findHumanoid(hitPart)
-	if not targetHumanoid or targetHumanoid.Health <= 0 or targetHumanoid.Parent == character then
-		return
-	end
-	if (endPosition - hitPart.Position).Magnitude > hitPart.Size.Magnitude / 2 + HIT_TOLERANCE then
-		return
-	end
-	if isBlocked(origin, endPosition, character :: Model) then
-		return
+	if #endPositions > 0 then
+		ShotFired:FireAllClients(player, origin, endPositions, weapon.Name)
 	end
 
-	-- No friendly fire
-	local targetPlayer = Players:GetPlayerFromCharacter(targetHumanoid.Parent)
-	if targetPlayer and not player.Neutral and targetPlayer.Team == player.Team then
-		return
+	for targetHumanoid, total in totals do
+		targetHumanoid:SetAttribute("LastDamagedBy", player.UserId)
+		targetHumanoid:SetAttribute("LastHitHeadshot", total.headshot)
+		targetHumanoid:TakeDamage(total.damage)
+		HitConfirmed:FireClient(player, total.damage, total.headshot, targetHumanoid.Health <= 0)
 	end
-
-	local headshot = hitPart.Name == "Head"
-	local damage = damageAtDistance(weapon, distance)
-	if headshot then
-		damage *= weapon.HeadshotMultiplier
-	end
-	targetHumanoid:SetAttribute("LastDamagedBy", player.UserId)
-	targetHumanoid:SetAttribute("LastHitHeadshot", headshot)
-	targetHumanoid:TakeDamage(damage)
-
-	HitConfirmed:FireClient(player, damage, headshot, targetHumanoid.Health <= 0)
 end
 
 local function onReload(player: Player)
@@ -185,8 +223,20 @@ function WeaponService.Refill(player: Player)
 	end
 end
 
+-- Gives a player a weapon (full magazine). The client follows the "Weapon" attribute.
+function WeaponService.SetWeapon(player: Player, weaponName: string)
+	if not Weapons[weaponName] then
+		return
+	end
+	player:SetAttribute("Weapon", weaponName)
+	resetData(player)
+end
+
 function WeaponService.Start()
 	local function onPlayerAdded(player: Player)
+		if not player:GetAttribute("Weapon") then
+			player:SetAttribute("Weapon", DEFAULT_WEAPON)
+		end
 		resetData(player)
 		player.CharacterAdded:Connect(function()
 			resetData(player)
@@ -203,5 +253,7 @@ function WeaponService.Start()
 	FireRemote.OnServerEvent:Connect(onFire)
 	ReloadRemote.OnServerEvent:Connect(onReload)
 end
+
+WeaponService.DefaultWeapon = DEFAULT_WEAPON
 
 return WeaponService

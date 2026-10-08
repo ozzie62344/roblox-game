@@ -61,6 +61,16 @@ local actions: { [string]: (player: Player, arg: any) -> () } = {
 		WeaponService.Refill(player)
 	end,
 
+	SetWeapon = function(player, weaponName)
+		if typeof(weaponName) == "string" then
+			WeaponService.SetWeapon(player, weaponName)
+		end
+	end,
+
+	SetLoadoutMode = function(_, mode)
+		RoundService.SetLoadoutMode(mode)
+	end,
+
 	StartMatch = function()
 		RoundService.ForceStart()
 	end,
