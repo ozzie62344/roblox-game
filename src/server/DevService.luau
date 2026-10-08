@@ -5,6 +5,8 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
+local Abilities = require(ReplicatedStorage.Shared.Abilities)
+local AbilityService = require(script.Parent.AbilityService)
 local Dummies = require(script.Parent.Dummies)
 local RoundService = require(script.Parent.RoundService)
 local WeaponService = require(script.Parent.WeaponService)
@@ -14,7 +16,6 @@ local DevAction = ReplicatedStorage.Remotes.DevAction :: RemoteEvent
 -- Add teammates' UserIds here to give them dev access in live servers
 local DEV_USER_IDS: { number } = {}
 
-local VALID_ABILITIES = { None = true, Dash = true, WallJump = true }
 
 local DevService = {}
 
@@ -30,8 +31,10 @@ end
 
 local actions: { [string]: (player: Player, arg: any) -> () } = {
 	SetAbility = function(player, ability)
-		if VALID_ABILITIES[ability] then
-			player:SetAttribute("Ability", if ability == "None" then nil else ability)
+		if ability == "None" then
+			player:SetAttribute("Ability", nil)
+		elseif typeof(ability) == "string" and Abilities[ability] then
+			player:SetAttribute("Ability", ability)
 		end
 	end,
 
@@ -50,6 +53,10 @@ local actions: { [string]: (player: Player, arg: any) -> () } = {
 		Dummies.ClearSpawned()
 	end,
 
+	ClearCovers = function()
+		AbilityService.ClearDeployables()
+	end,
+
 	Heal = function(player)
 		local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 		if humanoid and humanoid.Health > 0 then
@@ -59,6 +66,7 @@ local actions: { [string]: (player: Player, arg: any) -> () } = {
 
 	RefillAmmo = function(player)
 		WeaponService.Refill(player)
+		AbilityService.ResetCharges(player)
 	end,
 
 	SetWeapon = function(player, weaponName)

@@ -13,6 +13,7 @@ require(Lean.LeanController).Start()
 require(Pose.PoseReplicator).Start()
 require(Combat.Hud).Start()
 require(Combat.WeaponController).Start()
+require(script:WaitForChild("Abilities").AbilityController).Start() -- after MovementController: gets F first
 require(Match.MatchHud).Start()
 require(Match.TeamHighlights).Start()
 require(Match.Spectate).Start()

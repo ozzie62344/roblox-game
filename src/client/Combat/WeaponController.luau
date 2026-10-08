@@ -7,6 +7,7 @@ local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 local Abilities = require(ReplicatedStorage.Shared.Abilities)
@@ -87,7 +88,16 @@ end
 local function updateLoadoutHud()
 	local abilityName = player:GetAttribute("Ability")
 	local ability = abilityName and Abilities[abilityName]
-	Hud.SetLoadout(weapon.Name, if ability then `[{ability.Key}] {ability.Name}` else nil)
+	local abilityText = nil
+	if ability then
+		abilityText = `[{ability.Key}] {ability.Name}`
+		local charges = player:GetAttribute("AbilityCharges")
+		if charges then
+			-- ● for each charge left, ○ for each used
+			abilityText ..= "  " .. string.rep("●", charges) .. string.rep("○", (ability.Charges or charges) - charges)
+		end
+	end
+	Hud.SetLoadout(weapon.Name, abilityText)
 end
 
 local function setWeapon(weaponName: string)
@@ -180,11 +190,15 @@ local function fire(character: Model)
 	end
 	Effects.Sound(weapon.FireSound)
 
-	-- Recoil: aiming controls it a bit better
+	-- Recoil: climb + consistent drift + random jitter, plus a visual camera jolt.
+	-- Aiming controls it a bit better.
 	local control = 1 - state.aimAlpha * 0.3
 	state.recoilPitch =
 		math.min(state.recoilPitch + math.rad(weapon.RecoilUp) * control, math.rad(weapon.RecoilMax))
-	state.recoilYaw += math.rad(random:NextNumber(-1, 1) * weapon.RecoilSide) * control
+	-- (negative yaw turns the camera right)
+	local side = random:NextNumber(-1, 1) * weapon.RecoilSide + weapon.RecoilDrift
+	state.recoilYaw -= math.rad(side) * control
+	state.recoilRoll += math.rad(weapon.RecoilRoll) * (if random:NextNumber() < 0.5 then -1 else 1)
 
 	if not weapon.Automatic then
 		triggerHeld = false
@@ -200,6 +214,7 @@ local function update(dt: number)
 		end
 		state.aiming = false
 		state.aimAlpha = 0
+		UserInputService.MouseDeltaSensitivity = 1
 		Hud.SetCrosshair(0, false)
 		Hud.SetScoped(false)
 		return
@@ -211,13 +226,17 @@ local function update(dt: number)
 	state.aimAlpha = math.clamp(state.aimAlpha + (if state.aiming then aimStep else -aimStep), 0, 1)
 	state.adsFovScale = weapon.AdsFovScale
 
-	-- Recoil recovers once you stop shooting
+	-- Recoil recovers once you stop shooting (single-shot guns settle between shots)
 	local now = os.clock()
-	if now - state.lastShot > 60 / weapon.RPM * 1.5 then
+	if now - state.lastShot > math.min(60 / weapon.RPM * 1.5, 0.15) then
 		local recover = 1 - math.exp(-weapon.RecoilRecover * dt)
 		state.recoilPitch -= state.recoilPitch * recover
 		state.recoilYaw -= state.recoilYaw * recover
 	end
+	state.recoilRoll -= state.recoilRoll * (1 - math.exp(-18 * dt))
+
+	-- Slower mouse while aimed in (especially scoped) for precise aiming
+	UserInputService.MouseDeltaSensitivity = 1 + (weapon.AdsSensitivity - 1) * state.aimAlpha
 
 	currentSpread = computeSpread()
 
@@ -271,6 +290,7 @@ function WeaponController.Start()
 		setWeapon(player:GetAttribute("Weapon") or "Rifle")
 	end)
 	player:GetAttributeChangedSignal("Ability"):Connect(updateLoadoutHud)
+	player:GetAttributeChangedSignal("AbilityCharges"):Connect(updateLoadoutHud)
 
 	ContextActionService:BindAction("Fire", function(_, inputState)
 		triggerHeld = inputState == Enum.UserInputState.Begin

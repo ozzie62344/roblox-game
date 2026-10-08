@@ -54,7 +54,7 @@ local function update(dt: number)
 		targetRoll += math.rad(Config.SlideTilt)
 	end
 	roll = smooth(roll, targetRoll, 16, dt)
-	camera.CFrame *= CFrame.Angles(0, 0, roll)
+	camera.CFrame *= CFrame.Angles(0, 0, roll + state.recoilRoll)
 
 	-- Shift sideways while leaning (crouch/slide height comes from the body itself lowering)
 	local character = player.Character

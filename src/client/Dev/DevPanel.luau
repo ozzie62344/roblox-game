@@ -5,6 +5,7 @@ local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Abilities = require(ReplicatedStorage.Shared.Abilities)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 local state = require(script.Parent.Parent.PlayerState)
 local WeaponController = require(script.Parent.Parent.Combat.WeaponController)
@@ -177,11 +178,16 @@ local function build()
 	end)
 
 	heading(panel, "ABILITY", 3)
-	choiceGrid(panel, 4, {
-		{ value = "None", label = "None" },
-		{ value = "Dash", label = "Dash (F)" },
-		{ value = "WallJump", label = "Wall Jump" },
-	}, function()
+	local abilityChoices = { { value = "None", label = "None" } }
+	local abilityNames = {}
+	for name in Abilities do
+		table.insert(abilityNames, name)
+	end
+	table.sort(abilityNames)
+	for _, name in abilityNames do
+		table.insert(abilityChoices, { value = name, label = Abilities[name].Name })
+	end
+	choiceGrid(panel, 4, abilityChoices, function()
 		return player:GetAttribute("Ability") or "None"
 	end, function(ability)
 		DevAction:FireServer("SetAbility", ability)
@@ -197,7 +203,10 @@ local function build()
 	button(panel, "Heal", 13).Activated:Connect(function()
 		DevAction:FireServer("Heal")
 	end)
-	button(panel, "Refill ammo", 14).Activated:Connect(function()
+	button(panel, "Clear covers", 15).Activated:Connect(function()
+		DevAction:FireServer("ClearCovers")
+	end)
+	button(panel, "Refill ammo + ability charges", 14).Activated:Connect(function()
 		DevAction:FireServer("RefillAmmo")
 		WeaponController.Refill()
 	end)

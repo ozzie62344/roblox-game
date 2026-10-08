@@ -24,6 +24,7 @@ return {
 	lastShot = -math.huge,
 	recoilPitch = 0, -- radians, applied to the camera
 	recoilYaw = 0,
+	recoilRoll = 0, -- radians, visual jolt only
 
 	-- UI
 	devPanelOpen = false,

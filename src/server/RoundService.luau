@@ -8,6 +8,7 @@ local Teams = game:GetService("Teams")
 local Workspace = game:GetService("Workspace")
 
 local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
+local AbilityService = require(script.Parent.AbilityService)
 local LoadoutService = require(script.Parent.LoadoutService)
 
 local KillFeed = ReplicatedStorage.Remotes.KillFeed :: RemoteEvent
@@ -118,6 +119,7 @@ local function assignTeams()
 end
 
 local function resetToFreeRoam()
+	AbilityService.ClearDeployables()
 	for _, player in Players:GetPlayers() do
 		player.Team = nil
 		player.Neutral = true
@@ -128,6 +130,7 @@ end
 
 -- Returns "Blue", "Orange", "Draw", or nil if the match was aborted
 local function runRound(round: number): string?
+	AbilityService.ClearDeployables()
 	-- Players without a team (teams were full) sit the match out
 	for _, player in Players:GetPlayers() do
 		if player.Neutral and player.Character then

@@ -54,6 +54,14 @@ local function update(dt: number)
 		local grounded = isGrounded(character, root, humanoid)
 		local feet = root.Position - Vector3.new(0, humanoid.HipHeight + root.Size.Y / 2, 0)
 
+		-- Ghost Step: no sounds at all
+		if character:GetAttribute("Silent") then
+			tracker.grounded = grounded
+			tracker.lastVerticalSpeed = velocity.Y
+			tracker.distance = 0
+			continue
+		end
+
 		-- Jump / land
 		if tracker.grounded and not grounded and velocity.Y > 20 then
 			Sound3D.Play(Sounds.Jump.Id, feet, { volume = Sounds.Jump.Volume, range = Sounds.Jump.Range })

@@ -15,6 +15,8 @@ local ammoLabel: TextLabel
 local healthFill: Frame
 local healthLabel: TextLabel
 local loadoutLabel: TextLabel
+local statusLabel: TextLabel
+local statusToken = 0
 local scope: Frame
 
 local WHITE = Color3.new(1, 1, 1)
@@ -105,6 +107,9 @@ function Hud.Start()
 	loadoutLabel = label(gui, UDim2.new(1, -40, 1, -78), Vector2.new(1, 1), 16)
 	loadoutLabel.TextColor3 = Color3.fromRGB(200, 205, 215)
 	loadoutLabel.Size = UDim2.fromOffset(320, 24)
+	statusLabel = label(gui, UDim2.new(1, -40, 1, -104), Vector2.new(1, 1), 16)
+	statusLabel.Size = UDim2.fromOffset(360, 24)
+	statusLabel.Visible = false
 
 	local healthBack = frame(gui, UDim2.fromOffset(240, 10), UDim2.new(0, 160, 1, -40), Color3.fromRGB(30, 30, 30))
 	healthBack.BackgroundTransparency = 0.3
@@ -127,6 +132,25 @@ function Hud.Start()
 		task.spawn(watchHealth, player.Character)
 	end
 	player.CharacterAdded:Connect(watchHealth)
+end
+
+-- Short message above the loadout (e.g. "GHOST STEP — SILENT"), with a countdown if it lasts a while
+function Hud.ShowStatus(text: string, duration: number, color: Color3?)
+	statusToken += 1
+	local token = statusToken
+	local endsAt = os.clock() + duration
+	statusLabel.TextColor3 = color or WHITE
+	statusLabel.Visible = true
+	task.spawn(function()
+		while token == statusToken and os.clock() < endsAt do
+			local remaining = endsAt - os.clock()
+			statusLabel.Text = if duration >= 3 then `{text}  {math.ceil(remaining)}` else text
+			task.wait(0.1)
+		end
+		if token == statusToken then
+			statusLabel.Visible = false
+		end
+	end)
 end
 
 function Hud.SetScoped(scoped: boolean)

@@ -37,11 +37,16 @@ export type Weapon = {
 	AdsTime: number, -- seconds to aim in
 	Scope: boolean, -- full scope overlay when aimed in
 
+	-- Recoil: each gun's "personality"
 	RecoilUp: number, -- degrees of camera kick per shot
-	RecoilSide: number, -- max random sideways degrees per shot
+	RecoilSide: number, -- max random sideways degrees per shot (jitter)
+	RecoilDrift: number, -- consistent sideways degrees per shot (+ = right), the pattern you learn to pull against
 	RecoilMax: number, -- recoil can't climb higher than this many degrees
-	RecoilRecover: number, -- how fast recoil returns to center
+	RecoilRecover: number, -- how fast recoil returns to center after you stop shooting
+	RecoilRoll: number, -- degrees of camera jolt (visual only, doesn't move your aim)
 	ViewKick: number, -- how much the on-screen gun jolts per shot
+
+	AdsSensitivity: number, -- mouse sensitivity multiplier when fully aimed in (lower = slower)
 
 	Look: Look,
 	FireSound: string,
@@ -76,11 +81,16 @@ local Weapons: { [string]: Weapon } = {
 		AdsTime = 0.18,
 		Scope = false,
 
+		-- Steady climb that drifts right
 		RecoilUp = 0.22,
-		RecoilSide = 0.1,
-		RecoilMax = 3,
-		RecoilRecover = 12,
+		RecoilSide = 0.06,
+		RecoilDrift = 0.06,
+		RecoilMax = 3.5,
+		RecoilRecover = 10,
+		RecoilRoll = 0.4,
 		ViewKick = 0.03,
+
+		AdsSensitivity = 0.85,
 
 		Look = {
 			BodyLength = 1.4,
@@ -118,11 +128,16 @@ local Weapons: { [string]: Weapon } = {
 		AdsTime = 0.14,
 		Scope = false,
 
-		RecoilUp = 0.16,
-		RecoilSide = 0.14,
-		RecoilMax = 2.5,
+		-- Low climb, jittery side to side
+		RecoilUp = 0.12,
+		RecoilSide = 0.22,
+		RecoilDrift = -0.02,
+		RecoilMax = 2.2,
 		RecoilRecover = 14,
+		RecoilRoll = 0.25,
 		ViewKick = 0.02,
+
+		AdsSensitivity = 0.9,
 
 		Look = {
 			BodyLength = 0.9,
@@ -160,11 +175,16 @@ local Weapons: { [string]: Weapon } = {
 		AdsTime = 0.16,
 		Scope = false,
 
-		RecoilUp = 3,
-		RecoilSide = 0.6,
+		-- One big punch per shot
+		RecoilUp = 3.2,
+		RecoilSide = 0.8,
+		RecoilDrift = 0,
 		RecoilMax = 6,
 		RecoilRecover = 7,
+		RecoilRoll = 3,
 		ViewKick = 0.2,
+
+		AdsSensitivity = 0.9,
 
 		Look = {
 			BodyLength = 1.2,
@@ -202,11 +222,16 @@ local Weapons: { [string]: Weapon } = {
 		AdsTime = 0.32,
 		Scope = true,
 
-		RecoilUp = 4,
-		RecoilSide = 0.5,
+		-- Huge kick, slow to settle
+		RecoilUp = 5,
+		RecoilSide = 0.3,
+		RecoilDrift = 0,
 		RecoilMax = 8,
-		RecoilRecover = 5,
+		RecoilRecover = 4,
+		RecoilRoll = 2,
 		ViewKick = 0.25,
+
+		AdsSensitivity = 0.3, -- slow, precise aiming while scoped
 
 		Look = {
 			BodyLength = 1.6,
@@ -244,11 +269,16 @@ local Weapons: { [string]: Weapon } = {
 		AdsTime = 0.15,
 		Scope = false,
 
-		RecoilUp = 2,
-		RecoilSide = 0.4,
+		-- Sharp snap up and to the right
+		RecoilUp = 2.4,
+		RecoilSide = 0.3,
+		RecoilDrift = 0.25,
 		RecoilMax = 5,
-		RecoilRecover = 9,
+		RecoilRecover = 10,
+		RecoilRoll = 2.5,
 		ViewKick = 0.15,
+
+		AdsSensitivity = 0.85,
 
 		Look = {
 			BodyLength = 0.5,
