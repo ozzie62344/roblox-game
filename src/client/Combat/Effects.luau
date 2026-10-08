@@ -63,13 +63,14 @@ function Effects.Impact(position: Vector3, normal: Vector3?)
 end
 
 -- Plays a sound in 3D at a position (other players' gunshots), or flat if no position (your own)
-function Effects.Sound(soundId: string, position: Vector3?, volume: number?)
+function Effects.Sound(soundId: string, position: Vector3?, volume: number?, pitch: number?)
 	if soundId == "" then
 		return
 	end
 	local sound = Instance.new("Sound")
 	sound.SoundId = soundId
 	sound.Volume = volume or 0.6
+	sound.PlaybackSpeed = pitch or 1
 	sound.RollOffMaxDistance = 400
 
 	if position then

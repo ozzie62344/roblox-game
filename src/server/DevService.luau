@@ -79,6 +79,10 @@ local actions: { [string]: (player: Player, arg: any) -> () } = {
 		RoundService.SetLoadoutMode(mode)
 	end,
 
+	SetGameMode = function(_, mode)
+		RoundService.SetGameMode(mode)
+	end,
+
 	StartMatch = function()
 		RoundService.ForceStart()
 	end,

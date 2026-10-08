@@ -13,6 +13,7 @@ local FireRemote = Remotes.Fire :: RemoteEvent
 local ReloadRemote = Remotes.Reload :: RemoteEvent
 local ShotFired = Remotes.ShotFired :: RemoteEvent
 local HitConfirmed = Remotes.HitConfirmed :: RemoteEvent
+local ReloadStarted = Remotes.ReloadStarted :: RemoteEvent
 
 local DEFAULT_WEAPON = "Rifle"
 local MAX_ORIGIN_DISTANCE = 8 -- studs between the player's head and where they claim to shoot from
@@ -213,6 +214,7 @@ local function onReload(player: Player)
 		return
 	end
 	data.reloadEnd = os.clock() + data.weapon.ReloadTime
+	ReloadStarted:FireAllClients(player, data.weapon.Name)
 end
 
 function WeaponService.Refill(player: Player)

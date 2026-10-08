@@ -211,7 +211,16 @@ local function build()
 		WeaponController.Refill()
 	end)
 
-	heading(panel, "MATCH", 20)
+	heading(panel, "MATCH", 17)
+	heading(panel, "Game mode (applies next match):", 18)
+	choiceGrid(panel, 19, {
+		{ value = "AttackDefend", label = "Attack / Defend" },
+		{ value = "Elimination", label = "Elimination" },
+	}, function()
+		return MatchState:GetAttribute("GameMode") or "AttackDefend"
+	end, function(mode)
+		DevAction:FireServer("SetGameMode", mode)
+	end)
 	heading(panel, "Loadouts each round:", 21)
 	choiceGrid(panel, 22, {
 		{ value = "Draft", label = "Draft (pick 1 of 3)" },
@@ -241,6 +250,7 @@ local function build()
 	player:GetAttributeChangedSignal("Ability"):Connect(refreshAll)
 	player:GetAttributeChangedSignal("Weapon"):Connect(refreshAll)
 	MatchState:GetAttributeChangedSignal("LoadoutMode"):Connect(refreshAll)
+	MatchState:GetAttributeChangedSignal("GameMode"):Connect(refreshAll)
 end
 
 function DevPanel.Start()

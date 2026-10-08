@@ -1,6 +1,7 @@
 require(script.WeaponService).Start()
 require(script.AbilityService).Start()
 require(script.LoadoutService).Start()
+require(script.ObjectiveService).Start()
 require(script.PoseService).Start()
 require(script.DevService).Start()
 require(script.TestArena).Build()

@@ -21,12 +21,15 @@ local PHASE_LABELS = {
 	Waiting = "WAITING FOR PLAYERS",
 	Starting = "MATCH STARTING",
 	PreRound = "PREPARE",
+	Prep = "DEFENDERS SETTING UP",
 	Action = "",
+	Planted = "CHARGE PLANTED",
 	PostRound = "ROUND OVER",
 	MatchOver = "MATCH OVER",
 }
 
 local gui: ScreenGui
+local sideLabels: { [string]: TextLabel } = {}
 local timerLabel: TextLabel
 local phaseLabel: TextLabel
 local bannerLabel: TextLabel
@@ -94,6 +97,11 @@ local function build()
 		stroke.Enabled = false
 		stroke.Parent = box
 		scoreLabels[name] = text(box, UDim2.fromScale(1, 1), UDim2.fromScale(0.5, 0), 24)
+
+		-- "ATTACK" / "DEFEND" under each team (Attack / Defend mode)
+		local sideLabel = text(top, UDim2.fromOffset(80, 14), UDim2.new(0.5, side * 105, 0, 54), 11)
+		sideLabel.TextColor3 = Color3.fromRGB(200, 205, 215)
+		sideLabels[name] = sideLabel
 
 		-- One pip per player slot: filled = alive
 		pipFrames[name] = {}
@@ -199,6 +207,8 @@ local function update()
 
 	local inMatch = phase ~= "Waiting" and phase ~= "Starting"
 	timerLabel.Text = if endsAt > 0 then formatTime(remaining) else ""
+	-- The fuse countdown shows in red
+	timerLabel.TextColor3 = if phase == "Planted" then Color3.fromRGB(255, 70, 70) else Color3.new(1, 1, 1)
 
 	local phaseText = PHASE_LABELS[phase] or ""
 	local round = MatchState:GetAttribute("Round") or 0
@@ -218,6 +228,11 @@ local function update()
 		scoreLabels[name].Text = tostring(MatchState:GetAttribute("Score" .. name) or 0)
 		local stroke = box:FindFirstChild("YourTeam") :: UIStroke
 		stroke.Enabled = player.Team ~= nil and player.Team.Name == name
+
+		local attackTeam = MatchState:GetAttribute("AttackTeam")
+		local showSides = inMatch and attackTeam ~= nil and MatchState:GetAttribute("GameMode") == "AttackDefend"
+		sideLabels[name].Visible = showSides
+		sideLabels[name].Text = if attackTeam == name then "ATTACK" else "DEFEND"
 
 		local team = Teams:FindFirstChild(name) :: Team?
 		local members = if team then team:GetPlayers() else {}

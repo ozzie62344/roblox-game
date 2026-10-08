@@ -25,6 +25,7 @@ local FireRemote = Remotes:WaitForChild("Fire") :: RemoteEvent
 local ReloadRemote = Remotes:WaitForChild("Reload") :: RemoteEvent
 local ShotFired = Remotes:WaitForChild("ShotFired") :: RemoteEvent
 local HitConfirmed = Remotes:WaitForChild("HitConfirmed") :: RemoteEvent
+local ReloadStarted = Remotes:WaitForChild("ReloadStarted") :: RemoteEvent
 
 local player = Players.LocalPlayer
 local random = Random.new()
@@ -81,6 +82,11 @@ local function spreadDirection(cframe: CFrame, spreadDegrees: number): Vector3
 	return (cframe * CFrame.Angles(0, 0, spin) * CFrame.Angles(tilt, 0, 0)).LookVector
 end
 
+local function randomPitch(): number
+	local variation = Sounds.Guns.PitchVariation
+	return 1 + random:NextNumber(-variation, variation)
+end
+
 local function updateAmmoHud()
 	Hud.SetAmmo(ammo, weapon.MagazineSize, reloading)
 end
@@ -127,8 +133,14 @@ local function reload()
 	reloadToken += 1
 	local token = reloadToken
 	ReloadRemote:FireServer()
-	Effects.Sound(weapon.ReloadSound)
+	-- Mag out at the start, mag in near the end
+	Effects.Sound(Sounds.Pick(weapon.ReloadSound), nil, Sounds.Guns.ReloadVolume)
 	updateAmmoHud()
+	task.delay(weapon.ReloadTime * 0.75, function()
+		if token == reloadToken then
+			Effects.Sound(Sounds.Pick(weapon.ReloadSound), nil, Sounds.Guns.ReloadVolume)
+		end
+	end)
 
 	task.delay(weapon.ReloadTime, function()
 		if token == reloadToken then
@@ -188,7 +200,11 @@ local function fire(character: Model)
 	if viewmodel then
 		viewmodel:Kick(weapon.ViewKick)
 	end
-	Effects.Sound(weapon.FireSound)
+	local volume = Sounds.Guns.OwnVolume * weapon.FireVolume
+	Effects.Sound(Sounds.Pick(weapon.FireSound), nil, volume, weapon.FirePitch * randomPitch())
+	if weapon.TailSound then
+		Effects.Sound(Sounds.Pick(weapon.TailSound), nil, volume * 0.6, weapon.FirePitch)
+	end
 
 	-- Recoil: climb + consistent drift + random jitter, plus a visual camera jolt.
 	-- Aiming controls it a bit better.
@@ -221,7 +237,7 @@ local function update(dt: number)
 	end
 
 	local uiOpen = state.devPanelOpen or state.mouseUnlocked or state.draftOpen
-	local handsBusy = state.deploying -- pulling up cover
+	local handsBusy = state.deploying or state.interacting -- pulling up cover / planting / defusing
 	state.aiming = aimHeld and not reloading and not uiOpen and not handsBusy
 	local aimStep = dt / weapon.AdsTime
 	state.aimAlpha = math.clamp(state.aimAlpha + (if state.aiming then aimStep else -aimStep), 0, 1)
@@ -329,10 +345,35 @@ function WeaponController.Start()
 			end
 			local shooterWeapon = Weapons[weaponName]
 			if shooterWeapon then
-				Sound3D.Play(shooterWeapon.FireSound, origin, { volume = 1, range = Sounds.GunshotRange })
+				local volume = Sounds.Guns.OtherVolume * shooterWeapon.FireVolume
+				Sound3D.Play(Sounds.Pick(shooterWeapon.FireSound), origin, {
+					volume = volume,
+					range = Sounds.GunshotRange,
+					pitch = shooterWeapon.FirePitch * randomPitch(),
+				})
+				if shooterWeapon.TailSound then
+					Sound3D.Play(Sounds.Pick(shooterWeapon.TailSound), origin, {
+						volume = volume * 0.6,
+						range = Sounds.GunshotRange,
+						pitch = shooterWeapon.FirePitch,
+					})
+				end
 			end
 		end
 	)
+
+	-- Other players reloading nearby (a sound cue: they're vulnerable right now)
+	ReloadStarted.OnClientEvent:Connect(function(reloader: Player, weaponName: string)
+		local head = reloader.Character and reloader.Character:FindFirstChild("Head") :: BasePart?
+		local reloaderWeapon = Weapons[weaponName]
+		if reloader == player or not head or not reloaderWeapon then
+			return
+		end
+		Sound3D.Play(Sounds.Pick(reloaderWeapon.ReloadSound), head.Position, {
+			volume = Sounds.Guns.ReloadVolume,
+			range = Sounds.Guns.ReloadRange,
+		})
+	end)
 
 	HitConfirmed.OnClientEvent:Connect(function(_damage: number, _headshot: boolean, killed: boolean)
 		if killed then

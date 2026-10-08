@@ -128,7 +128,7 @@ function AbilityController.Start()
 		if not ability or ability.Kind ~= "Active" then
 			return Enum.ContextActionResult.Pass -- Dash (or nothing): let MovementController have F
 		end
-		if state.devPanelOpen or state.mouseUnlocked or state.draftOpen or state.spectating or state.deploying then
+		if state.devPanelOpen or state.mouseUnlocked or state.draftOpen or state.spectating or state.deploying or state.interacting then
 			return Enum.ContextActionResult.Sink
 		end
 		if (player:GetAttribute("AbilityCharges") or 0) <= 0 then

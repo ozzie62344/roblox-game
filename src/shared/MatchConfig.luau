@@ -13,6 +13,18 @@ return {
 	-- (Lobby voting will choose this later.)
 	DefaultLoadoutMode = "Draft",
 	DraftOptions = 3,
+
+	-- "AttackDefend" = plant / defuse a charge at site A or B, "Elimination" = last team standing.
+	-- (Lobby voting will choose this later.)
+	DefaultGameMode = "AttackDefend",
+	SwapSidesAfterRounds = 3, -- halftime: attackers and defenders switch
+
+	-- Attack / Defend
+	PrepTime = 20, -- defenders set up while attackers wait in their spawn
+	PlantTime = 4, -- hold G inside a site
+	DefuseTime = 6, -- hold G next to the planted charge
+	FuseTime = 45, -- seconds from plant to detonation
+	DefuseRange = 5, -- studs from the charge
 	RoundTime = 120,
 	PostRoundTime = 5,
 	MatchOverTime = 10,

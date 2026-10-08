@@ -17,7 +17,7 @@ local player = Players.LocalPlayer
 local Spectate = {}
 
 local DEATH_CAM_TIME = 2.5 -- seconds looking at where you died before switching
-local ROUND_PHASES = { PreRound = true, Action = true, PostRound = true }
+local ROUND_PHASES = { PreRound = true, Prep = true, Action = true, Planted = true, PostRound = true }
 
 local deathTime = -math.huge
 local target: Player? = nil

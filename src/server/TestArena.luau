@@ -80,19 +80,37 @@ function TestArena.Build()
 		Dummies.Spawn(CFrame.new(-40, 3, -distance) * CFrame.Angles(0, math.pi, 0), true)
 	end
 
-	-- Team spawn pads (RoundService looks for a "TeamSpawns" folder; players face the pad's front)
+	-- Spawn pads (RoundService looks for a "TeamSpawns" folder with Side = "Attack" / "Defend";
+	-- players face the pad's front). Attackers come from the north, through the peek wall.
 	local teamSpawns = Instance.new("Folder")
 	teamSpawns.Name = "TeamSpawns"
 	teamSpawns.Parent = arena
 	local pads = {
-		{ team = "Blue", cframe = CFrame.new(0, 0.1, 150), color = Color3.fromRGB(60, 120, 255) },
-		{ team = "Orange", cframe = CFrame.new(0, 0.1, -30) * CFrame.Angles(0, math.pi, 0), color = orange },
+		{ side = "Attack", cframe = CFrame.new(0, 0.1, 150), color = Color3.fromRGB(220, 70, 70) },
+		{ side = "Defend", cframe = CFrame.new(0, 0.1, -30) * CFrame.Angles(0, math.pi, 0), color = blue },
 	}
 	for _, info in pads do
-		local pad = block(teamSpawns, info.team .. "Spawn", Vector3.new(16, 0.2, 8), info.cframe, info.color)
+		local pad = block(teamSpawns, info.side .. "Spawn", Vector3.new(16, 0.2, 8), info.cframe, info.color)
 		pad.CanCollide = false
 		pad.Transparency = 0.4
-		pad:SetAttribute("Team", info.team)
+		pad:SetAttribute("Side", info.side)
+	end
+
+	-- Plant sites (ObjectiveService looks for an "Objectives" folder with Site = "A" / "B")
+	local objectives = Instance.new("Folder")
+	objectives.Name = "Objectives"
+	objectives.Parent = arena
+	local sites = {
+		{ name = "A", position = Vector3.new(20, 3, 50) },
+		{ name = "B", position = Vector3.new(-60, 3, 15) },
+	}
+	for _, info in sites do
+		local site = block(objectives, "Site" .. info.name, Vector3.new(16, 6, 16), CFrame.new(info.position), Color3.fromRGB(255, 200, 60))
+		site.Transparency = 0.85
+		site.CanCollide = false
+		site.CanQuery = false
+		site.CanTouch = false
+		site:SetAttribute("Site", info.name)
 	end
 
 	local spawn = Instance.new("SpawnLocation")

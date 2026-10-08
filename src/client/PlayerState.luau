@@ -19,6 +19,7 @@ return {
 
 	-- Deploying cover: locked in place, gun lowered, camera looks down then follows the cover up
 	deploying = false,
+	interacting = false, -- planting / defusing: also locks you in place
 	deployPitch = 0, -- radians, applied to the camera like recoil
 
 	-- Weapon

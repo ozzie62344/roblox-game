@@ -276,13 +276,14 @@ local function step(dt: number)
 		end
 	end
 
-	-- Pulling up cover: rooted in place, can't jump
-	local wish = if state.deploying then Vector3.zero else wishDirection()
-	if state.deploying ~= jumpBlocked then
-		jumpBlocked = state.deploying
+	-- Pulling up cover / planting / defusing: rooted in place, can't jump
+	local rooted = state.deploying or state.interacting
+	local wish = if rooted then Vector3.zero else wishDirection()
+	if rooted ~= jumpBlocked then
+		jumpBlocked = rooted
 		humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, not jumpBlocked)
 	end
-	if state.deploying then
+	if rooted then
 		endSlide()
 	end
 	local wantsToSprint = sprintHeld and wish:Dot(lookDirection()) > 0.5
@@ -371,7 +372,7 @@ local function step(dt: number)
 	linearVelocity.PlaneVelocity = Vector2.new(velocity.X, velocity.Z)
 
 	-- Crouching and sliding lower the whole character (hitbox included), not just the camera
-	local lowered = state.crouching or state.sliding or state.deploying
+	local lowered = state.crouching or state.sliding or state.deploying or state.interacting
 	local targetDrop = if lowered then Config.CrouchHeightDrop else 0
 	heightDrop += (targetDrop - heightDrop) * (1 - math.exp(-Config.CrouchTransitionSpeed * dt))
 	if heightDrop < 0.01 and not lowered then
@@ -459,7 +460,7 @@ function MovementController.Start()
 	-- C / Ctrl: hold to slide while sprinting (letting go ends the slide), otherwise tap to toggle crouch
 	ContextActionService:BindAction("CrouchSlide", function(_, inputState)
 		slideHeld = inputState == Enum.UserInputState.Begin
-		if inputState ~= Enum.UserInputState.Begin or state.deploying then
+		if inputState ~= Enum.UserInputState.Begin or state.deploying or state.interacting then
 			return Enum.ContextActionResult.Sink
 		end
 		if state.sprinting or (not isGrounded() and sprintHeld) then

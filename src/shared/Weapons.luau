@@ -1,8 +1,7 @@
 -- Weapon stats. Shared so the client (feel/effects) and server (validation/damage) agree.
 -- The loadout system picks from every weapon in this list.
 --
--- Sounds: paste a Roblox sound asset id like "rbxassetid://123456" to enable.
--- (Find gunshot/reload sounds in the Studio Toolbox → Audio.)
+-- Sounds: FireSound / TailSound / ReloadSound name a set in Sounds.luau (Sets); a random one from the set plays.
 
 export type Look = {
 	BodyLength: number,
@@ -49,8 +48,11 @@ export type Weapon = {
 	AdsSensitivity: number, -- mouse sensitivity multiplier when fully aimed in (lower = slower)
 
 	Look: Look,
-	FireSound: string,
-	ReloadSound: string,
+	FireSound: string, -- sound set (Sounds.Sets) for each shot
+	TailSound: string?, -- optional echo after each shot (semi-auto guns)
+	ReloadSound: string, -- sound set for reloads (plays at the start and near the end)
+	FirePitch: number, -- lower = deeper, heavier gun
+	FireVolume: number,
 }
 
 local DARK = Color3.fromRGB(45, 47, 52)
@@ -90,7 +92,7 @@ local Weapons: { [string]: Weapon } = {
 		RecoilRoll = 0.4,
 		ViewKick = 0.03,
 
-		AdsSensitivity = 0.85,
+		AdsSensitivity = 0.7,
 
 		Look = {
 			BodyLength = 1.4,
@@ -99,8 +101,10 @@ local Weapons: { [string]: Weapon } = {
 			MagSize = Vector3.new(0.18, 0.45, 0.25),
 			Color = DARK,
 		},
-		FireSound = "",
-		ReloadSound = "",
+		FireSound = "GunShot",
+		FirePitch = 1,
+		FireVolume = 1,
+		ReloadSound = "GunFoley",
 	},
 
 	SMG = {
@@ -137,7 +141,7 @@ local Weapons: { [string]: Weapon } = {
 		RecoilRoll = 0.25,
 		ViewKick = 0.02,
 
-		AdsSensitivity = 0.9,
+		AdsSensitivity = 0.8,
 
 		Look = {
 			BodyLength = 0.9,
@@ -146,8 +150,10 @@ local Weapons: { [string]: Weapon } = {
 			MagSize = Vector3.new(0.14, 0.55, 0.18),
 			Color = Color3.fromRGB(35, 36, 40),
 		},
-		FireSound = "",
-		ReloadSound = "",
+		FireSound = "GunShot",
+		FirePitch = 1.2, -- lighter, snappier
+		FireVolume = 0.8,
+		ReloadSound = "GunFoley",
 	},
 
 	Shotgun = {
@@ -184,7 +190,7 @@ local Weapons: { [string]: Weapon } = {
 		RecoilRoll = 3,
 		ViewKick = 0.2,
 
-		AdsSensitivity = 0.9,
+		AdsSensitivity = 0.85,
 
 		Look = {
 			BodyLength = 1.2,
@@ -193,8 +199,11 @@ local Weapons: { [string]: Weapon } = {
 			MagSize = Vector3.new(0.16, 0.16, 0.9), -- pump tube under the barrel
 			Color = Color3.fromRGB(70, 52, 38),
 		},
-		FireSound = "",
-		ReloadSound = "",
+		FireSound = "ShotgunShot",
+		TailSound = "ShotgunTail",
+		FirePitch = 1,
+		FireVolume = 1.1,
+		ReloadSound = "ShotgunFoley",
 	},
 
 	Sniper = {
@@ -231,7 +240,7 @@ local Weapons: { [string]: Weapon } = {
 		RecoilRoll = 2,
 		ViewKick = 0.25,
 
-		AdsSensitivity = 0.3, -- slow, precise aiming while scoped
+		AdsSensitivity = 0.15, -- slow, precise aiming while scoped
 
 		Look = {
 			BodyLength = 1.6,
@@ -240,8 +249,11 @@ local Weapons: { [string]: Weapon } = {
 			MagSize = Vector3.new(0.16, 0.25, 0.25),
 			Color = Color3.fromRGB(55, 62, 48),
 		},
-		FireSound = "",
-		ReloadSound = "",
+		FireSound = "GunShot",
+		TailSound = "GunTail",
+		FirePitch = 0.7, -- deep and heavy
+		FireVolume = 1.2,
+		ReloadSound = "GunFoley",
 	},
 
 	Revolver = {
@@ -278,7 +290,7 @@ local Weapons: { [string]: Weapon } = {
 		RecoilRoll = 2.5,
 		ViewKick = 0.15,
 
-		AdsSensitivity = 0.85,
+		AdsSensitivity = 0.75,
 
 		Look = {
 			BodyLength = 0.5,
@@ -287,8 +299,11 @@ local Weapons: { [string]: Weapon } = {
 			MagSize = Vector3.new(0.3, 0.3, 0.3), -- the cylinder
 			Color = Color3.fromRGB(150, 150, 158),
 		},
-		FireSound = "",
-		ReloadSound = "",
+		FireSound = "GunShot",
+		TailSound = "GunTail",
+		FirePitch = 0.85,
+		FireVolume = 1.1,
+		ReloadSound = "GunFoley",
 	},
 }
 
