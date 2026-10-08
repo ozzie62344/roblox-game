@@ -17,6 +17,10 @@ return {
 	leanOffset = 0, -- studs the camera is shifted sideways (shortened if a wall is in the way)
 	leaning = false,
 
+	-- Deploying cover: locked in place, gun lowered, camera looks down then follows the cover up
+	deploying = false,
+	deployPitch = 0, -- radians, applied to the camera like recoil
+
 	-- Weapon
 	aiming = false,
 	aimAlpha = 0, -- 0 = hip, 1 = fully aimed in

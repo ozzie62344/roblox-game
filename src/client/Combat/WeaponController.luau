@@ -221,7 +221,8 @@ local function update(dt: number)
 	end
 
 	local uiOpen = state.devPanelOpen or state.mouseUnlocked or state.draftOpen
-	state.aiming = aimHeld and not reloading and not uiOpen
+	local handsBusy = state.deploying -- pulling up cover
+	state.aiming = aimHeld and not reloading and not uiOpen and not handsBusy
 	local aimStep = dt / weapon.AdsTime
 	state.aimAlpha = math.clamp(state.aimAlpha + (if state.aiming then aimStep else -aimStep), 0, 1)
 	state.adsFovScale = weapon.AdsFovScale
@@ -244,7 +245,7 @@ local function update(dt: number)
 	local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	local frozen = root ~= nil and root.Anchored
 
-	if triggerHeld and not frozen and not uiOpen and not reloading and now >= nextFireTime then
+	if triggerHeld and not frozen and not uiOpen and not handsBusy and not reloading and now >= nextFireTime then
 		if ammo > 0 then
 			fire(character)
 		else
@@ -256,7 +257,8 @@ local function update(dt: number)
 	local scoped = weapon.Scope and state.aimAlpha > 0.9
 	Hud.SetScoped(scoped)
 	if viewmodel then
-		viewmodel:SetVisible(not scoped)
+		-- While deploying cover, DeployArms shows the hands instead
+		viewmodel:SetVisible(not scoped and not handsBusy)
 	end
 
 	-- Crosshair gap in pixels for the current spread (shotguns show their pellet cone)

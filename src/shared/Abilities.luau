@@ -47,7 +47,8 @@ local Abilities: { [string]: Ability } = {
 		Key = "F",
 		Kind = "Active",
 		Charges = 2,
-		Description = "Place a waist-high bulletproof shield. Crouch behind it or shoot over it.",
+		Duration = 1.2, -- deploy time: you can't move or shoot while pulling it up
+		Description = "Pull a waist-high bulletproof shield out of the ground. Crouch behind it or shoot over it.",
 	},
 }
 

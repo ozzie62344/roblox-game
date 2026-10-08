@@ -26,6 +26,7 @@ local linearVelocity: LinearVelocity? = nil
 local characterConnections: { RBXScriptConnection } = {}
 
 local sprintHeld = false
+local slideHeld = false -- slides only last while C / Ctrl is held
 local velocity = Vector3.zero -- horizontal velocity we want
 local velocityOverridden = false -- an input (slide/wall jump) set velocity since the last step
 local slideTimer = 0
@@ -41,6 +42,7 @@ local lastGroundedTime = 0
 local standHipHeight = 2
 local heightDrop = 0 -- smoothed: how far we're currently lowered (crouch / slide)
 local sentLowered = false
+local jumpBlocked = false
 
 local WALL_CHECK_DIRECTIONS = {}
 for i = 0, 7 do
@@ -269,12 +271,20 @@ local function step(dt: number)
 		wallJumpsUsed = 0
 		lastWallJumped = nil
 		lastGroundedTime = os.clock()
-		if os.clock() <= slideBufferedUntil then
+		if slideHeld and os.clock() <= slideBufferedUntil then
 			startSlide()
 		end
 	end
 
-	local wish = wishDirection()
+	-- Pulling up cover: rooted in place, can't jump
+	local wish = if state.deploying then Vector3.zero else wishDirection()
+	if state.deploying ~= jumpBlocked then
+		jumpBlocked = state.deploying
+		humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, not jumpBlocked)
+	end
+	if state.deploying then
+		endSlide()
+	end
 	local wantsToSprint = sprintHeld and wish:Dot(lookDirection()) > 0.5
 	if state.crouching and wantsToSprint then
 		tryStandUp()
@@ -308,7 +318,8 @@ local function step(dt: number)
 			end
 		end
 		velocity = direction * speed
-		if speed <= Config.SlideEndSpeed or slideTimer >= Config.SlideMaxDuration or not grounded then
+		local timeUp = slideTimer >= Config.SlideMaxDuration
+		if not slideHeld or speed <= Config.SlideEndSpeed or timeUp or not grounded then
 			endSlide()
 			-- Slid under something low? Stay crouched instead of standing into it
 			if grounded and not canStandUp() then
@@ -360,7 +371,7 @@ local function step(dt: number)
 	linearVelocity.PlaneVelocity = Vector2.new(velocity.X, velocity.Z)
 
 	-- Crouching and sliding lower the whole character (hitbox included), not just the camera
-	local lowered = state.crouching or state.sliding
+	local lowered = state.crouching or state.sliding or state.deploying
 	local targetDrop = if lowered then Config.CrouchHeightDrop else 0
 	heightDrop += (targetDrop - heightDrop) * (1 - math.exp(-Config.CrouchTransitionSpeed * dt))
 	if heightDrop < 0.01 and not lowered then
@@ -399,6 +410,7 @@ local function cleanupCharacter()
 	state.velocity = Vector3.zero
 	heightDrop = 0
 	sentLowered = false
+	jumpBlocked = false
 end
 
 local function setupCharacter(character: Model)
@@ -444,9 +456,10 @@ function MovementController.Start()
 		return Enum.ContextActionResult.Pass
 	end, false, Enum.KeyCode.LeftShift, Enum.KeyCode.ButtonL3)
 
-	-- C / Ctrl: slide if sprinting, otherwise toggle crouch
+	-- C / Ctrl: hold to slide while sprinting (letting go ends the slide), otherwise tap to toggle crouch
 	ContextActionService:BindAction("CrouchSlide", function(_, inputState)
-		if inputState ~= Enum.UserInputState.Begin then
+		slideHeld = inputState == Enum.UserInputState.Begin
+		if inputState ~= Enum.UserInputState.Begin or state.deploying then
 			return Enum.ContextActionResult.Sink
 		end
 		if state.sprinting or (not isGrounded() and sprintHeld) then

@@ -32,6 +32,14 @@ return {
 		MinFallSpeed = 35, -- softer landings make no sound
 	},
 
+	-- Deployable cover starting to come out of the ground (placeholder: get-up sound, pitched down)
+	CoverStart = {
+		Id = "rbxasset://sounds/action_get_up.mp3",
+		Range = 50,
+		Volume = 0.8,
+		Pitch = 0.7,
+	},
+
 	-- Deployable cover slamming into place (placeholder: the landing thud, pitched down to sound heavy)
 	CoverDeploy = {
 		Id = "rbxasset://sounds/action_jump_land.mp3",

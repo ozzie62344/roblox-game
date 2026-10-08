@@ -6,6 +6,7 @@ local ContextActionService = game:GetService("ContextActionService")
 local Debris = game:GetService("Debris")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
@@ -15,6 +16,7 @@ local Sound3D = require(script.Parent.Parent.Audio.Sound3D)
 local state = require(script.Parent.Parent.PlayerState)
 local Hud = require(script.Parent.Parent.Combat.Hud)
 local Effects = require(script.Parent.Parent.Combat.Effects)
+local DeployArms = require(script.Parent.DeployArms)
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local UseAbility = Remotes:WaitForChild("UseAbility") :: RemoteEvent
@@ -25,6 +27,8 @@ local player = Players.LocalPlayer
 local AbilityController = {}
 
 local REVEAL_COLOR = Color3.fromRGB(255, 60, 60)
+
+local startDeploy: (duration: number) -> ()
 
 local function revealCharacters(characters: { Model }, duration: number)
 	for _, character in characters do
@@ -73,7 +77,48 @@ local function pulseWave(origin: Vector3, radius: number)
 	Debris:AddItem(wave, 0.9)
 end
 
+-- Deploying cover: look down at the ground, then follow the cover up as it rises.
+-- Movement/weapons read state.deploying to lock you in place.
+local DEPLOY_LOOK_DOWN = math.rad(28)
+local deployToken = 0
+
+local function endDeploy()
+	deployToken += 1
+	state.deploying = false
+	state.deployPitch = 0
+	DeployArms.Stop()
+end
+
+function startDeploy(duration: number)
+	deployToken += 1
+	local token = deployToken
+	state.deploying = true
+	local startedAt = os.clock()
+
+	task.spawn(function()
+		while token == deployToken do
+			local character = player.Character
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+			local progress = (os.clock() - startedAt) / duration
+			if progress >= 1 or not humanoid or humanoid.Health <= 0 then
+				break
+			end
+			-- 0 → 0.2: look down at the ground (the grab); 0.2 → 1: follow the cover up
+			local down = if progress < 0.2
+				then math.sin(progress / 0.2 * math.pi / 2)
+				else 1 - math.sin((progress - 0.2) / 0.8 * math.pi / 2)
+			state.deployPitch = -DEPLOY_LOOK_DOWN * down
+			RunService.RenderStepped:Wait()
+		end
+		if token == deployToken then
+			endDeploy()
+		end
+	end)
+end
+
 function AbilityController.Start()
+	player.CharacterAdded:Connect(endDeploy)
+
 	ContextActionService:BindAction("UseAbility", function(_, inputState)
 		if inputState ~= Enum.UserInputState.Begin then
 			return Enum.ContextActionResult.Sink
@@ -83,7 +128,7 @@ function AbilityController.Start()
 		if not ability or ability.Kind ~= "Active" then
 			return Enum.ContextActionResult.Pass -- Dash (or nothing): let MovementController have F
 		end
-		if state.devPanelOpen or state.mouseUnlocked or state.draftOpen or state.spectating then
+		if state.devPanelOpen or state.mouseUnlocked or state.draftOpen or state.spectating or state.deploying then
 			return Enum.ContextActionResult.Sink
 		end
 		if (player:GetAttribute("AbilityCharges") or 0) <= 0 then
@@ -103,6 +148,14 @@ function AbilityController.Start()
 			pulseWave(origin, radius)
 		elseif kind == "Scanned" then
 			Hud.ShowStatus("YOU'VE BEEN SCANNED", 2, REVEAL_COLOR)
+		elseif kind == "DeployStart" then
+			local duration, finalCFrame, size = ...
+			startDeploy(duration)
+			DeployArms.Play(duration, finalCFrame, size)
+		elseif kind == "CoverStart" then
+			local position = ...
+			local sound = Sounds.CoverStart
+			Sound3D.Play(sound.Id, position, { volume = sound.Volume, range = sound.Range, pitch = sound.Pitch })
 		elseif kind == "CoverDeployed" then
 			local position = ...
 			local sound = Sounds.CoverDeploy

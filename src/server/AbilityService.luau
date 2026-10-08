@@ -105,8 +105,9 @@ local handlers: { [string]: Handler } = {
 		return true
 	end,
 
-	-- Waist-high bulletproof shield placed in front of you, facing where you look
-	DeployableCover = function(player, character, root, _ability, look)
+	-- Waist-high bulletproof shield the player drags up out of the ground in front of them.
+	-- Takes `Duration` seconds, during which they can't move or shoot; dying cancels it.
+	DeployableCover = function(player, character, root, ability, look)
 		local forward = Vector3.new(look.X, 0, look.Z)
 		if forward.Magnitude < 0.1 then
 			forward = root.CFrame.LookVector * Vector3.new(1, 0, 1)
@@ -118,7 +119,7 @@ local handlers: { [string]: Handler } = {
 		params.FilterDescendantsInstances = { character }
 
 		-- Don't place it inside a wall: stop short of anything in the way
-		local distance = 4
+		local distance = 3 -- close enough that your hands can believably reach it
 		local blocked = Workspace:Raycast(root.Position, forward * distance, params)
 		if blocked then
 			distance = blocked.Distance - 1.5
@@ -165,13 +166,39 @@ local handlers: { [string]: Handler } = {
 		weld.Parent = stripe
 		stripe.Parent = cover
 
+		local deployTime = ability.Duration or 1.2
+		character:SetAttribute("Deploying", true)
+		-- The client animates its hands on the cover's edge using the same timing as the tween below
+		AbilityEffect:FireClient(player, "DeployStart", deployTime, finalCFrame, size)
+		AbilityEffect:FireAllClients("CoverStart", base)
+
+		-- A short grab, then a steady pull up out of the ground
 		cover.Parent = getDeployables()
-		TweenService:Create(
+		local grabTime = deployTime * 0.2
+		local rise = TweenService:Create(
 			cover,
-			TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+			TweenInfo.new(deployTime - grabTime, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, 0, false, grabTime),
 			{ CFrame = finalCFrame }
-		):Play()
-		AbilityEffect:FireAllClients("CoverDeployed", base)
+		)
+		rise:Play()
+
+		local humanoid = character:FindFirstChildOfClass("Humanoid") :: Humanoid
+		task.spawn(function()
+			local finishAt = os.clock() + deployTime
+			while os.clock() < finishAt do
+				if not character.Parent or humanoid.Health <= 0 then
+					-- Killed mid-deploy: the cover is lost
+					rise:Cancel()
+					cover:Destroy()
+					return
+				end
+				task.wait()
+			end
+			character:SetAttribute("Deploying", false)
+			if cover.Parent then
+				AbilityEffect:FireAllClients("CoverDeployed", base)
+			end
+		end)
 		return true
 	end,
 }
@@ -225,8 +252,8 @@ function AbilityService.Start()
 
 		local character = player.Character
 		local root = aliveRoot(character)
-		if not character or not root or root.Anchored then
-			return -- dead, or frozen in the pre-round
+		if not character or not root or root.Anchored or character:GetAttribute("Deploying") then
+			return -- dead, frozen in the pre-round, or busy deploying cover
 		end
 
 		if handler(player, character, root, ability, look) then

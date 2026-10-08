@@ -144,8 +144,8 @@ local function onFire(player: Player, origin: any, shots: any)
 	end
 	-- Frozen during the pre-round countdown
 	local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if not root or root.Anchored then
-		return
+	if not root or root.Anchored or character:GetAttribute("Deploying") then
+		return -- frozen, or hands busy deploying cover
 	end
 	local weapon = data.weapon
 	if #shots < 1 or #shots > weapon.Pellets then

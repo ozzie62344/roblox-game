@@ -21,7 +21,7 @@ return {
 	CrouchHeightDrop = 1.2, -- how far your body (and hitbox) lowers when crouching or sliding
 	CrouchTransitionSpeed = 14,
 
-	-- Slide (C / Left Ctrl while sprinting)
+	-- Slide (hold C / Left Ctrl while sprinting — lasts as long as you hold, up to SlideMaxDuration)
 	SlideMinStartSpeed = 14, -- must be moving at least this fast to slide
 	SlideBoost = 20, -- speed added when the slide starts
 	SlideBoostCooldown = 0.8, -- seconds before another slide gives the boost again (stops slide spam)
@@ -30,7 +30,7 @@ return {
 	SlideBufferTime = 0.2, -- press slide this long before landing and it still triggers on touchdown
 	SlideSteer = 2,
 	SlideEndSpeed = 12, -- slide stops below this speed
-	SlideMaxDuration = 1.2,
+	SlideMaxDuration = 0.7,
 
 	-- Dash (F) — ability
 	DashSpeed = 85,

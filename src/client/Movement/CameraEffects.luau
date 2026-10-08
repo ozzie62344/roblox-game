@@ -43,8 +43,10 @@ local function update(dt: number)
 	-- Recoil kick (WeaponController adds to these, then they recover toward zero).
 	-- Roblox's camera builds each frame from the last one, so rotation sticks: apply only the
 	-- change since last frame, otherwise recoil stacks up every frame (→ staring at the sky).
-	camera.CFrame *= CFrame.Angles(state.recoilPitch - appliedRecoilPitch, state.recoilYaw - appliedRecoilYaw, 0)
-	appliedRecoilPitch, appliedRecoilYaw = state.recoilPitch, state.recoilYaw
+	-- (deployPitch — looking down while pulling up cover — rides the same channel)
+	local pitch = state.recoilPitch + state.deployPitch
+	camera.CFrame *= CFrame.Angles(pitch - appliedRecoilPitch, state.recoilYaw - appliedRecoilYaw, 0)
+	appliedRecoilPitch, appliedRecoilYaw = pitch, state.recoilYaw
 
 	-- Roll: lean, slide tilt, and a slight lean into strafes
 	local right = camera.CFrame.RightVector

@@ -21,8 +21,16 @@ local CROUCH_JOINTS = {
 	{ part = "RightFoot", joint = "RightAnkle", angle = 60 },
 }
 
+-- Pulling up deployable cover: both arms reach forward and down to the ground
+local DEPLOY_ARM_JOINTS = {
+	{ part = "LeftUpperArm", joint = "LeftShoulder", angle = 65 },
+	{ part = "RightUpperArm", joint = "RightShoulder", angle = 65 },
+}
+local DEPLOY_BEND = 25 -- degrees the upper body bends forward
+
 local originalC0: { [Motor6D]: CFrame } = setmetatable({}, { __mode = "k" }) :: any
-local smoothed: { [Instance]: { lean: number, crouch: number } } = setmetatable({}, { __mode = "k" }) :: any
+local smoothed: { [Instance]: { lean: number, crouch: number, deploy: number } } =
+	setmetatable({}, { __mode = "k" }) :: any
 
 local function getJoint(character: Model, partName: string, jointName: string): Motor6D?
 	local part = character:FindFirstChild(partName)
@@ -49,15 +57,21 @@ local function update(dt: number)
 
 		local values = smoothed[character]
 		if not values then
-			values = { lean = 0, crouch = 0 }
+			values = { lean = 0, crouch = 0, deploy = 0 }
 			smoothed[character] = values
 		end
 		values.lean += ((character:GetAttribute("Lean") or 0) - values.lean) * alpha
 		values.crouch += ((if character:GetAttribute("Crouching") then 1 else 0) - values.crouch) * alpha
+		values.deploy += ((if character:GetAttribute("Deploying") then 1 else 0) - values.deploy) * alpha
 
-		pose(getJoint(character, "UpperTorso", "Waist"), CFrame.Angles(0, 0, -values.lean * math.rad(Config.LeanBodyAngle)))
+		local bend = -math.rad(DEPLOY_BEND) * values.deploy
+		local lean = -values.lean * math.rad(Config.LeanBodyAngle)
+		pose(getJoint(character, "UpperTorso", "Waist"), CFrame.Angles(bend, 0, lean))
 		for _, info in CROUCH_JOINTS do
 			pose(getJoint(character, info.part, info.joint), CFrame.Angles(math.rad(info.angle) * values.crouch, 0, 0))
+		end
+		for _, info in DEPLOY_ARM_JOINTS do
+			pose(getJoint(character, info.part, info.joint), CFrame.Angles(math.rad(info.angle) * values.deploy, 0, 0))
 		end
 	end
 end
