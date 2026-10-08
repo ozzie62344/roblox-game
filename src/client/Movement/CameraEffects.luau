@@ -65,7 +65,8 @@ local function update(dt: number)
 end
 
 function CameraEffects.Start()
-	RunService:BindToRenderStep("MovementCameraEffects", Enum.RenderPriority.Camera.Value + 1, update)
+	-- Camera + 1 is MouseUnlock, which may hold the camera still first
+	RunService:BindToRenderStep("MovementCameraEffects", Enum.RenderPriority.Camera.Value + 2, update)
 end
 
 return CameraEffects

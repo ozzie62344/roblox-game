@@ -155,10 +155,12 @@ local function update(dt: number)
 	end
 	if not character then
 		state.aiming = false
+		state.aimAlpha = 0
+		Hud.SetCrosshair(0, false)
 		return
 	end
 
-	state.aiming = aimHeld and not reloading and not state.devPanelOpen
+	state.aiming = aimHeld and not reloading and not state.devPanelOpen and not state.mouseUnlocked
 	local aimStep = dt / weapon.AdsTime
 	state.aimAlpha = math.clamp(state.aimAlpha + (if state.aiming then aimStep else -aimStep), 0, 1)
 	state.adsFovScale = weapon.AdsFovScale
@@ -177,7 +179,8 @@ local function update(dt: number)
 	local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	local frozen = root ~= nil and root.Anchored
 
-	if triggerHeld and not frozen and not state.devPanelOpen and not reloading and now >= nextFireTime then
+	local uiOpen = state.devPanelOpen or state.mouseUnlocked
+	if triggerHeld and not frozen and not uiOpen and not reloading and now >= nextFireTime then
 		if ammo > 0 then
 			fire(character)
 		else
@@ -255,7 +258,7 @@ function WeaponController.Start()
 	end)
 
 	updateAmmoHud()
-	RunService:BindToRenderStep("Weapon", Enum.RenderPriority.Camera.Value + 2, update)
+	RunService:BindToRenderStep("Weapon", Enum.RenderPriority.Camera.Value + 3, update)
 end
 
 return WeaponController

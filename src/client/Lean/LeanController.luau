@@ -43,8 +43,8 @@ end
 
 local function update(dt: number)
 	local target = (if rightHeld then 1 else 0) - (if leftHeld then 1 else 0)
-	-- Can't lean mid-slide or mid-dash
-	if state.sliding or state.dashing then
+	-- Can't lean mid-slide, mid-dash, or while spectating
+	if state.sliding or state.dashing or state.spectating then
 		target = 0
 	end
 

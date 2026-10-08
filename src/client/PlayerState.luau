@@ -27,4 +27,6 @@ return {
 
 	-- UI
 	devPanelOpen = false,
+	mouseUnlocked = false,
+	spectating = false,
 }

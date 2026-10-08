@@ -396,6 +396,7 @@ local function cleanupCharacter()
 	state.dashing = false
 	state.crouching = false
 	state.speed = 0
+	state.velocity = Vector3.zero
 	heightDrop = 0
 	sentLowered = false
 end

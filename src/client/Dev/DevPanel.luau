@@ -129,9 +129,8 @@ local function build()
 		DevAction:FireServer("StopMatch")
 	end)
 
-	-- A visible Modal button frees the mouse from first-person lock while the panel is open
+	-- MouseUnlock frees the cursor while the panel is open (state.devPanelOpen)
 	local close = button(panel, "Close", 20)
-	close.Modal = true
 	close.BackgroundColor3 = Color3.fromRGB(120, 50, 50)
 	close.Activated:Connect(function()
 		setOpen(false)
