@@ -1,0 +1,52 @@
+{
+  "name": "momentum-duels",
+  "tree": {
+    "$className": "DataModel",
+
+    "ReplicatedStorage": {
+      "Shared": {
+        "$path": "src/shared"
+      },
+      "MatchState": {
+        "$className": "Folder"
+      },
+      "Remotes": {
+        "KillFeed": { "$className": "RemoteEvent" },
+        "$className": "Folder",
+        "Fire": { "$className": "RemoteEvent" },
+        "Reload": { "$className": "RemoteEvent" },
+        "ShotFired": { "$className": "RemoteEvent" },
+        "HitConfirmed": { "$className": "RemoteEvent" },
+        "SetLean": { "$className": "RemoteEvent" },
+        "SetCrouch": { "$className": "RemoteEvent" },
+        "DevAction": { "$className": "RemoteEvent" }
+      }
+    },
+
+    "ServerScriptService": {
+      "Server": {
+        "$path": "src/server"
+      }
+    },
+
+    "StarterPlayer": {
+      "$properties": {
+        "CameraMode": "LockFirstPerson",
+        "EnableMouseLockOption": false
+      },
+      "StarterPlayerScripts": {
+        "Client": {
+          "$path": "src/client"
+        },
+        "RbxCharacterSounds": {
+          "$path": "src/RbxCharacterSounds.client.luau"
+        }
+      },
+      "StarterCharacterScripts": {
+        "Health": {
+          "$path": "src/Health.server.luau"
+        }
+      }
+    }
+  }
+}

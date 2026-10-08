@@ -1,0 +1,2 @@
+-- Intentionally empty: replaces Roblox's default "Health" script so health doesn't regenerate.
+-- In a one-life-per-round shooter, damage should stick.

@@ -1,0 +1,2 @@
+-- Intentionally empty: having a script with this name in StarterPlayerScripts stops Roblox
+-- from adding its default character sounds. Our own footsteps live in Client/Audio/Footsteps.

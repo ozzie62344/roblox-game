@@ -1,0 +1,5 @@
+require(script.WeaponService).Start()
+require(script.PoseService).Start()
+require(script.DevService).Start()
+require(script.TestArena).Build()
+require(script.RoundService).Start()
