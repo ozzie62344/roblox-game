@@ -1,7 +1,9 @@
--- Loads maps. Every map is built in code and placed in Workspace as "Map" (the test arena
--- builds itself as "TestArena"). RoundService / ObjectiveService read spawns and sites from it.
+-- Loads maps into Workspace as "Map" (the test arena builds itself as "TestArena").
+-- A map built in Studio (ServerStorage/Maps/<name>, saved in the place file, not in Rojo) wins
+-- over the code-built version. RoundService / ObjectiveService read spawns and sites from it.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
 local Workspace = game:GetService("Workspace")
 
 local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
@@ -37,7 +39,9 @@ function MapService.Load(name: string): boolean
 	if name == "TestArena" then
 		TestArena.Build()
 	else
-		local map = builders[name]()
+		local studioMaps = ServerStorage:FindFirstChild("Maps")
+		local studioMap = studioMaps and studioMaps:FindFirstChild(name)
+		local map = if studioMap then studioMap:Clone() else builders[name]()
 		map.Name = "Map"
 		map.Parent = Workspace
 	end
