@@ -67,23 +67,29 @@ local function build()
 	gui.ResetOnSpawn = false
 	gui.Parent = player:WaitForChild("PlayerGui")
 
+	-- Layout (top center):   [BLUE score]   0:42   [ORANGE score]
+	--                         ■ ■ ■ ■                ■ ■ ■ ■      ← players alive
+	--                         ATTACK                 DEFEND
+	--                         ROUND 2 · DEFENDERS SETTING UP       ← below everything, never overlapped
 	local top = Instance.new("Frame")
 	top.AnchorPoint = Vector2.new(0.5, 0)
 	top.Position = UDim2.new(0.5, 0, 0, 12)
-	top.Size = UDim2.fromOffset(320, 64)
+	top.Size = UDim2.fromOffset(380, 92)
 	top.BackgroundTransparency = 1
 	top.Parent = gui
 
-	timerLabel = text(top, UDim2.fromOffset(120, 34), UDim2.new(0.5, 0, 0, 0), 30)
-	phaseLabel = text(top, UDim2.fromOffset(240, 18), UDim2.new(0.5, 0, 0, 36), 13)
-	phaseLabel.TextColor3 = Color3.fromRGB(200, 205, 215)
+	timerLabel = text(top, UDim2.fromOffset(140, 36), UDim2.new(0.5, 0, 0, 0), 30)
+	timerLabel.Font = Enum.Font.Michroma
+	phaseLabel = text(top, UDim2.fromOffset(460, 18), UDim2.new(0.5, 0, 0, 76), 13)
+	phaseLabel.Font = Enum.Font.Michroma
+	phaseLabel.TextColor3 = Color3.fromRGB(215, 220, 230)
 
 	for i, name in MatchConfig.TeamOrder do
 		local side = if i == 1 then -1 else 1
 		local box = Instance.new("Frame")
 		box.AnchorPoint = Vector2.new(0.5, 0)
-		box.Position = UDim2.new(0.5, side * 105, 0, 0)
-		box.Size = UDim2.fromOffset(56, 34)
+		box.Position = UDim2.new(0.5, side * 130, 0, 0)
+		box.Size = UDim2.fromOffset(60, 36)
 		box.BackgroundColor3 = teamColor(name)
 		box.BorderSizePixel = 0
 		box.Parent = top
@@ -96,11 +102,13 @@ local function build()
 		stroke.Thickness = 2
 		stroke.Enabled = false
 		stroke.Parent = box
-		scoreLabels[name] = text(box, UDim2.fromScale(1, 1), UDim2.fromScale(0.5, 0), 24)
+		scoreLabels[name] = text(box, UDim2.fromScale(1, 1), UDim2.fromScale(0.5, 0), 22)
+		scoreLabels[name].Font = Enum.Font.Michroma
 
 		-- "ATTACK" / "DEFEND" under each team (Attack / Defend mode)
-		local sideLabel = text(top, UDim2.fromOffset(80, 14), UDim2.new(0.5, side * 105, 0, 54), 11)
-		sideLabel.TextColor3 = Color3.fromRGB(200, 205, 215)
+		local sideLabel = text(top, UDim2.fromOffset(110, 14), UDim2.new(0.5, side * 130, 0, 58), 11)
+		sideLabel.Font = Enum.Font.Michroma
+		sideLabel.TextColor3 = Color3.fromRGB(215, 220, 230)
 		sideLabels[name] = sideLabel
 
 		-- One pip per player slot: filled = alive
@@ -109,7 +117,7 @@ local function build()
 			local pip = Instance.new("Frame")
 			pip.AnchorPoint = Vector2.new(0.5, 0)
 			pip.Size = UDim2.fromOffset(10, 10)
-			pip.Position = UDim2.new(0.5, side * 105 + (p - (MatchConfig.MaxTeamSize + 1) / 2) * 14, 0, 40)
+			pip.Position = UDim2.new(0.5, side * 130 + (p - (MatchConfig.MaxTeamSize + 1) / 2) * 14, 0, 42)
 			pip.BackgroundColor3 = teamColor(name)
 			pip.BorderSizePixel = 0
 			pip.Parent = top
@@ -120,7 +128,8 @@ local function build()
 		end
 	end
 
-	bannerLabel = text(gui, UDim2.fromOffset(800, 60), UDim2.new(0.5, 0, 0.22, 0), 42)
+	bannerLabel = text(gui, UDim2.fromOffset(900, 60), UDim2.new(0.5, 0, 0.22, 0), 34)
+	bannerLabel.Font = Enum.Font.Michroma
 	bannerLabel.TextTransparency = 1
 	bannerLabel.TextStrokeTransparency = 1
 

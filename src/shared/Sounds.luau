@@ -98,6 +98,13 @@ local Sounds = {
 		},
 	},
 
+	-- Knife (F). Placeholders: Roblox's built-in classic sword sounds.
+	Knife = {
+		Swing = "rbxasset://sounds/swordlunge.wav",
+		Hit = "rbxasset://sounds/swordslash.wav",
+		Volume = 0.7,
+	},
+
 	GunshotRange = 450, -- how far other players' shots carry
 	Guns = {
 		OwnVolume = 0.8, -- your own shots (not positional)

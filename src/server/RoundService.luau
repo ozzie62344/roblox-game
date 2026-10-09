@@ -13,6 +13,7 @@ local Workspace = game:GetService("Workspace")
 local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local AbilityService = require(script.Parent.AbilityService)
 local LoadoutService = require(script.Parent.LoadoutService)
+local MapService = require(script.Parent.MapService)
 local ObjectiveService = require(script.Parent.ObjectiveService)
 
 local KillFeed = ReplicatedStorage.Remotes.KillFeed :: RemoteEvent
@@ -34,6 +35,21 @@ end
 
 local function isFreeRoam(): boolean
 	return not matchRunning
+end
+
+-- Between matches you spawn in the lobby (third person). Devs can choose to free-roam on the map
+-- instead (first person) with the dev panel; that choice is the "FreeRoamArea" attribute.
+-- The "Location" attribute tells the client where you are ("Lobby", "Map" or "Match").
+local function spawnFreeRoam(player: Player)
+	local area = if player:GetAttribute("FreeRoamArea") == "Map" then "Map" else "Lobby"
+	player:SetAttribute("Location", area)
+	player:LoadCharacterAsync()
+	local character = player.Character
+	local spot = if area == "Lobby" then MapService.GetLobbySpawn() else MapService.GetMapSpawn()
+	if character and spot then
+		-- Spread people out a little so they don't spawn inside each other
+		character:PivotTo(spot * CFrame.new(math.random() * 6 - 3, 3, math.random() * 6 - 3))
+	end
 end
 
 local function getRoot(player: Player): BasePart?
@@ -76,6 +92,7 @@ local function spawnTeam(teamName: string, side: string)
 	local members = teams[teamName]:GetPlayers()
 	local spawns = getSpawns(side)
 	for i, player in members do
+		player:SetAttribute("Location", "Match")
 		player:LoadCharacterAsync()
 		local character = player.Character
 		local root = getRoot(player)
@@ -130,7 +147,7 @@ local function resetToFreeRoam()
 		player.Team = nil
 		player.Neutral = true
 		LoadoutService.Reset(player)
-		task.spawn(player.LoadCharacterAsync, player)
+		task.spawn(spawnFreeRoam, player)
 	end
 end
 
@@ -205,11 +222,13 @@ local function runRound(round: number, mode: string, attack: string): (string?, 
 			table.insert(roundPlayers, player)
 		end
 	end
-	LoadoutService.StartRound(roundPlayers, loadoutMode, freezeTime)
+	-- Loadouts can be picked (and changed) right up until the round starts, which in Attack /
+	-- Defend includes the defenders' setup time
+	local pickTime = freezeTime + (if mode == "AttackDefend" then MatchConfig.PrepTime else 0)
+	LoadoutService.StartRound(roundPlayers, loadoutMode, pickTime)
 
 	setPhase("PreRound", freezeTime, `ROUND {round}`)
 	task.wait(freezeTime)
-	LoadoutService.FinishRound()
 
 	-- Attack / Defend: defenders get time to set up while attackers wait in spawn
 	if mode == "AttackDefend" then
@@ -221,6 +240,7 @@ local function runRound(round: number, mode: string, attack: string): (string?, 
 		end
 		ObjectiveService.BeginRound(teams[attack], teams[defend])
 	end
+	LoadoutService.FinishRound() -- anyone who didn't pick gets one of their cards
 	unfreezeTeam(attack)
 	unfreezeTeam(defend)
 
@@ -339,6 +359,9 @@ end
 
 local function onCharacterAdded(player: Player, character: Model)
 	local humanoid = character:WaitForChild("Humanoid") :: Humanoid
+	-- No floating names / Roblox health bars over heads (they'd show enemies through walls)
+	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+	humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
 	humanoid.Died:Connect(function()
 		local killerId = humanoid:GetAttribute("LastDamagedBy")
 		local killer = if killerId then Players:GetPlayerByUserId(killerId) else nil
@@ -347,7 +370,7 @@ local function onCharacterAdded(player: Player, character: Model)
 		if isFreeRoam() then
 			task.delay(MatchConfig.FreeRoamRespawnTime, function()
 				if isFreeRoam() and player.Parent and player.Character == character then
-					player:LoadCharacterAsync()
+					spawnFreeRoam(player)
 				end
 			end)
 		end
@@ -368,7 +391,14 @@ local function onPlayerAdded(player: Player)
 			player.Team = smaller
 		end
 	else
-		player:LoadCharacterAsync()
+		spawnFreeRoam(player)
+	end
+end
+
+-- Respawn a player between matches (lobby, or the map if they chose that in the dev panel)
+function RoundService.SpawnFreeRoam(player: Player)
+	if not matchRunning then
+		task.spawn(spawnFreeRoam, player)
 	end
 end
 

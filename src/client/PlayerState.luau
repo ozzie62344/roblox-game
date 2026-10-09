@@ -20,6 +20,8 @@ return {
 	-- Deploying cover: locked in place, gun lowered, camera looks down then follows the cover up
 	deploying = false,
 	interacting = false, -- planting / defusing: also locks you in place
+	meleeing = false, -- knife swing in progress (gun lowered, can't shoot)
+	aimSensitivity = 1, -- mouse speed multiplier while aiming (set by the gun)
 	deployPitch = 0, -- radians, applied to the camera like recoil
 
 	-- Weapon
@@ -31,9 +33,13 @@ return {
 	recoilYaw = 0,
 	recoilRoll = 0, -- radians, visual jolt only
 
+	-- Where you are: in the lobby you're in third person with your gun put away
+	inLobby = false,
+
 	-- UI
 	devPanelOpen = false,
 	mouseUnlocked = false,
-	draftOpen = false, -- loadout cards on screen
+	draftOpen = false, -- loadout cards on screen (cursor free)
+	loadoutWindow = false, -- you can still change your loadout (until the round starts)
 	spectating = false,
 }

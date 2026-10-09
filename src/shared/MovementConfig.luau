@@ -31,8 +31,9 @@ return {
 	SlideSteer = 2,
 	SlideEndSpeed = 12, -- slide stops below this speed
 	SlideMaxDuration = 0.7,
+	SlideCooldown = 0.6, -- seconds after a slide ends before you can slide again
 
-	-- Dash (F) — ability
+	-- Dash (X) — ability
 	DashSpeed = 85,
 	DashDuration = 0.14,
 	DashExitSpeed = 34, -- speed you keep after the dash ends
@@ -64,6 +65,7 @@ return {
 	WallJumpFovKick = 5,
 
 	-- Camera
+	MouseSensitivity = 0.6, -- 1 = Roblox's normal speed; lower = slower turning (aiming is slower still, per gun)
 	BaseFov = 80,
 	FovSpeedBonus = 14, -- extra FOV at high speed
 	FovMaxSpeed = 50, -- speed where the FOV bonus is maxed out

@@ -22,10 +22,13 @@
         "Fire": { "$className": "RemoteEvent" },
         "Reload": { "$className": "RemoteEvent" },
         "ReloadStarted": { "$className": "RemoteEvent" },
+        "Damaged": { "$className": "RemoteEvent" },
+        "Melee": { "$className": "RemoteEvent" },
         "ShotFired": { "$className": "RemoteEvent" },
         "HitConfirmed": { "$className": "RemoteEvent" },
         "SetLean": { "$className": "RemoteEvent" },
         "SetCrouch": { "$className": "RemoteEvent" },
+        "LookPitch": { "$className": "UnreliableRemoteEvent" },
         "DevAction": { "$className": "RemoteEvent" }
       }
     },
@@ -59,6 +62,9 @@
       "StarterCharacterScripts": {
         "Health": {
           "$path": "src/Health.server.luau"
+        },
+        "Animate": {
+          "$path": "src/Animate.client.luau"
         }
       }
     }

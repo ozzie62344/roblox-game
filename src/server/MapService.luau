@@ -8,6 +8,7 @@ local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local Dummies = require(script.Parent.Dummies)
 local TestArena = require(script.Parent.TestArena)
 local House = require(script.Parent.Maps.House)
+local Lobby = require(script.Parent.Maps.Lobby)
 
 local MatchState = ReplicatedStorage.MatchState
 
@@ -44,7 +45,24 @@ function MapService.Load(name: string): boolean
 	return true
 end
 
+-- Where players stand in the lobby (between matches)
+function MapService.GetLobbySpawn(): CFrame?
+	local lobby = Workspace:FindFirstChild("Lobby")
+	local pad = lobby and lobby:FindFirstChild("LobbySpawn", true) :: BasePart?
+	return pad and pad.CFrame
+end
+
+-- Where players stand when free-roaming on the current map (dev testing between matches)
+function MapService.GetMapSpawn(): CFrame?
+	local mapRoot = Workspace:FindFirstChild("Map") or Workspace:FindFirstChild("TestArena")
+	local spawn = mapRoot and mapRoot:FindFirstChildWhichIsA("SpawnLocation", true)
+	return spawn and spawn.CFrame
+end
+
 function MapService.Start()
+	-- The lobby always exists, floating above whatever map is loaded
+	local lobby = Lobby.Build()
+	lobby.Parent = Workspace
 	MapService.Load(MatchConfig.DefaultMap)
 end
 

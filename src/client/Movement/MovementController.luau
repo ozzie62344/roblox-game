@@ -37,7 +37,7 @@ local dashDirection = Vector3.zero
 local lastDashTime = -math.huge
 local airDashUsed = false
 local wallJumpsUsed = 0
-local lastWallJumped: Instance? = nil
+local lastWallNormal: Vector3? = nil -- the wall we last jumped off (by which way it faces)
 local lastGroundedTime = 0
 local standHipHeight = 2
 local heightDrop = 0 -- smoothed: how far we're currently lowered (crouch / slide)
@@ -100,7 +100,12 @@ local function hasAbility(name: string): boolean
 	return Config.TestAllAbilities or player:GetAttribute("Ability") == name
 end
 
+local lastSlideEnd = -math.huge
+
 local function endSlide()
+	if state.sliding then
+		lastSlideEnd = os.clock()
+	end
 	state.sliding = false
 end
 
@@ -125,6 +130,10 @@ end
 
 local function startSlide()
 	if state.sliding or state.dashing then
+		return
+	end
+	-- A short wait after each slide before the next one
+	if os.clock() - lastSlideEnd < Config.SlideCooldown then
 		return
 	end
 	if not isGrounded() then
@@ -217,12 +226,15 @@ local function tryWallJump()
 	end
 
 	local wall = findWall()
-	-- No jumping off the same wall twice in a row (stops climbing a single wall)
-	if not wall or wall.Instance == lastWallJumped then
+	if not wall then
 		return
 	end
-
 	local normal = flat(wall.Normal).Unit
+	-- No jumping off the same wall twice in a row (stops climbing a single wall). Compared by the
+	-- way the wall faces, because one wall is often built from several parts.
+	if lastWallNormal and normal:Dot(lastWallNormal) > 0.7 then
+		return
+	end
 	local alongWall = velocity - normal * velocity:Dot(normal)
 	velocity = alongWall * Config.WallJumpKeepAlong + normal * Config.WallJumpPush
 	velocityOverridden = true
@@ -231,7 +243,7 @@ local function tryWallJump()
 	root.AssemblyLinearVelocity = Vector3.new(v.X, Config.WallJumpUp, v.Z)
 
 	wallJumpsUsed += 1
-	lastWallJumped = wall.Instance
+	lastWallNormal = normal
 	endSlide()
 	state.dashing = false
 	state.lastWallJump = os.clock()
@@ -269,7 +281,7 @@ local function step(dt: number)
 	if grounded then
 		airDashUsed = false
 		wallJumpsUsed = 0
-		lastWallJumped = nil
+		lastWallNormal = nil
 		lastGroundedTime = os.clock()
 		if slideHeld and os.clock() <= slideBufferedUntil then
 			startSlide()
@@ -478,7 +490,7 @@ function MovementController.Start()
 			startDash()
 		end
 		return Enum.ContextActionResult.Sink
-	end, false, Enum.KeyCode.F, Enum.KeyCode.ButtonL1)
+	end, false, Enum.KeyCode.X, Enum.KeyCode.ButtonL1)
 
 	-- Wall jump on a fresh jump press (the Humanoid ignores jumps while airborne, so no conflict)
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)

@@ -14,6 +14,8 @@ local ReloadRemote = Remotes.Reload :: RemoteEvent
 local ShotFired = Remotes.ShotFired :: RemoteEvent
 local HitConfirmed = Remotes.HitConfirmed :: RemoteEvent
 local ReloadStarted = Remotes.ReloadStarted :: RemoteEvent
+local Damaged = Remotes.Damaged :: RemoteEvent
+local MeleeRemote = Remotes.Melee :: RemoteEvent
 
 local DEFAULT_WEAPON = "Rifle"
 local MAX_ORIGIN_DISTANCE = 8 -- studs between the player's head and where they claim to shoot from
@@ -56,9 +58,31 @@ local function findHumanoid(part: Instance): Humanoid?
 	return nil
 end
 
-local function damageAtDistance(weapon: Weapons.Weapon, distance: number): number
+-- Body or head damage, reduced by range falloff
+local function damageAtDistance(weapon: Weapons.Weapon, distance: number, headshot: boolean): number
 	local alpha = math.clamp((distance - weapon.FalloffStart) / (weapon.FalloffEnd - weapon.FalloffStart), 0, 1)
-	return weapon.Damage * (1 + (weapon.MinDamageScale - 1) * alpha)
+	local base = if headshot then weapon.HeadshotDamage else weapon.Damage
+	return base * (1 + (weapon.MinDamageScale - 1) * alpha)
+end
+
+-- Players frozen in their spawn (pre-round / attackers during defender prep) can't be hurt
+local function isProtected(targetHumanoid: Humanoid): boolean
+	local targetPlayer = Players:GetPlayerFromCharacter(targetHumanoid.Parent)
+	local targetRoot = targetHumanoid.Parent and targetHumanoid.Parent:FindFirstChild("HumanoidRootPart") :: BasePart?
+	return targetPlayer ~= nil and targetRoot ~= nil and targetRoot.Anchored
+end
+
+-- Deals damage and tells both sides: the attacker gets a hit confirm, the victim gets the
+-- direction it came from (for the on-screen damage indicator)
+local function applyDamage(attacker: Player, targetHumanoid: Humanoid, damage: number, headshot: boolean, from: Vector3)
+	targetHumanoid:SetAttribute("LastDamagedBy", attacker.UserId)
+	targetHumanoid:SetAttribute("LastHitHeadshot", headshot)
+	targetHumanoid:TakeDamage(damage)
+	HitConfirmed:FireClient(attacker, damage, headshot, targetHumanoid.Health <= 0)
+	local victim = Players:GetPlayerFromCharacter(targetHumanoid.Parent)
+	if victim then
+		Damaged:FireClient(victim, from)
+	end
 end
 
 -- Is there map geometry between the shooter and the hit point?
@@ -121,12 +145,12 @@ local function checkShot(player: Player, character: Model, weapon: Weapons.Weapo
 	if targetPlayer and not player.Neutral and targetPlayer.Team == player.Team then
 		return endPosition, nil
 	end
+	if isProtected(targetHumanoid) then
+		return endPosition, nil
+	end
 
 	local headshot = hitPart.Name == "Head"
-	local damage = damageAtDistance(weapon, distance)
-	if headshot then
-		damage *= weapon.HeadshotMultiplier
-	end
+	local damage = damageAtDistance(weapon, distance, headshot)
 	return endPosition, { humanoid = targetHumanoid, damage = damage, headshot = headshot }
 end
 
@@ -201,11 +225,54 @@ local function onFire(player: Player, origin: any, shots: any)
 	end
 
 	for targetHumanoid, total in totals do
-		targetHumanoid:SetAttribute("LastDamagedBy", player.UserId)
-		targetHumanoid:SetAttribute("LastHitHeadshot", total.headshot)
-		targetHumanoid:TakeDamage(total.damage)
-		HitConfirmed:FireClient(player, total.damage, total.headshot, targetHumanoid.Health <= 0)
+		applyDamage(player, targetHumanoid, total.damage, total.headshot, origin)
 	end
+end
+
+-- Knife (F): one hit kills. The client says who it stabbed; the server checks the target is
+-- really close, in front of the attacker, alive, not a teammate, and not behind a wall.
+local MELEE_RANGE = 6.5 -- studs between root parts
+local MELEE_COOLDOWN = 0.7
+local MELEE_DAMAGE = 200
+local lastMelee: { [Player]: number } = {}
+
+local function onMelee(player: Player, targetPart: any)
+	local now = os.clock()
+	if now - (lastMelee[player] or 0) < MELEE_COOLDOWN then
+		return
+	end
+	lastMelee[player] = now
+
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not character or not humanoid or humanoid.Health <= 0 or not root or root.Anchored or character:GetAttribute("Deploying") then
+		return
+	end
+	if not (typeof(targetPart) == "Instance" and targetPart:IsA("BasePart")) then
+		return -- a swing that hit nothing
+	end
+	local targetHumanoid = findHumanoid(targetPart)
+	local targetRoot = targetHumanoid and targetHumanoid.Parent and targetHumanoid.Parent:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not targetHumanoid or not targetRoot or targetHumanoid.Health <= 0 or targetHumanoid.Parent == character then
+		return
+	end
+	local offset = targetRoot.Position - root.Position
+	if offset.Magnitude > MELEE_RANGE then
+		return
+	end
+	local flat = Vector3.new(offset.X, 0, offset.Z)
+	if flat.Magnitude > 0.5 and root.CFrame.LookVector:Dot(flat.Unit) < 0.2 then
+		return -- not in front of the attacker
+	end
+	local targetPlayer = Players:GetPlayerFromCharacter(targetHumanoid.Parent)
+	if targetPlayer and not player.Neutral and targetPlayer.Team == player.Team then
+		return
+	end
+	if isProtected(targetHumanoid) or isBlocked(root.Position, targetRoot.Position, character) then
+		return
+	end
+	applyDamage(player, targetHumanoid, MELEE_DAMAGE, false, root.Position)
 end
 
 local function onReload(player: Player)
@@ -250,10 +317,12 @@ function WeaponService.Start()
 	Players.PlayerAdded:Connect(onPlayerAdded)
 	Players.PlayerRemoving:Connect(function(player)
 		playerData[player] = nil
+		lastMelee[player] = nil
 	end)
 
 	FireRemote.OnServerEvent:Connect(onFire)
 	ReloadRemote.OnServerEvent:Connect(onReload)
+	MeleeRemote.OnServerEvent:Connect(onMelee)
 end
 
 WeaponService.DefaultWeapon = DEFAULT_WEAPON

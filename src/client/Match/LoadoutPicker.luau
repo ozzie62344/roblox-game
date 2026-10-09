@@ -29,8 +29,10 @@ local root: Frame
 local title: TextLabel
 local timerBar: Frame
 local cardRow: Frame
+local hint: TextLabel
 local cards: { TextButton } = {}
 local deadline = 0
+local offeredAt = 0
 local isDraft = false
 local selected: number? = nil
 
@@ -74,9 +76,12 @@ local function pick(index: number)
 	refreshSelection()
 end
 
+-- The pick window is over (the round started): close everything
 local function close()
 	root.Visible = false
+	hint.Visible = false
 	state.draftOpen = false
+	state.loadoutWindow = false
 	ContextActionService:UnbindAction("DraftPick")
 end
 
@@ -130,10 +135,13 @@ local function onOffer(options: { Loadout }, newDeadline: number, isRandom: bool
 	end
 	table.clear(cards)
 	deadline = newDeadline
+	offeredAt = Workspace:GetServerTimeNow()
 	isDraft = not isRandom
 	selected = nil
 
-	title.Text = if isDraft then "PICK YOUR LOADOUT" else "YOUR LOADOUT"
+	-- Pick with a click or 1 / 2 / 3. Left Alt hides the cards so you can look around, and brings
+	-- them back — any time until the round starts.
+	title.Text = if isDraft then "PICK YOUR LOADOUT  ·  CLICK OR 1 / 2 / 3  ·  ALT TO HIDE" else "YOUR LOADOUT"
 	for i, loadout in options do
 		cards[i] = makeCard(i, loadout)
 	end
@@ -141,7 +149,8 @@ local function onOffer(options: { Loadout }, newDeadline: number, isRandom: bool
 	root.Visible = true
 
 	if isDraft then
-		-- Draft needs the mouse; Random is just information
+		-- Draft needs the mouse (MouseUnlock frees it while the cards are open); Random is just information
+		state.loadoutWindow = true
 		state.draftOpen = true
 		ContextActionService:BindAction("DraftPick", function(_, inputState, input)
 			if inputState == Enum.UserInputState.Begin then
@@ -174,7 +183,7 @@ local function build()
 	title.Size = UDim2.new(1, 0, 0, 36)
 	title.BackgroundTransparency = 1
 	title.Font = Enum.Font.GothamBlack
-	title.TextSize = 28
+	title.TextSize = 24
 	title.TextColor3 = Color3.new(1, 1, 1)
 	title.TextStrokeTransparency = 0.5
 	title.Parent = root
@@ -191,6 +200,19 @@ local function build()
 	timerBar.BorderSizePixel = 0
 	timerBar.Parent = timerBack
 
+	-- Shown while the cards are hidden but you can still change your mind
+	hint = Instance.new("TextLabel")
+	hint.AnchorPoint = Vector2.new(0.5, 0)
+	hint.Position = UDim2.new(0.5, 0, 0, 112)
+	hint.Size = UDim2.fromOffset(420, 24)
+	hint.BackgroundColor3 = Color3.fromRGB(15, 16, 20)
+	hint.BackgroundTransparency = 0.35
+	hint.Font = Enum.Font.Michroma
+	hint.TextSize = 13
+	hint.TextColor3 = Color3.fromRGB(255, 200, 90)
+	hint.Visible = false
+	hint.Parent = gui
+
 	cardRow = Instance.new("Frame")
 	cardRow.Position = UDim2.fromOffset(0, 60)
 	cardRow.Size = UDim2.new(1, 0, 0, 260)
@@ -205,15 +227,31 @@ local function build()
 end
 
 local function update()
-	if not root.Visible then
-		return
+	local now = Workspace:GetServerTimeNow()
+	local remaining = deadline - now
+	if isDraft then
+		if not state.loadoutWindow then
+			return
+		end
+		if remaining <= 0 then
+			close()
+			return
+		end
+		-- Cards open or hidden (Left Alt toggles state.draftOpen in MouseUnlock)
+		root.Visible = state.draftOpen
+		hint.Visible = not state.draftOpen
+		hint.Text = `LEFT ALT  ·  CHANGE LOADOUT  ({math.ceil(remaining)}s)`
+	else
+		-- Random: just show what you got for a few seconds
+		if not root.Visible then
+			return
+		end
+		if remaining <= 0 or now - offeredAt > MatchConfig.PreRoundTime then
+			root.Visible = false
+			return
+		end
 	end
-	local remaining = deadline - Workspace:GetServerTimeNow()
-	if remaining <= 0 then
-		close()
-		return
-	end
-	local total = if isDraft then MatchConfig.DraftTime else MatchConfig.PreRoundTime
+	local total = math.max(deadline - offeredAt, 0.1)
 	timerBar.Size = UDim2.fromScale(math.clamp(remaining / total, 0, 1), 1)
 end
 

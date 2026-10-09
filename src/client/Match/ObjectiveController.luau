@@ -30,6 +30,7 @@ local prompt: TextLabel
 local progressBack: Frame
 local progressFill: Frame
 local siteMarkers: { [BasePart]: BillboardGui } = {}
+local siteFloors: { [BasePart]: Model } = {}
 local bombMarker: BillboardGui
 local bombMarkerText: TextLabel
 local bombAnchor: Part
@@ -175,6 +176,35 @@ local function build()
 	bombMarker.Parent = player.PlayerGui
 end
 
+-- Painted area on the floor showing exactly where you can plant: a faint yellow fill and a
+-- glowing border. Local to this client (nobody can collide with or shoot it).
+local function buildSiteFloor(site: BasePart): Model
+	local model = Instance.new("Model")
+	model.Name = "SiteFloor" .. tostring(site:GetAttribute("Site"))
+	local floor = site.CFrame * CFrame.new(0, -site.Size.Y / 2 + 0.06, 0)
+	local function strip(size: Vector3, offset: CFrame, transparency: number, material: Enum.Material)
+		local part = Instance.new("Part")
+		part.Size = size
+		part.CFrame = floor * offset
+		part.Color = SITE_COLOR
+		part.Material = material
+		part.Transparency = transparency
+		part.Anchored = true
+		part.CanCollide = false
+		part.CanQuery = false
+		part.CanTouch = false
+		part.CastShadow = false
+		part.Parent = model
+	end
+	local x, z, w = site.Size.X, site.Size.Z, 0.25
+	strip(Vector3.new(x, 0.02, z), CFrame.new(), 0.82, Enum.Material.SmoothPlastic) -- fill
+	strip(Vector3.new(x, 0.05, w), CFrame.new(0, 0, -z / 2 + w / 2), 0.15, Enum.Material.Neon) -- border
+	strip(Vector3.new(x, 0.05, w), CFrame.new(0, 0, z / 2 - w / 2), 0.15, Enum.Material.Neon)
+	strip(Vector3.new(w, 0.05, z), CFrame.new(-x / 2 + w / 2, 0, 0), 0.15, Enum.Material.Neon)
+	strip(Vector3.new(w, 0.05, z), CFrame.new(x / 2 - w / 2, 0, 0), 0.15, Enum.Material.Neon)
+	return model
+end
+
 local function updateSiteMarkers(show: boolean)
 	for _, site in getSites() do
 		local gui = siteMarkers[site]
@@ -183,13 +213,17 @@ local function updateSiteMarkers(show: boolean)
 			gui.Adornee = site
 			gui.Parent = player.PlayerGui
 			siteMarkers[site] = gui
+			siteFloors[site] = buildSiteFloor(site)
 		end
 		gui.Enabled = show
+		siteFloors[site].Parent = if show then Workspace.CurrentCamera else nil
 	end
 	for site, gui in siteMarkers do
 		if not site.Parent then
 			gui:Destroy()
+			siteFloors[site]:Destroy()
 			siteMarkers[site] = nil
+			siteFloors[site] = nil
 		end
 	end
 end
@@ -200,7 +234,9 @@ local function update()
 	local bombPosition = MatchState:GetAttribute("BombPosition")
 	local now = Workspace:GetServerTimeNow()
 
-	updateSiteMarkers(attackDefend and not bombPosition)
+	-- Sites are shown the whole time you're in Attack / Defend mode (also between rounds, so
+	-- everyone can learn where they are), until the charge is planted
+	updateSiteMarkers(isAttackDefend() and not bombPosition)
 
 	-- Planted charge: marker with countdown, blinking light, beeps that speed up
 	if attackDefend and bombPosition then

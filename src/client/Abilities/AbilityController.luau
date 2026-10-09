@@ -1,4 +1,4 @@
--- F uses your active ability (Recon Pulse, Ghost Step, Deployable Cover). Dash also lives on F,
+-- X uses your active ability (Recon Pulse, Ghost Step, Deployable Cover). Dash also lives on X,
 -- so for Dash this passes the key through to MovementController.
 -- Also draws ability effects the server sends: reveals, the pulse wave, "scanned" warnings.
 
@@ -126,7 +126,7 @@ function AbilityController.Start()
 		local abilityName = player:GetAttribute("Ability")
 		local ability = abilityName and Abilities[abilityName]
 		if not ability or ability.Kind ~= "Active" then
-			return Enum.ContextActionResult.Pass -- Dash (or nothing): let MovementController have F
+			return Enum.ContextActionResult.Pass -- Dash (or nothing): let MovementController have X
 		end
 		if state.devPanelOpen or state.mouseUnlocked or state.draftOpen or state.spectating or state.deploying or state.interacting then
 			return Enum.ContextActionResult.Sink
@@ -137,7 +137,7 @@ function AbilityController.Start()
 		end
 		UseAbility:FireServer(Workspace.CurrentCamera.CFrame.LookVector)
 		return Enum.ContextActionResult.Sink
-	end, false, Enum.KeyCode.F, Enum.KeyCode.ButtonL1)
+	end, false, Enum.KeyCode.X, Enum.KeyCode.ButtonL1)
 
 	AbilityEffect.OnClientEvent:Connect(function(kind: string, ...)
 		if kind == "Reveal" then

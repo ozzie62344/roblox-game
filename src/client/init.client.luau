@@ -11,13 +11,16 @@ require(Audio.SoundCache).PreloadAll() -- first, so sounds are loaded before any
 require(Movement.MovementController).Start()
 require(Movement.CameraEffects).Start()
 require(Lean.LeanController).Start()
-require(Pose.PoseReplicator).Start()
+require(Pose.BodyAnimator).Start()
 require(Combat.Hud).Start()
 require(Combat.WeaponController).Start()
-require(script:WaitForChild("Abilities").AbilityController).Start() -- after MovementController: gets F first
+require(Combat.Melee).Start()
+require(Combat.DamageIndicator).Start()
+require(script:WaitForChild("Abilities").AbilityController).Start() -- after MovementController: gets X first
 require(Match.MatchHud).Start()
 require(Match.TeamHighlights).Start()
 require(Match.Spectate).Start()
+require(Match.LobbyView).Start()
 require(Match.LoadoutPicker).Start()
 require(Match.ObjectiveController).Start()
 require(Input.MouseUnlock).Start()

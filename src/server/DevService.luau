@@ -96,9 +96,20 @@ local actions: { [string]: (player: Player, arg: any) -> () } = {
 		end
 		if not wasRunning then
 			for _, other in Players:GetPlayers() do
-				task.spawn(other.LoadCharacterAsync, other)
+				RoundService.SpawnFreeRoam(other)
 			end
 		end
+	end,
+
+	-- Between matches: free-roam on the map in first person (to test guns) or go back to the lobby
+	GoToMap = function(player)
+		player:SetAttribute("FreeRoamArea", "Map")
+		RoundService.SpawnFreeRoam(player)
+	end,
+
+	GoToLobby = function(player)
+		player:SetAttribute("FreeRoamArea", "Lobby")
+		RoundService.SpawnFreeRoam(player)
 	end,
 
 	StartMatch = function()

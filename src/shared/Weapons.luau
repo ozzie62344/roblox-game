@@ -14,10 +14,10 @@ export type Weapon = {
 	Description: string,
 	Automatic: boolean,
 	RPM: number, -- rounds per minute
-	Damage: number, -- per pellet for shotguns
+	Damage: number, -- body shot damage (per pellet for shotguns)
 	Pellets: number, -- bullets per shot (shotguns > 1)
 	PelletSpread: number, -- degrees, shotgun pellet cone
-	HeadshotMultiplier: number,
+	HeadshotDamage: number, -- damage of a headshot (per pellet for shotguns), before range falloff
 	FalloffStart: number, -- studs: full damage until here
 	FalloffEnd: number, -- studs: minimum damage from here
 	MinDamageScale: number, -- damage multiplier at FalloffEnd
@@ -61,10 +61,10 @@ local Weapons: { [string]: Weapon } = {
 		Description = "Reliable all-rounder.",
 		Automatic = true,
 		RPM = 720,
-		Damage = 34,
+		Damage = 25, -- body shots: 4 to kill
 		Pellets = 1,
 		PelletSpread = 0,
-		HeadshotMultiplier = 3, -- headshots are lethal, Siege-style
+		HeadshotDamage = 102, -- headshots are lethal, Siege-style
 		FalloffStart = 60,
 		FalloffEnd = 150,
 		MinDamageScale = 0.7,
@@ -78,7 +78,7 @@ local Weapons: { [string]: Weapon } = {
 		AirSpreadBonus = 4,
 		CrouchSpreadScale = 0.75,
 		AdsFovScale = 0.75,
-		AdsTime = 0.18,
+		AdsTime = 0.27,
 		Scope = false,
 
 		-- Steady climb that drifts right
@@ -106,10 +106,10 @@ local Weapons: { [string]: Weapon } = {
 		Description = "Shreds up close, weak at range.",
 		Automatic = true,
 		RPM = 900,
-		Damage = 22,
+		Damage = 16,
 		Pellets = 1,
 		PelletSpread = 0,
-		HeadshotMultiplier = 2.5,
+		HeadshotDamage = 55,
 		FalloffStart = 25,
 		FalloffEnd = 70,
 		MinDamageScale = 0.6,
@@ -123,7 +123,7 @@ local Weapons: { [string]: Weapon } = {
 		AirSpreadBonus = 3,
 		CrouchSpreadScale = 0.75,
 		AdsFovScale = 0.85,
-		AdsTime = 0.14,
+		AdsTime = 0.22,
 		Scope = false,
 
 		-- Low climb, jittery side to side
@@ -151,10 +151,10 @@ local Weapons: { [string]: Weapon } = {
 		Description = "8 pellets. One-shots up close.",
 		Automatic = false,
 		RPM = 70,
-		Damage = 14,
+		Damage = 10, -- per pellet
 		Pellets = 8,
 		PelletSpread = 4.5,
-		HeadshotMultiplier = 1.5,
+		HeadshotDamage = 21, -- per pellet
 		FalloffStart = 10,
 		FalloffEnd = 35,
 		MinDamageScale = 0.3,
@@ -168,7 +168,7 @@ local Weapons: { [string]: Weapon } = {
 		AirSpreadBonus = 1,
 		CrouchSpreadScale = 1,
 		AdsFovScale = 0.9,
-		AdsTime = 0.16,
+		AdsTime = 0.25,
 		Scope = false,
 
 		-- One big punch per shot
@@ -197,10 +197,10 @@ local Weapons: { [string]: Weapon } = {
 		Description = "Scoped. Headshots kill at any range.",
 		Automatic = false,
 		RPM = 45,
-		Damage = 95,
+		Damage = 70,
 		Pellets = 1,
 		PelletSpread = 0,
-		HeadshotMultiplier = 3,
+		HeadshotDamage = 285,
 		FalloffStart = 1000,
 		FalloffEnd = 1001,
 		MinDamageScale = 1,
@@ -214,7 +214,7 @@ local Weapons: { [string]: Weapon } = {
 		AirSpreadBonus = 6,
 		CrouchSpreadScale = 0.7,
 		AdsFovScale = 0.3,
-		AdsTime = 0.32,
+		AdsTime = 0.45,
 		Scope = true,
 
 		-- Huge kick, slow to settle
@@ -243,10 +243,10 @@ local Weapons: { [string]: Weapon } = {
 		Description = "Hard-hitting, accurate, 6 shots.",
 		Automatic = false,
 		RPM = 160,
-		Damage = 48,
+		Damage = 36,
 		Pellets = 1,
 		PelletSpread = 0,
-		HeadshotMultiplier = 2.5,
+		HeadshotDamage = 120,
 		FalloffStart = 40,
 		FalloffEnd = 100,
 		MinDamageScale = 0.7,
@@ -260,7 +260,7 @@ local Weapons: { [string]: Weapon } = {
 		AirSpreadBonus = 3,
 		CrouchSpreadScale = 0.75,
 		AdsFovScale = 0.8,
-		AdsTime = 0.15,
+		AdsTime = 0.24,
 		Scope = false,
 
 		-- Sharp snap up and to the right

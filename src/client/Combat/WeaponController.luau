@@ -7,7 +7,6 @@ local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 local Abilities = require(ReplicatedStorage.Shared.Abilities)
@@ -121,6 +120,11 @@ local function setWeapon(weaponName: string)
 		viewmodel:Destroy()
 	end
 	viewmodel = Viewmodel.new(weapon)
+	-- Reload sounds play at the matching moments of the animation (mag out, mag in, bolt...)
+	viewmodel.OnAnimationEvent = function(_eventName: string)
+		Effects.Sound(Sounds.Pick(weapon.ReloadSound), nil, Sounds.Guns.ReloadVolume, 0.95 + random:NextNumber() * 0.15)
+	end
+	viewmodel:PlayDraw()
 	updateAmmoHud()
 	updateLoadoutHud()
 end
@@ -133,14 +137,11 @@ local function reload()
 	reloadToken += 1
 	local token = reloadToken
 	ReloadRemote:FireServer()
-	-- Mag out at the start, mag in near the end
-	Effects.Sound(Sounds.Pick(weapon.ReloadSound), nil, Sounds.Guns.ReloadVolume)
+	-- The animation (and its sounds) lasts exactly as long as the reload
+	if viewmodel then
+		viewmodel:PlayReload(weapon.ReloadTime, ammo == 0, weapon.MagazineSize - ammo)
+	end
 	updateAmmoHud()
-	task.delay(weapon.ReloadTime * 0.75, function()
-		if token == reloadToken then
-			Effects.Sound(Sounds.Pick(weapon.ReloadSound), nil, Sounds.Guns.ReloadVolume)
-		end
-	end)
 
 	task.delay(weapon.ReloadTime, function()
 		if token == reloadToken then
@@ -224,20 +225,21 @@ end
 
 local function update(dt: number)
 	local character = getAliveCharacter()
-	if not character then
+	-- In the lobby the gun is put away (you're in third person, holding it on your body instead)
+	if not character or state.inLobby then
 		if viewmodel then
 			viewmodel:SetVisible(false)
 		end
 		state.aiming = false
 		state.aimAlpha = 0
-		UserInputService.MouseDeltaSensitivity = 1
+		state.aimSensitivity = 1
 		Hud.SetCrosshair(0, false)
 		Hud.SetScoped(false)
 		return
 	end
 
 	local uiOpen = state.devPanelOpen or state.mouseUnlocked or state.draftOpen
-	local handsBusy = state.deploying or state.interacting -- pulling up cover / planting / defusing
+	local handsBusy = state.deploying or state.interacting or state.meleeing -- cover / plant / defuse / knife
 	state.aiming = aimHeld and not reloading and not uiOpen and not handsBusy
 	local aimStep = dt / weapon.AdsTime
 	state.aimAlpha = math.clamp(state.aimAlpha + (if state.aiming then aimStep else -aimStep), 0, 1)
@@ -252,8 +254,8 @@ local function update(dt: number)
 	end
 	state.recoilRoll -= state.recoilRoll * (1 - math.exp(-18 * dt))
 
-	-- Slower mouse while aimed in (especially scoped) for precise aiming
-	UserInputService.MouseDeltaSensitivity = 1 + (weapon.AdsSensitivity - 1) * state.aimAlpha
+	-- Slower mouse while aimed in (especially scoped) for precise aiming (MouseUnlock applies it)
+	state.aimSensitivity = 1 + (weapon.AdsSensitivity - 1) * state.aimAlpha
 
 	currentSpread = computeSpread()
 
@@ -273,7 +275,7 @@ local function update(dt: number)
 	local scoped = weapon.Scope and state.aimAlpha > 0.9
 	Hud.SetScoped(scoped)
 	if viewmodel then
-		-- While deploying cover, DeployArms shows the hands instead
+		-- While deploying cover / knifing, those show their own hands instead
 		viewmodel:SetVisible(not scoped and not handsBusy)
 	end
 
@@ -298,6 +300,9 @@ end
 function WeaponController.Refill()
 	reloadToken += 1
 	reloading = false
+	if viewmodel then
+		viewmodel:StopAnimation()
+	end
 	ammo = weapon.MagazineSize
 	updateAmmoHud()
 end
@@ -331,6 +336,9 @@ function WeaponController.Start()
 		WeaponController.Refill()
 		triggerHeld, aimHeld = false, false
 		state.recoilPitch, state.recoilYaw = 0, 0
+		if viewmodel then
+			viewmodel:PlayDraw() -- pull the gun out on spawn
+		end
 	end)
 
 	-- Other players' shots: tracers, impacts and a 3D gunshot sound

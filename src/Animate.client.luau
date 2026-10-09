@@ -1,0 +1,3 @@
+-- Intentionally empty: having a script named "Animate" in StarterCharacterScripts stops Roblox
+-- from adding its default walk/idle/jump animations. Other players' bodies are animated by
+-- Client/Pose/BodyAnimator instead (feet planted, crouch/slide/lean poses, holding their gun).

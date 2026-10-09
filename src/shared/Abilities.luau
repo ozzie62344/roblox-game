@@ -1,6 +1,6 @@
 -- Abilities that can show up in loadouts (every ability here is in the draft/random pool).
---   Movement abilities live in MovementController (Dash on F, Wall Jump on Space).
---   Active abilities are used with F, run on the server (AbilityService), and have charges per round.
+--   Movement abilities live in MovementController (Dash on X, Wall Jump on Space).
+--   Active abilities are used with X, run on the server (AbilityService), and have charges per round.
 
 export type Ability = {
 	Name: string,
@@ -15,7 +15,7 @@ export type Ability = {
 local Abilities: { [string]: Ability } = {
 	Dash = {
 		Name = "Dash",
-		Key = "F",
+		Key = "X",
 		Kind = "Movement",
 		Description = "Burst in the direction you're moving. Works once in the air.",
 	},
@@ -27,7 +27,7 @@ local Abilities: { [string]: Ability } = {
 	},
 	ReconPulse = {
 		Name = "Recon Pulse",
-		Key = "F",
+		Key = "X",
 		Kind = "Active",
 		Charges = 2,
 		Duration = 3,
@@ -36,7 +36,7 @@ local Abilities: { [string]: Ability } = {
 	},
 	GhostStep = {
 		Name = "Ghost Step",
-		Key = "F",
+		Key = "X",
 		Kind = "Active",
 		Charges = 2,
 		Duration = 8,
@@ -44,7 +44,7 @@ local Abilities: { [string]: Ability } = {
 	},
 	DeployableCover = {
 		Name = "Deployable Cover",
-		Key = "F",
+		Key = "X",
 		Kind = "Active",
 		Charges = 2,
 		Duration = 1.2, -- deploy time: you can't move or shoot while pulling it up

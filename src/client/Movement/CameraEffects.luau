@@ -36,8 +36,10 @@ local function update(dt: number)
 	if os.clock() - state.lastWallJump < 0.15 then
 		targetFov += Config.WallJumpFovKick
 	end
-	targetFov *= 1 + (state.adsFovScale - 1) * state.aimAlpha
-	fov = smooth(fov, targetFov, 14, dt)
+	-- Eased so the zoom starts and ends gently instead of snapping
+	local aimEase = state.aimAlpha * state.aimAlpha * (3 - 2 * state.aimAlpha)
+	targetFov *= 1 + (state.adsFovScale - 1) * aimEase
+	fov = smooth(fov, targetFov, 10, dt)
 	camera.FieldOfView = fov
 
 	-- Recoil kick (WeaponController adds to these, then they recover toward zero).
