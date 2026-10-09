@@ -211,6 +211,16 @@ local function build()
 		WeaponController.Refill()
 	end)
 
+	heading(panel, "MAP (ends any match)", 26)
+	choiceGrid(panel, 27, {
+		{ value = "House", label = "House" },
+		{ value = "TestArena", label = "Test Arena" },
+	}, function()
+		return MatchState:GetAttribute("Map") or "House"
+	end, function(mapName)
+		DevAction:FireServer("LoadMap", mapName)
+	end)
+
 	heading(panel, "MATCH", 17)
 	heading(panel, "Game mode (applies next match):", 18)
 	choiceGrid(panel, 19, {
@@ -251,6 +261,7 @@ local function build()
 	player:GetAttributeChangedSignal("Weapon"):Connect(refreshAll)
 	MatchState:GetAttributeChangedSignal("LoadoutMode"):Connect(refreshAll)
 	MatchState:GetAttributeChangedSignal("GameMode"):Connect(refreshAll)
+	MatchState:GetAttributeChangedSignal("Map"):Connect(refreshAll)
 end
 
 function DevPanel.Start()

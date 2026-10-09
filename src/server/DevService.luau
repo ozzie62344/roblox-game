@@ -8,6 +8,7 @@ local RunService = game:GetService("RunService")
 local Abilities = require(ReplicatedStorage.Shared.Abilities)
 local AbilityService = require(script.Parent.AbilityService)
 local Dummies = require(script.Parent.Dummies)
+local MapService = require(script.Parent.MapService)
 local RoundService = require(script.Parent.RoundService)
 local WeaponService = require(script.Parent.WeaponService)
 
@@ -81,6 +82,23 @@ local actions: { [string]: (player: Player, arg: any) -> () } = {
 
 	SetGameMode = function(_, mode)
 		RoundService.SetGameMode(mode)
+	end,
+
+	-- Switching maps ends any running match and respawns everyone on the new map
+	LoadMap = function(_, mapName)
+		if typeof(mapName) ~= "string" then
+			return
+		end
+		local wasRunning = RoundService.IsMatchRunning()
+		RoundService.StopMatch()
+		if not MapService.Load(mapName) then
+			return
+		end
+		if not wasRunning then
+			for _, other in Players:GetPlayers() do
+				task.spawn(other.LoadCharacterAsync, other)
+			end
+		end
 	end,
 
 	StartMatch = function()

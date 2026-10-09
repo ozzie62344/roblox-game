@@ -5,6 +5,8 @@ local Debris = game:GetService("Debris")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
+local SoundCache = require(script.Parent.Parent.Audio.SoundCache)
+
 local Effects = {}
 
 local folder: Folder? = nil
@@ -67,8 +69,7 @@ function Effects.Sound(soundId: string, position: Vector3?, volume: number?, pit
 	if soundId == "" then
 		return
 	end
-	local sound = Instance.new("Sound")
-	sound.SoundId = soundId
+	local sound = SoundCache.New(soundId) -- preloaded copy, so it starts instantly
 	sound.Volume = volume or 0.6
 	sound.PlaybackSpeed = pitch or 1
 	sound.RollOffMaxDistance = 400

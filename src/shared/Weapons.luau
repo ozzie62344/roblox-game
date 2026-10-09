@@ -3,11 +3,9 @@
 --
 -- Sounds: FireSound / TailSound / ReloadSound name a set in Sounds.luau (Sets); a random one from the set plays.
 
+-- First-person looks: client/Combat/GunModels builds each weapon's detailed model by name.
+-- Color is its main finish (receiver, wood, stock or stainless steel depending on the gun).
 export type Look = {
-	BodyLength: number,
-	BarrelLength: number,
-	StockLength: number,
-	MagSize: Vector3,
 	Color: Color3,
 }
 
@@ -95,11 +93,7 @@ local Weapons: { [string]: Weapon } = {
 		AdsSensitivity = 0.7,
 
 		Look = {
-			BodyLength = 1.4,
-			BarrelLength = 0.8,
-			StockLength = 0.5,
-			MagSize = Vector3.new(0.18, 0.45, 0.25),
-			Color = DARK,
+			Color = DARK, -- anodized receiver
 		},
 		FireSound = "GunShot",
 		FirePitch = 1,
@@ -144,11 +138,7 @@ local Weapons: { [string]: Weapon } = {
 		AdsSensitivity = 0.8,
 
 		Look = {
-			BodyLength = 0.9,
-			BarrelLength = 0.4,
-			StockLength = 0.3,
-			MagSize = Vector3.new(0.14, 0.55, 0.18),
-			Color = Color3.fromRGB(35, 36, 40),
+			Color = Color3.fromRGB(35, 36, 40), -- stamped steel receiver
 		},
 		FireSound = "GunShot",
 		FirePitch = 1.2, -- lighter, snappier
@@ -193,11 +183,7 @@ local Weapons: { [string]: Weapon } = {
 		AdsSensitivity = 0.85,
 
 		Look = {
-			BodyLength = 1.2,
-			BarrelLength = 1.1,
-			StockLength = 0.55,
-			MagSize = Vector3.new(0.16, 0.16, 0.9), -- pump tube under the barrel
-			Color = Color3.fromRGB(70, 52, 38),
+			Color = Color3.fromRGB(70, 52, 38), -- walnut stock and pump
 		},
 		FireSound = "ShotgunShot",
 		TailSound = "ShotgunTail",
@@ -243,11 +229,7 @@ local Weapons: { [string]: Weapon } = {
 		AdsSensitivity = 0.15, -- slow, precise aiming while scoped
 
 		Look = {
-			BodyLength = 1.6,
-			BarrelLength = 1.3,
-			StockLength = 0.6,
-			MagSize = Vector3.new(0.16, 0.25, 0.25),
-			Color = Color3.fromRGB(55, 62, 48),
+			Color = Color3.fromRGB(55, 62, 48), -- olive drab stock
 		},
 		FireSound = "GunShot",
 		TailSound = "GunTail",
@@ -293,11 +275,7 @@ local Weapons: { [string]: Weapon } = {
 		AdsSensitivity = 0.75,
 
 		Look = {
-			BodyLength = 0.5,
-			BarrelLength = 0.6,
-			StockLength = 0,
-			MagSize = Vector3.new(0.3, 0.3, 0.3), -- the cylinder
-			Color = Color3.fromRGB(150, 150, 158),
+			Color = Color3.fromRGB(150, 150, 158), -- stainless steel
 		},
 		FireSound = "GunShot",
 		TailSound = "GunTail",

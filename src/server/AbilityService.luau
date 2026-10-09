@@ -8,6 +8,7 @@ local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local Abilities = require(ReplicatedStorage.Shared.Abilities)
+local CoverModel = require(script.Parent.CoverModel)
 
 local Remotes = ReplicatedStorage.Remotes
 local UseAbility = Remotes.UseAbility :: RemoteEvent
@@ -135,36 +136,22 @@ local handlers: { [string]: Handler } = {
 			return false
 		end
 
-		local size = Vector3.new(6, 4, 0.8)
+		local size = Vector3.new(6, 4, 0.8) -- CoverModel's shield is laid out for exactly this size
 		local base = ground.Position + Vector3.new(0, size.Y / 2, 0)
 		local finalCFrame = CFrame.lookAt(base, base + forward)
 
+		-- This box is the actual cover: it blocks players and bullets
 		local cover = Instance.new("Part")
 		cover.Name = "DeployableCover"
 		cover.Size = size
 		-- Starts sunk into the ground, then rises into place (see tween below)
 		cover.CFrame = finalCFrame * CFrame.new(0, -size.Y, 0)
 		cover.Anchored = true
-		cover.Material = Enum.Material.DiamondPlate
-		cover.Color = Color3.fromRGB(85, 90, 100)
 		cover:SetAttribute("Owner", player.UserId)
 
-		-- Welded to the cover so it rides along with the rise animation
-		local stripe = Instance.new("Part")
-		stripe.Name = "TeamStripe"
-		stripe.Size = Vector3.new(size.X, 0.15, size.Z + 0.02)
-		stripe.CFrame = cover.CFrame * CFrame.new(0, size.Y / 2 - 0.2, 0)
-		stripe.Anchored = false
-		stripe.Massless = true
-		stripe.CanCollide = false
-		stripe.CanQuery = false
-		stripe.Material = Enum.Material.Neon
-		stripe.Color = if player.Team then player.Team.TeamColor.Color else Color3.new(1, 1, 1)
-		local weld = Instance.new("WeldConstraint")
-		weld.Part0 = cover
-		weld.Part1 = stripe
-		weld.Parent = stripe
-		stripe.Parent = cover
+		-- What you see is a steel shield welded onto the box (it rides along with the rise animation):
+		-- armor plate, viewing window, team stripe, carry handles where the hands grab, fold-out legs
+		CoverModel.Build(cover, if player.Team then player.Team.TeamColor.Color else Color3.new(1, 1, 1))
 
 		local deployTime = ability.Duration or 1.2
 		character:SetAttribute("Deploying", true)

@@ -36,6 +36,13 @@
       }
     },
 
+    "Lighting": {
+      "$properties": {
+        "LightingStyle": "Realistic",
+        "PrioritizeLightingQuality": true
+      }
+    },
+
     "StarterPlayer": {
       "$properties": {
         "CameraMode": "LockFirstPerson",

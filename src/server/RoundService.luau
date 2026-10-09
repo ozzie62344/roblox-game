@@ -376,6 +376,10 @@ function RoundService.ForceStart()
 	forceStart = true
 end
 
+function RoundService.IsMatchRunning(): boolean
+	return matchRunning
+end
+
 function RoundService.EndRound()
 	endRoundNow = true
 end

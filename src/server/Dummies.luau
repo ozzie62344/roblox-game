@@ -7,6 +7,9 @@ local Dummies = {}
 
 local RESPAWN_DELAY = 3
 
+-- Bumped by ClearAll so dummies from a previous map don't respawn
+local generation = 0
+
 local function getFolder(): Folder
 	local folder = Workspace:FindFirstChild("Dummies")
 	if not folder then
@@ -34,10 +37,11 @@ function Dummies.Spawn(cframe: CFrame, permanent: boolean?)
 	humanoid.HealthDisplayDistance = 100
 	humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOn
 
+	local spawnedIn = generation
 	humanoid.Died:Connect(function()
 		task.delay(RESPAWN_DELAY, function()
 			dummy:Destroy()
-			if permanent then
+			if permanent and spawnedIn == generation then
 				Dummies.Spawn(cframe, true)
 			end
 		end)
@@ -54,6 +58,12 @@ function Dummies.ClearSpawned()
 			dummy:Destroy()
 		end
 	end
+end
+
+-- Removes every dummy, including permanent ones (used when switching maps)
+function Dummies.ClearAll()
+	generation += 1
+	getFolder():ClearAllChildren()
 end
 
 return Dummies

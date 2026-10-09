@@ -14,6 +14,9 @@ return {
 	DefaultLoadoutMode = "Draft",
 	DraftOptions = 3,
 
+	-- Map loaded when the server starts ("House" or "TestArena"); the dev panel can switch it
+	DefaultMap = "House",
+
 	-- "AttackDefend" = plant / defuse a charge at site A or B, "Elimination" = last team standing.
 	-- (Lobby voting will choose this later.)
 	DefaultGameMode = "AttackDefend",

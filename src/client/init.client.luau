@@ -7,6 +7,7 @@ local Dev = script:WaitForChild("Dev")
 local Audio = script:WaitForChild("Audio")
 local Input = script:WaitForChild("Input")
 
+require(Audio.SoundCache).PreloadAll() -- first, so sounds are loaded before anyone shoots
 require(Movement.MovementController).Start()
 require(Movement.CameraEffects).Start()
 require(Lean.LeanController).Start()

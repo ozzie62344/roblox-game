@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
 local Sounds = require(ReplicatedStorage.Shared.Sounds)
+local SoundCache = require(script.Parent.SoundCache)
 
 local Sound3D = {}
 
@@ -57,8 +58,7 @@ function Sound3D.Play(soundId: string, position: Vector3, options: Options?)
 	attachment.WorldPosition = position
 	attachment.Parent = Workspace.Terrain
 
-	local sound = Instance.new("Sound")
-	sound.SoundId = soundId
+	local sound = SoundCache.New(soundId) -- preloaded copy, so it starts instantly
 	sound.Volume = opts.volume or 0.6
 	sound.PlaybackSpeed = opts.pitch or 1
 	sound.RollOffMode = Enum.RollOffMode.Linear
