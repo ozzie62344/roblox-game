@@ -8,7 +8,8 @@
 --   • lean, sprint (gun lowered), reload (left hand to the mag and to a pouch), deploying cover
 --     and planting/defusing (reaching down), slide (leaning back)
 --
--- How the joints are moved: each R15 joint (Motor6D) places its part like this
+-- How the joints are moved: each R15 joint (a Motor6D, or an AnimationConstraint on avatars with
+-- Roblox's upgraded joints — both work the same way) places its part like this
 --     part.CFrame = parent.CFrame * C0 * Transform * C1:Inverse()
 -- We decide where every part should be in the world (from the root down), then solve for the
 -- Transform that puts it there. Arms and legs use "two-bone IK": given where the shoulder/hip is
@@ -38,19 +39,20 @@ local SPRINT_SPEED = 22 -- faster than this looks like sprinting
 local MOVE_SPEED = 2 -- slower than this counts as standing still
 local STEP_HEIGHT = 0.55 -- how high feet lift while walking
 local SMOOTH = 12 -- how quickly poses blend
+local GUN_SCALE = 1.35 -- held guns are drawn bigger than real so they read on chunky Roblox hands
 local PITCH_SEND_RATE = 1 / 12 -- seconds between sending our own look pitch
 local PITCH_SEND_STEP = math.rad(1.5) -- only send when it changed at least this much
 
 local UP = Vector3.yAxis
 
-type Joint = { motor: Motor6D, c0: CFrame, c1: CFrame }
+type Joint = { motor: Motor6D | AnimationConstraint, c0: CFrame, c1: CFrame }
 type Side = {
 	shoulder: Joint, elbow: Joint, wrist: Joint,
 	hip: Joint, knee: Joint, ankle: Joint,
 	upperArm: number, lowerArm: number, upperLeg: number, lowerLeg: number,
 	ankleHeight: number,
 }
-type Gun = { name: string, model: Model, parts: { BasePart }, offsets: { CFrame }, rightGrip: Vector3, leftGrip: Vector3 }
+type Gun = { name: string, model: Model, parts: { BasePart }, offsets: { CFrame }, rightGrip: Vector3, leftGrip: Vector3, handgun: boolean }
 type Rig = {
 	character: Model,
 	humanoid: Humanoid,
@@ -80,7 +82,7 @@ local warned: { [Model]: boolean } = setmetatable({}, { __mode = "k" }) :: any
 
 local function joint(part: Instance?, name: string): Joint?
 	local motor = part and part:FindFirstChild(name)
-	if motor and motor:IsA("Motor6D") then
+	if motor and (motor:IsA("Motor6D") or motor:IsA("AnimationConstraint")) then
 		return { motor = motor, c0 = motor.C0, c1 = motor.C1 }
 	end
 	return nil
@@ -180,6 +182,7 @@ local function ensureGun(rig: Rig, weaponName: string)
 	destroyGun(rig)
 	local weapon = Weapons[weaponName]
 	local model = GunModels.Build(weaponName, weapon and weapon.Look.Color or nil)
+	model:ScaleTo(GUN_SCALE)
 	local body = model.PrimaryPart :: BasePart
 	local parts, offsets = {}, {}
 	for _, part in model:GetDescendants() do
@@ -195,13 +198,17 @@ local function ensureGun(rig: Rig, weaponName: string)
 	local leftGrip = body:FindFirstChild("LeftGrip") :: Attachment?
 	model.Name = "HeldGun"
 	model.Parent = Workspace.CurrentCamera -- client-only, like other effects
+	local rightPos = if rightGrip then rightGrip.CFrame.Position else Vector3.new(0, -0.3, 0.3)
+	local leftPos = if leftGrip then leftGrip.CFrame.Position else Vector3.new(0, -0.1, -0.9)
 	rig.gun = {
 		name = weaponName,
 		model = model,
 		parts = parts,
 		offsets = offsets,
-		rightGrip = if rightGrip then rightGrip.CFrame.Position else Vector3.new(0, -0.3, 0.3),
-		leftGrip = if leftGrip then leftGrip.CFrame.Position else Vector3.new(0, -0.1, -0.9),
+		rightGrip = rightPos,
+		leftGrip = leftPos,
+		-- Both hands on the same handle = a handgun
+		handgun = (leftPos - rightPos).Magnitude < 0.6 * GUN_SCALE,
 	}
 end
 
@@ -346,8 +353,10 @@ local function animate(rig: Rig, other: Player, dt: number)
 	-- Lean sideways, bend toward where they look, hunch a bit when crouched or busy
 	local waistPitch = rig.pitch * 0.45 - math.rad(12) * rig.crouch - math.rad(25) * rig.busy
 	-- Bladed stance: the upper body turns toward the gun side so the left shoulder comes forward
-	-- (Roblox arms are short; square on, the left hand can't reach the front of the gun)
-	local twist = math.rad(-38) * (1 - rig.busy)
+	-- (Roblox arms are short; square on, the left hand can't reach the front of the gun).
+	-- Handguns are held square on, both arms pushed out in front.
+	local handgun = rig.gun ~= nil and rig.gun.handgun
+	local twist = math.rad(if handgun then -10 else -38) * (1 - rig.busy)
 	local waistTransform = CFrame.Angles(waistPitch, twist, -rig.lean * math.rad(Config.LeanBodyAngle))
 	local upperTorsoCF = childCFrame(rig.waist, lowerTorsoCF, waistTransform)
 	rig.waist.motor.Transform = waistTransform
@@ -379,19 +388,36 @@ local function animate(rig: Rig, other: Player, dt: number)
 	local gunRotation = aim
 		* CFrame.Angles(-math.rad(40) * lowReady, math.rad(35) * lowReady, 0)
 		* CFrame.Angles(-math.rad(15) * reloadTilt, 0, math.rad(35) * reloadTilt)
-	-- Right hand sits in front of the right shoulder, a bit low and toward the middle
-	local gripTarget = shoulderPos
-		+ aim.LookVector * (0.75 - 0.25 * lowReady - rig.kick)
-		- aim.UpVector * (0.5 + 0.3 * lowReady)
-		- aim.RightVector * 0.35
+	-- Long guns: right hand in front of the right shoulder, a bit low and toward the middle.
+	-- Handguns: pushed out in front of the middle of the chest.
+	local gripTarget = if gun.handgun
+		then (upperTorsoCF * CFrame.new(0, 0.6, 0)).Position
+			+ aim.LookVector * (1.5 - 0.5 * lowReady - rig.kick)
+			- aim.UpVector * (0.15 + 0.6 * lowReady)
+		else shoulderPos
+			+ aim.LookVector * (1.05 - 0.3 * lowReady - rig.kick)
+			- aim.UpVector * (0.3 + 0.35 * lowReady)
+			- aim.RightVector * 0.4
 	local gunCF = CFrame.new(gripTarget) * gunRotation * CFrame.new(-gun.rightGrip)
 	moveGun(gun, gunCF)
 
-	local rightHand = (gunCF * CFrame.new(gun.rightGrip)).Position
-	local leftHand = (gunCF * CFrame.new(gun.leftGrip)).Position
+	-- Roblox hands are big blocks: aim them a little under the grips so the gun sits on top of
+	-- them instead of disappearing inside
+	local rightHand = (gunCF * CFrame.new(gun.rightGrip - Vector3.new(0, 0.2, 0))).Position
+	local leftHand = (gunCF * CFrame.new(gun.leftGrip - Vector3.new(0, 0.4, 0))).Position
+	-- Roblox arms are short: if the handguard is out of reach, slide the left hand back along the
+	-- gun toward the right hand until it fits
+	local leftShoulder = (upperTorsoCF * rig.left.shoulder.c0).Position
+	local reach = (rig.left.upperArm + rig.left.lowerArm + 0.3) * 0.97
+	for _ = 1, 20 do
+		if (leftHand - leftShoulder).Magnitude <= reach then
+			break
+		end
+		leftHand -= gunCF.LookVector * 0.1
+	end
 	if reloading then
 		-- Left hand: to the mag well, down to a pouch on the belt, back to the mag well, back to the grip
-		local magWell = (gunCF * CFrame.new(0, -0.45, -0.15)).Position
+		local magWell = (gunCF * CFrame.new(Vector3.new(0, -0.45, -0.15) * GUN_SCALE)).Position
 		local pouch = (lowerTorsoCF * CFrame.new(-0.6, -0.2, -0.6)).Position
 		local t = reloadT
 		if t < 0.2 then
