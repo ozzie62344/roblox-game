@@ -19,7 +19,8 @@
 --
 -- Attackers spawn on the street (south), in the back alley (north) or on the east side drive.
 -- Soft walls (plaster drywall, painted siding) can be shot through, breached and reinforced;
--- brick and concrete can't. Outside doors and windows start barricaded.
+-- brick and concrete can't. Outside doors and windows start barricaded. The wooden floors are
+-- soft too, and a hatch over every lower site lets attackers drop in from above.
 -- Units: studs. The house spans x -56..56, z -40..40; the garage x 56..84, z -40..-4.
 
 local MapBuilder = require(script.Parent.MapBuilder)
@@ -74,8 +75,22 @@ local MAIN_STAIRS = { 2, -20, 8, -4 } -- hall up to the landing (climbs +z)
 local FOYER_VOID = { -9.5, -39.5, 9.5, -24 } -- the foyer is open up to the roof
 local BACK_LOWER = { 44, 16, 49.5, 32 } -- back stairs, cellar up to the mudroom (climbs +z)
 local BACK_UPPER = { 50.5, 18, 55.5, 34 } -- back stairs, mudroom up to the game room (climbs -z)
+-- Hatches (4 × 4 trapdoors) over every site below the top floor: x, z, the floor they're in
+local HATCH = 4
+local HATCHES = {
+	{ -48, -28, B }, -- living room → gym
+	{ -44, 11, B }, -- dining room → workshop
+	{ -50, -1.5, F2 }, -- master bedroom → dining room
+	{ -36, 34, F2 }, -- master bath → kitchen
+	{ 46, -17, F2 }, -- study → office
+	{ 32, 4, F2 }, -- nursery → den
+}
 local GROUND_HOLES = { BASEMENT_STAIRS, BACK_LOWER }
 local UPSTAIRS_HOLES = { FOYER_VOID, MAIN_STAIRS, BACK_UPPER }
+for _, hatch in HATCHES do
+	local x, z, level = hatch[1], hatch[2], hatch[3]
+	table.insert(if level == B then GROUND_HOLES else UPSTAIRS_HOLES, { x - HATCH / 2, z - HATCH / 2, x + HATCH / 2, z + HATCH / 2 })
+end
 
 -- name, x1, z1, x2, z2, floor, finish (nil = bare wood / concrete). Lights and floors come from here.
 local ROOMS = {
@@ -172,12 +187,19 @@ end
 
 local function buildFloors(map: MapBuilder.Builder)
 	local shell = map:Folder("Shell")
+	-- The wooden floors are soft (shoot down through them, breach them); concrete isn't
 	map:Floor("BasementFloor", -56.5, -40.5, 56.5, 40.5, BF, 1, CONCRETE, Enum.Material.Concrete)
-	map:FloorWithHoles("Floor", -56.5, -40.5, 56.5, 40.5, GROUND_HOLES, B, 1, WOOD, Enum.Material.WoodPlanks)
+	for _, piece in map:FloorWithHoles("Floor", -56.5, -40.5, 56.5, 40.5, GROUND_HOLES, B, 1, WOOD, Enum.Material.WoodPlanks) do
+		piece:SetAttribute("Breakable", "Soft")
+	end
 	map:Floor("GarageFloor", 56.5, -40.5, 84.5, -3.5, B, 1, CONCRETE, Enum.Material.Concrete)
 	for _, piece in map:FloorWithHoles("Floor2", -56.5, -40.5, 56.5, 40.5, UPSTAIRS_HOLES, F2, 1, WOOD, Enum.Material.WoodPlanks) do
-		-- Painted ceiling under the wood
+		piece:SetAttribute("Breakable", "Soft")
+		-- Painted ceiling under the wood (DestructionService cuts it along with the floor)
 		cosmetic(map:Part("Ceiling", Vector3.new(piece.Size.X, 0.1, piece.Size.Z), piece.CFrame * CFrame.new(0, -0.55, 0), WHITE, Enum.Material.Plaster), shell)
+	end
+	for _, hatch in HATCHES do
+		map:Hatch(hatch[1], hatch[2], hatch[3], HATCH)
 	end
 	map:Floor("UpstairsCeiling", -56.5, -40.5, 56.5, 40.5, ROOF_BASE, 1, WHITE, Enum.Material.Plaster)
 	map:Floor("GarageCeiling", 56.5, -40.5, 84.5, -3.5, F2, 1, WHITE, Enum.Material.Plaster)

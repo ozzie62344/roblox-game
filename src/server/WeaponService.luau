@@ -6,6 +6,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
+local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 local DestructionService = require(script.Parent.DestructionService)
 
@@ -268,7 +269,7 @@ end
 -- really close, in front of the attacker, alive, not a teammate, and not behind a wall.
 local MELEE_RANGE = 6.5 -- studs between root parts
 local MELEE_WALL_REACH = 7.5 -- studs from the head to where the knife hits a wall / barricade
-local MELEE_COOLDOWN = 0.7
+local MELEE_COOLDOWN = MatchConfig.MeleeCooldown - 0.15 -- a little slack for network jitter
 local MELEE_DAMAGE = 200
 local lastMelee: { [Player]: number } = {}
 

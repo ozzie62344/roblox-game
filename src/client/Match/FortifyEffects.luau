@@ -1,5 +1,5 @@
 -- Barricades and reinforcements going up, seen by everyone: while a defender holds G, the steel
--- plate rises up the wall (reinforce) or the boards unroll down the doorway (barricade), in step
+-- plate rises up the wall (or slides across a hatch) or the boards unroll down the doorway, in step
 -- with their progress. Let go early and it drops away; finish and it locks in with a clank as the
 -- real one appears. The server marks the slot being worked on with Build* attributes
 -- (FortifyService); this only draws.
@@ -30,6 +30,13 @@ local function pose(ghost: Part, slot: BasePart, t: number)
 	local size = slot:GetAttribute("BuildSize")
 	local look = LOOKS[slot:GetAttribute("BuildKind")]
 	if typeof(cframe) ~= "CFrame" or typeof(size) ~= "Vector3" or not look then
+		return
+	end
+	if size.Y < 1 then
+		-- Flat (a hatch's plate): slides across instead of rising
+		local width = math.max(size.X * t, 0.05)
+		ghost.Size = Vector3.new(width, size.Y, size.Z)
+		ghost.CFrame = cframe * CFrame.new(-(size.X - width) / 2, 0, 0)
 		return
 	end
 	local height = math.max(size.Y * t, 0.05)

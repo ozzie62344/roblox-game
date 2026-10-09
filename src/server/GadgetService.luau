@@ -1,7 +1,8 @@
 -- Siege gadgets in the ability pool (used with X; see Abilities.luau, wired up by AbilityService):
---   Attack  Breach Charge  stick it on a soft wall / barricade / armor panel, X again to blow a
---                          walk-through hole (won't go off while an enemy Signal Jammer is near)
---           Hard Breach    thermite: burns 3 s, then opens a reinforced wall section (an
+--   Attack  Breach Charge  stick it on a soft wall / floor, a hatch, barricade or armor panel, X
+--                          again to blow a walk-through (or drop-through) hole (won't go off
+--                          while an enemy Signal Jammer is near)
+--           Hard Breach    thermite: burns 3 s, then opens a reinforced wall section or hatch (an
 --                          electrified section fries it)
 --           EMP Grenade    thrown; destroys enemy electronics in its radius, through walls
 --   Defend  Shock Wire     battery on a reinforced section: charges put on it get fried
@@ -62,6 +63,14 @@ end
 
 local function status(player: Player, text: string)
 	AbilityEffect:FireClient(player, "Status", text)
+end
+
+-- Hands / body animation that everyone sees (HandsAnimator in first person, BodyAnimator in
+-- third): what was done, where (a frame on the surface, look vector out of it), and when
+function GadgetService.Gesture(character: Model, name: string, target: CFrame?)
+	character:SetAttribute("GestureTarget", target)
+	character:SetAttribute("Gesture", name)
+	character:SetAttribute("GestureAt", Workspace:GetServerTimeNow()) -- set last: clients watch this
 end
 
 -- Decorative part: no collisions, invisible to bullets and raycasts
@@ -132,14 +141,23 @@ local function aim(character: Model, look: Vector3): RaycastResult?
 	return Workspace:Raycast(head.Position, look.Unit * REACH, ignoreList(character))
 end
 
--- A frame stuck flat on the wall that was hit: its look vector points out of the wall
-local function onWall(hit: RaycastResult): CFrame?
+-- A frame stuck flat on the wall (or, if allowed, the floor) that was hit: its look vector points
+-- out of the surface. Ceilings and slopes don't take gadgets.
+local function onSurface(hit: RaycastResult, allowFloor: boolean): CFrame?
+	if hit.Normal.Y > 0.7 and allowFloor then
+		local position = hit.Position + Vector3.yAxis * 0.05
+		return CFrame.lookAt(position, position + Vector3.yAxis, Vector3.zAxis)
+	end
 	if math.abs(hit.Normal.Y) > 0.3 then
-		return nil -- floors and ceilings come later
+		return nil
 	end
 	local normal = Vector3.new(hit.Normal.X, 0, hit.Normal.Z).Unit
 	local position = hit.Position + normal * 0.05
 	return CFrame.lookAt(position, position + normal)
+end
+
+local function isFloorCharge(normal: Vector3): boolean
+	return normal.Y > 0.7
 end
 
 -- Floor height under a spot on a wall
@@ -166,6 +184,7 @@ local function jammed(position: Vector3, player: Player): boolean
 end
 
 local function detonate(player: Player, character: Model)
+	GadgetService.Gesture(character, "Detonate")
 	local kept: { Charge } = {}
 	for _, charge in breachCharges[player] or {} do
 		if not charge.model.Parent then
@@ -177,10 +196,14 @@ local function detonate(player: Player, character: Model)
 			continue
 		end
 		charge.model:Destroy()
-		local floorY = floorAt(character, charge.point, charge.normal)
-		local center = Vector3.new(charge.point.X, floorY + BREACH_HEIGHT / 2, charge.point.Z)
 		explosion(charge.point)
-		DestructionService.Breach(center, charge.normal, BREACH_WIDTH, BREACH_HEIGHT)
+		if isFloorCharge(charge.normal) then
+			DestructionService.Breach(charge.point, charge.normal, BREACH_WIDTH, BREACH_WIDTH)
+		else
+			local floorY = floorAt(character, charge.point, charge.normal)
+			local center = Vector3.new(charge.point.X, floorY + BREACH_HEIGHT / 2, charge.point.Z)
+			DestructionService.Breach(center, charge.normal, BREACH_WIDTH, BREACH_HEIGHT)
+		end
 		WeaponService.Blast(player, charge.point, Abilities.BreachCharge.Radius or 10, BREACH_DAMAGE, charge.normal)
 	end
 	breachCharges[player] = if #kept > 0 then kept else nil
@@ -218,28 +241,29 @@ local function breachCharge(player: Player, character: Model, _root: BasePart, _
 		return false
 	end
 	local hit = aim(character, look)
-	local kind = hit and hit.Instance:GetAttribute("Breakable")
-	local cf = hit and onWall(hit)
-	if not hit or not cf or not (kind == "Soft" or kind == "Barricade" or kind == "Panel") then
-		status(player, "AIM AT A SOFT WALL, BARRICADE OR ARMOR PANEL")
-		return false
-	end
-	local section = FortifyService.SectionAt(hit.Position)
+	local section = hit and FortifyService.SectionAt(hit.Position)
 	if section and section:GetAttribute("Built") then
 		status(player, "REINFORCED: NEEDS A HARD BREACH")
 		return false
 	end
+	local kind = hit and hit.Instance:GetAttribute("Breakable")
+	local cf = hit and onSurface(hit, true)
+	if not hit or not cf or not (kind == "Soft" or kind == "Barricade" or kind == "Panel" or kind == "Hatch") then
+		status(player, "AIM AT A SOFT WALL OR FLOOR, A HATCH, BARRICADE OR ARMOR PANEL")
+		return false
+	end
 	breachCharges[player] = { { model = buildBreachCharge(player, cf), point = hit.Position, normal = cf.LookVector } }
+	GadgetService.Gesture(character, "BreachCharge", cf)
 	status(player, "CHARGE SET: PRESS X TO BLOW IT")
 	return true
 end
 
 local function hardBreach(player: Player, character: Model, _root: BasePart, ability: Abilities.Ability, look: Vector3): boolean
 	local hit = aim(character, look)
-	local cf = hit and onWall(hit)
+	local cf = hit and onSurface(hit, true)
 	local section = hit and FortifyService.SectionAt(hit.Position)
 	if not hit or not cf or not section or section:GetAttribute("Breached") then
-		status(player, "AIM AT A WALL YOU CAN BREACH")
+		status(player, "AIM AT A WALL OR HATCH YOU CAN BREACH")
 		return false
 	end
 	local body = part("Thermite", Vector3.new(2.6, 3.6, 0.4), cf * CFrame.new(0, 0, -0.2), Color3.fromRGB(170, 72, 40), Enum.Material.Metal)
@@ -272,6 +296,7 @@ local function hardBreach(player: Player, character: Model, _root: BasePart, abi
 	burn.Parent = body
 	model.Parent = deployables()
 	burn:Play()
+	GadgetService.Gesture(character, "HardBreach", cf)
 
 	local normal = cf.LookVector
 	local burnTime = ability.Duration or 3
@@ -293,11 +318,15 @@ local function hardBreach(player: Player, character: Model, _root: BasePart, abi
 			return -- shot off the wall
 		end
 		model:Destroy()
-		local floorY = section.Position.Y - section.Size.Y / 2
-		local center = Vector3.new(hit.Position.X, floorY + BREACH_HEIGHT / 2, hit.Position.Z)
 		FortifyService.RemoveReinforcement(section)
 		explosion(hit.Position)
-		DestructionService.Breach(center, normal, BREACH_WIDTH + 0.5, BREACH_HEIGHT)
+		if isFloorCharge(normal) then
+			DestructionService.Breach(hit.Position, normal, BREACH_WIDTH + 0.5, BREACH_WIDTH + 0.5)
+		else
+			local floorY = section.Position.Y - section.Size.Y / 2
+			local center = Vector3.new(hit.Position.X, floorY + BREACH_HEIGHT / 2, hit.Position.Z)
+			DestructionService.Breach(center, normal, BREACH_WIDTH + 0.5, BREACH_HEIGHT)
+		end
 		WeaponService.Blast(player, hit.Position, 6, THERMITE_DAMAGE, normal)
 	end)
 	return true
@@ -325,6 +354,7 @@ local function empGrenade(player: Player, character: Model, _root: BasePart, abi
 	local params = ignoreList(character)
 	local position = head.Position + look.Unit * 1.5
 	local velocity = look.Unit * EMP_SPEED + Vector3.new(0, EMP_LIFT, 0)
+	GadgetService.Gesture(character, "EmpGrenade")
 	local grenade = part("EmpGrenade", Vector3.new(0.45, 0.7, 0.45), CFrame.new(position), Color3.fromRGB(60, 110, 180), Enum.Material.Metal, deployables())
 	part("Band", Vector3.new(0.5, 0.12, 0.5), CFrame.new(position), EMP_BLUE, Enum.Material.Neon, grenade)
 	task.spawn(function()
@@ -351,7 +381,7 @@ end
 
 local function shockWire(player: Player, character: Model, _root: BasePart, _ability: Abilities.Ability, look: Vector3): boolean
 	local hit = aim(character, look)
-	local cf = hit and onWall(hit)
+	local cf = hit and onSurface(hit, false)
 	local section = hit and FortifyService.SectionAt(hit.Position)
 	if not hit or not cf or not section or not section:GetAttribute("Built") then
 		status(player, "AIM AT A REINFORCED WALL")
@@ -381,6 +411,7 @@ local function shockWire(player: Player, character: Model, _root: BasePart, _abi
 	emitter.Rate = 30
 	emitter.Parent = arcs
 	model.Parent = deployables()
+	GadgetService.Gesture(character, "ShockWire", body.CFrame)
 	section:SetAttribute("Electrified", true)
 	model.Destroying:Connect(function()
 		section:SetAttribute("Electrified", nil)
@@ -410,6 +441,7 @@ local function signalJammer(player: Player, character: Model, root: BasePart, _a
 	part("Antenna", Vector3.new(0.08, 1.6, 0.08), body.CFrame * CFrame.new(0.4, 1.05, 0.2), DARK, Enum.Material.Metal, model)
 	part("Light", Vector3.new(0.2, 0.08, 0.2), body.CFrame * CFrame.new(-0.3, 0.27, -0.2), Color3.fromRGB(60, 255, 120), Enum.Material.Neon, model)
 	model.Parent = deployables()
+	GadgetService.Gesture(character, "SignalJammer", CFrame.lookAt(base, base + Vector3.yAxis, forward))
 	return true
 end
 
@@ -462,6 +494,7 @@ local function armorPanel(player: Player, character: Model, _root: BasePart, _ab
 		part("Rib", size, slot.CFrame * CFrame.new(0, slot.Size.Y * fraction, 0), Color3.fromRGB(200, 120, 40), Enum.Material.Metal, panel)
 	end
 	panel.Parent = slot.Parent
+	GadgetService.Gesture(character, "ArmorPanel", slot.CFrame)
 	slot:SetAttribute("Built", true)
 	slot:SetAttribute("Panel", true)
 	panel.Destroying:Connect(function()

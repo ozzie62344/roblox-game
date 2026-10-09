@@ -17,7 +17,7 @@ local Sound3D = require(script.Parent.Parent.Audio.Sound3D)
 local state = require(script.Parent.Parent.PlayerState)
 local Hud = require(script.Parent.Parent.Combat.Hud)
 local Effects = require(script.Parent.Parent.Combat.Effects)
-local DeployArms = require(script.Parent.DeployArms)
+local HandsAnimator = require(script.Parent.HandsAnimator)
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local UseAbility = Remotes:WaitForChild("UseAbility") :: RemoteEvent
@@ -87,7 +87,7 @@ local function endDeploy()
 	deployToken += 1
 	state.deploying = false
 	state.deployPitch = 0
-	DeployArms.Stop()
+	HandsAnimator.StopCover()
 end
 
 function startDeploy(duration: number)
@@ -156,7 +156,7 @@ function AbilityController.Start()
 		elseif kind == "DeployStart" then
 			local duration, finalCFrame, size = ...
 			startDeploy(duration)
-			DeployArms.Play(duration, finalCFrame, size)
+			HandsAnimator.PlayCover(duration, finalCFrame, size)
 		elseif kind == "CoverStart" then
 			local position = ...
 			local sound = Sounds.CoverStart

@@ -35,7 +35,7 @@ local SPRINT_POSE = CFrame.new(0, -0.06, 0.05) * CFrame.Angles(math.rad(-25), ma
 
 local SLEEVE_COLOR = Color3.fromRGB(62, 68, 56)
 local GLOVE_COLOR = Color3.fromRGB(28, 28, 30)
--- Shared with DeployArms / the knife so all hands match
+-- Shared with HandsAnimator / the knife so all hands match
 Viewmodel.SleeveColor = SLEEVE_COLOR
 Viewmodel.GloveColor = GLOVE_COLOR
 

@@ -1,5 +1,6 @@
 -- Knife (F): a quick stab that kills in one hit. The gun is lowered, a gloved hand with a knife
 -- thrusts forward, and anything right in front of you gets hit. The server double-checks the hit.
+-- Then it recharges (MatchConfig.MeleeCooldown; a bar under the crosshair fills back up).
 
 local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
@@ -7,9 +8,11 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
+local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local Sounds = require(ReplicatedStorage.Shared.Sounds)
 local state = require(script.Parent.Parent.PlayerState)
 local Effects = require(script.Parent.Effects)
+local Hud = require(script.Parent.Hud)
 local Viewmodel = require(script.Parent.Viewmodel)
 
 local MeleeRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Melee") :: RemoteEvent
@@ -22,7 +25,7 @@ local REACH = 6 -- studs in front of the camera
 local HIT_RADIUS = 1.3 -- how forgiving the aim is
 local SWING_TIME = 0.42 -- whole animation
 local HIT_TIME = 0.13 -- when in the swing the blade connects
-local COOLDOWN = 0.75
+local COOLDOWN = MatchConfig.MeleeCooldown -- the server checks it too
 
 local lastSwing = -math.huge
 local knife: Model? = nil
@@ -118,7 +121,7 @@ local function swing()
 	if not character or not humanoid or humanoid.Health <= 0 or not root or root.Anchored then
 		return
 	end
-	if state.devPanelOpen or state.mouseUnlocked or state.draftOpen or state.deploying or state.interacting or state.spectating or state.inLobby then
+	if state.devPanelOpen or state.mouseUnlocked or state.draftOpen or state.deploying or state.interacting or state.gesturing or state.spectating or state.inLobby then
 		return
 	end
 	local now = os.clock()
@@ -164,6 +167,10 @@ function Melee.Start()
 		end
 		return Enum.ContextActionResult.Sink
 	end, false, Enum.KeyCode.F, Enum.KeyCode.ButtonR3)
+	-- Recharge bar under the crosshair
+	RunService.RenderStepped:Connect(function()
+		Hud.SetKnifeCooldown(math.clamp(1 - (os.clock() - lastSwing) / COOLDOWN, 0, 1))
+	end)
 end
 
 return Melee

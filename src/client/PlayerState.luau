@@ -23,6 +23,7 @@ return {
 	meleeing = false, -- knife swing in progress (gun lowered, can't shoot)
 	aimSensitivity = 1, -- mouse speed multiplier while aiming (set by the gun)
 	deployPitch = 0, -- radians, applied to the camera like recoil
+	gesturing = false, -- hands busy with a gadget / ability move (HandsAnimator): gun put away
 
 	-- Weapon
 	aiming = false,

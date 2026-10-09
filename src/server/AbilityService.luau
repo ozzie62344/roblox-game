@@ -63,7 +63,7 @@ type Handler = (player: Player, character: Model, root: BasePart, ability: Abili
 
 local handlers: { [string]: Handler } = {
 	-- Reveal enemies within range (through walls) to the user's whole team
-	ReconPulse = function(player, _character, root, ability)
+	ReconPulse = function(player, character, root, ability)
 		local radius = ability.Radius or 60
 		local duration = ability.Duration or 3
 		local revealed: { Model } = {}
@@ -90,6 +90,7 @@ local handlers: { [string]: Handler } = {
 		end
 		-- Everyone sees the pulse wave go out (a cue that someone just scanned)
 		AbilityEffect:FireAllClients("Pulse", root.Position, radius)
+		GadgetService.Gesture(character, "ReconPulse")
 		return true
 	end,
 
@@ -100,6 +101,7 @@ local handlers: { [string]: Handler } = {
 		character:SetAttribute("SilentToken", token)
 		character:SetAttribute("Silent", true)
 		AbilityEffect:FireClient(player, "GhostStep", duration)
+		GadgetService.Gesture(character, "GhostStep")
 		task.delay(duration, function()
 			if character.Parent and character:GetAttribute("SilentToken") == token then
 				character:SetAttribute("Silent", false)

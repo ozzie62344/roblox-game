@@ -18,6 +18,8 @@ local loadoutLabel: TextLabel
 local statusLabel: TextLabel
 local statusToken = 0
 local scope: Frame
+local knifeBar: Frame
+local knifeFill: Frame
 
 local WHITE = Color3.new(1, 1, 1)
 local RED = Color3.fromRGB(255, 70, 70)
@@ -103,6 +105,13 @@ function Hud.Start()
 		hitMarkerBars[i] = bar
 	end
 
+	-- Knife recharging: a thin bar under the crosshair that fills back up
+	knifeBar = frame(gui, UDim2.fromOffset(44, 3), UDim2.new(0.5, 0, 0.5, 30), Color3.fromRGB(30, 30, 30))
+	knifeBar.BackgroundTransparency = 0.4
+	knifeBar.Visible = false
+	knifeFill = frame(knifeBar, UDim2.fromScale(0, 1), UDim2.fromScale(0, 0.5), WHITE)
+	knifeFill.AnchorPoint = Vector2.new(0, 0.5)
+
 	ammoLabel = label(gui, UDim2.new(1, -40, 1, -40), Vector2.new(1, 1), 32)
 	loadoutLabel = label(gui, UDim2.new(1, -40, 1, -78), Vector2.new(1, 1), 16)
 	loadoutLabel.TextColor3 = Color3.fromRGB(200, 205, 215)
@@ -151,6 +160,12 @@ function Hud.ShowStatus(text: string, duration: number, color: Color3?)
 			statusLabel.Visible = false
 		end
 	end)
+end
+
+-- 0 = knife ready (bar hidden), 1 = just swung
+function Hud.SetKnifeCooldown(remaining: number)
+	knifeBar.Visible = remaining > 0
+	knifeFill.Size = UDim2.fromScale(1 - remaining, 1)
 end
 
 function Hud.SetScoped(scoped: boolean)

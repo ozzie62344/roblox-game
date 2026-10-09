@@ -8,7 +8,8 @@
 --              through, later). The defending team shares 2 per defender per round
 --              (MatchConfig.ReinforcementsPerDefender; RoundService fills the pool).
 --              Sections are cut when the map loads: every full-height soft wall is split into
---              ~6-stud pieces (<Map>/ReinforceSlots), like Siege's fixed wall sections.
+--              ~6-stud pieces (<Map>/ReinforceSlots), like Siege's fixed wall sections. Hatches
+--              (trapdoors) are sections too: their plate goes on top.
 -- Defenders can fortify during a match (prep + action); anyone can while free roaming, for free.
 -- While working, the player is locked in place through the same Interaction / InteractEndsAt
 -- attributes as planting (progress bar + pose), and the slot gets Build* attributes so every
@@ -127,8 +128,13 @@ local function sideOf(slot: BasePart, position: Vector3): number
 	return if (position - slot.Position):Dot(across) >= 0 then 1 else -1
 end
 
--- Where the steel plate goes: flat against the wall section, on the defender's side
+-- Where the steel plate goes: flat against the wall section, on the defender's side (on top of a
+-- hatch, lapping over its edges)
 local function plateFrame(slot: BasePart, side: number): (CFrame, Vector3)
+	if slot:GetAttribute("Hatch") then
+		local top = slot.Position.Y + slot.Size.Y / 2 - 0.5 -- the floor's surface (MapBuilder.Hatch)
+		return CFrame.new(slot.Position.X, top + 0.15, slot.Position.Z), Vector3.new(slot.Size.X + 0.6, 0.3, slot.Size.Z + 0.6)
+	end
 	local alongX = slot.Size.X > slot.Size.Z
 	local across = if alongX then Vector3.zAxis else Vector3.xAxis
 	local wallHalf = (if alongX then slot.Size.Z else slot.Size.X) / 2 - 0.1 -- the slot is 0.2 thicker than the wall
@@ -139,18 +145,21 @@ local function plateFrame(slot: BasePart, side: number): (CFrame, Vector3)
 end
 
 local function buildReinforcement(slot: BasePart, side: number)
-	local alongX = slot.Size.X > slot.Size.Z
-	local across = if alongX then Vector3.zAxis else Vector3.xAxis
-	local plateCFrame, size = plateFrame(slot, side)
+	local hatch = slot:GetAttribute("Hatch") == true
+	local alongX = hatch or slot.Size.X > slot.Size.Z
+	local across = if hatch then Vector3.yAxis elseif alongX then Vector3.zAxis else Vector3.xAxis
+	local plateCFrame, size = plateFrame(slot, if hatch then 1 else side)
 	local center = plateCFrame.Position
-	local length, height = if alongX then size.X else size.Z, size.Y
+	local length = if alongX then size.X else size.Z
+	local spread = if hatch then size.Z else size.Y
 	local model = Instance.new("Model")
 	model.Name = "Reinforcement"
 	part("Plate", size, plateCFrame, STEEL, Enum.Material.DiamondPlate, model)
-	-- Horizontal braces, the way Siege reinforcements look
-	for _, y in { -height * 0.3, 0, height * 0.3 } do
-		local braceSize = if alongX then Vector3.new(length, 0.35, 0.15) else Vector3.new(0.15, 0.35, length)
-		local brace = part("Brace", braceSize, CFrame.new(center + across * side * 0.2 + Vector3.new(0, y, 0)), STEEL:Lerp(Color3.new(0, 0, 0), 0.25), Enum.Material.Metal, model)
+	-- Braces, the way Siege reinforcements look (across the top of a hatch)
+	for _, offset in { -spread * 0.3, 0, spread * 0.3 } do
+		local braceSize = if hatch then Vector3.new(length, 0.15, 0.35) elseif alongX then Vector3.new(length, 0.35, 0.15) else Vector3.new(0.15, 0.35, length)
+		local shift = if hatch then Vector3.new(0, 0, offset) else Vector3.new(0, offset, 0)
+		local brace = part("Brace", braceSize, CFrame.new(center + across * (if hatch then 0.2 else side * 0.2) + shift), STEEL:Lerp(Color3.new(0, 0, 0), 0.25), Enum.Material.Metal, model)
 		brace.CanCollide = false
 		brace.CanQuery = false
 	end
@@ -221,8 +230,23 @@ function FortifyService.Prepare(map: Model)
 		end
 	end
 
-	local sections = Instance.new("Folder")
+	-- Hatch slots come with the map (MapBuilder.Hatch); a hatch that's been broken open can't be
+	-- reinforced any more (Siege)
+	local sections = map:FindFirstChild("ReinforceSlots") or Instance.new("Folder")
 	sections.Name = "ReinforceSlots"
+	local hatches = map:FindFirstChild("Hatches")
+	for _, slot in sections:GetChildren() do
+		for _, cover in if hatches then hatches:GetChildren() else {} do
+			local boards = cover:FindFirstChildWhichIsA("BasePart")
+			if slot:GetAttribute("Hatch") and boards and (Vector3.new(boards.Position.X - slot.Position.X, 0, boards.Position.Z - slot.Position.Z)).Magnitude < 0.5 then
+				cover.Destroying:Connect(function()
+					if not slot:GetAttribute("Built") then
+						slot:SetAttribute("Breached", true)
+					end
+				end)
+			end
+		end
+	end
 	for _, wall in map:GetDescendants() do
 		-- Full-height soft walls only (not the strips over doorways), like Siege
 		if wall:IsA("BasePart") and wall:GetAttribute("Breakable") == "Soft" and wall.Size.Y >= 8 then

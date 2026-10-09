@@ -3,6 +3,7 @@
 -- Coordinates are in studs. Walls are axis-aligned.
 -- RoomWall also does the Siege dressing: soft walls get Breakable = "Soft" (DestructionService),
 -- doorways and windows get trim and a barricade slot (FortifyService), outside windows get glass.
+-- Hatch makes trapdoors in floors.
 
 local MapBuilder = {}
 MapBuilder.__index = MapBuilder
@@ -31,6 +32,7 @@ export type Builder = typeof(setmetatable(
 local TRIM_COLOR = Color3.fromRGB(238, 234, 224)
 local GLASS_COLOR = Color3.fromRGB(170, 200, 215)
 local RAIL_COLOR = Color3.fromRGB(95, 66, 45)
+local HATCH_COLOR = Color3.fromRGB(120, 86, 56)
 local CASING = 0.45 -- width of the trim around doorways and windows
 local RAIL_HEIGHT = 3.2
 local DIRECTIONS = { ["+X"] = Vector3.xAxis, ["-X"] = -Vector3.xAxis, ["+Z"] = Vector3.zAxis, ["-Z"] = -Vector3.zAxis }
@@ -306,6 +308,31 @@ function MapBuilder.Railing(self: Builder, a: Vector3, b: Vector3, color: Color3
 	guard.Transparency = 1
 	guard.CanQuery = false
 	guard.CanTouch = false
+end
+
+-- Trapdoor in a floor whose top is at `top`: a wooden cover over a size × size hole (the floor
+-- itself must leave the hole, see FloorWithHoles). The knife (3 hits) or an explosive breaks the
+-- cover (DestructionService); defenders can reinforce it like a wall section (FortifyService).
+function MapBuilder.Hatch(self: Builder, x: number, z: number, top: number, size: number)
+	local half = size / 2
+	local cover = Instance.new("Model")
+	cover.Name = "HatchCover"
+	local boards = self:Box("Cover", Vector3.new(x - half, top - 0.4, z - half), Vector3.new(x + half, top, z + half), HATCH_COLOR, Enum.Material.WoodPlanks)
+	boards:SetAttribute("Breakable", "Hatch")
+	boards.Parent = cover
+	cover.Parent = self:Folder("Hatches")
+	-- Frame round the opening, flush on the floor
+	local trim = self:Folder("Trim")
+	for _, side in { -1, 1 } do
+		cosmetic(self:Box("HatchFrame", Vector3.new(x - half - 0.3, top, z + side * half - 0.15), Vector3.new(x + half + 0.3, top + 0.06, z + side * half + 0.15), RAIL_COLOR, Enum.Material.Wood)).Parent = trim
+		cosmetic(self:Box("HatchFrame", Vector3.new(x + side * half - 0.15, top, z - half), Vector3.new(x + side * half + 0.15, top + 0.06, z + half), RAIL_COLOR, Enum.Material.Wood)).Parent = trim
+	end
+	-- Where a reinforcement goes: the opening, from under the floor to just above it
+	local slot = self:Box("Slot", Vector3.new(x - half, top - 1, z - half), Vector3.new(x + half, top + 0.5, z + half), HATCH_COLOR)
+	slot.Transparency = 1
+	cosmetic(slot)
+	slot:SetAttribute("Hatch", true)
+	slot.Parent = self:Folder("ReinforceSlots")
 end
 
 -- Ceiling light: a small glowing panel with a light under it

@@ -252,7 +252,8 @@ local function update(dt: number)
 	end
 
 	local uiOpen = state.devPanelOpen or state.mouseUnlocked or state.draftOpen
-	local handsBusy = state.deploying or state.interacting or state.meleeing -- cover / plant / defuse / knife
+	-- cover / plant / defuse / fortify / knife / gadget moves
+	local handsBusy = state.deploying or state.interacting or state.meleeing or state.gesturing
 	state.aiming = aimHeld and not reloading and not uiOpen and not handsBusy
 	local aimStep = dt / weapon.AdsTime
 	state.aimAlpha = math.clamp(state.aimAlpha + (if state.aiming then aimStep else -aimStep), 0, 1)

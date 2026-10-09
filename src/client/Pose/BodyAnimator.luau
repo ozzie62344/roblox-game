@@ -6,7 +6,9 @@
 --   • a gun in their hands (the same detailed model you hold), both arms holding it, aimed where
 --     they're looking (up/down comes from the "LookPitch" attribute), kicking when they shoot
 --   • lean, sprint (gun lowered), reload (left hand to the mag and to a pouch), deploying cover
---     and planting/defusing (reaching down), slide (leaning back)
+--     (reaching down), slide (leaning back)
+--   • gadget / ability moves and plant / defuse / barricade / reinforce holds: the same hand
+--     moves as first person (HandsAnimator), with the gun slung at the hip
 --
 -- How the joints are moved: each R15 joint (a Motor6D, or an AnimationConstraint on avatars with
 -- Roblox's upgraded joints — both work the same way) places its part like this
@@ -23,6 +25,7 @@ local Workspace = game:GetService("Workspace")
 local Config = require(ReplicatedStorage.Shared.MovementConfig)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 local GunModels = require(script.Parent.Parent.Combat.GunModels)
+local HandsAnimator = require(script.Parent.Parent.Abilities.HandsAnimator)
 local state = require(script.Parent.Parent.PlayerState)
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
@@ -69,7 +72,11 @@ type Rig = {
 	air: number,
 	lean: number,
 	pitch: number,
-	busy: number, -- deploying cover / planting / defusing
+	busy: number, -- deploying cover / planting / defusing / fortifying
+	kneel: number, -- deploying cover / planting / defusing (fortifying is done standing)
+	work: number, -- hands on a gadget / ability move or a hold (HandsAnimator)
+	workLeft: Vector3,
+	workRight: Vector3,
 	kick: number,
 	reloadStart: number,
 	reloadEnd: number,
@@ -228,7 +235,8 @@ local function makeRig(character: Model): Rig?
 		character = character, humanoid = humanoid, root = root,
 		rootJoint = rootJoint, waist = waist, neck = neck, left = left, right = right,
 		phase = 0, stride = 0, crouch = 0, slide = 0, sprint = 0, air = 0, lean = 0, pitch = 0,
-		busy = 0, kick = 0, reloadStart = 0, reloadEnd = 0,
+		busy = 0, kneel = 0, work = 0, workLeft = Vector3.zero, workRight = Vector3.zero,
+		kick = 0, reloadStart = 0, reloadEnd = 0,
 	}
 end
 
@@ -323,19 +331,35 @@ local function animate(rig: Rig, other: Player, dt: number)
 	local lowered = character:GetAttribute("Crouching") == true -- crouching OR sliding
 	local sliding = lowered and speed > SPRINT_SPEED * 0.8
 	local crouching = lowered and not sliding
-	local busy = character:GetAttribute("Deploying") == true or other:GetAttribute("Interaction") ~= nil
+	local deployingCover = character:GetAttribute("Deploying") == true
+	local interaction = other:GetAttribute("Interaction")
+	local busy = deployingCover or interaction ~= nil
+	local kneeling = deployingCover or interaction == "Plant" or interaction == "Defuse"
 	local rootPos = root.CFrame.Position
 	local ground = groundHeight(rig, rootPos)
 	local airborne = ground == nil or rootPos.Y - ground > rig.humanoid.HipHeight + root.Size.Y / 2 + 1.2
 
-	rig.crouch = smooth(rig.crouch, if crouching or busy then 1 else 0, dt)
+	rig.crouch = smooth(rig.crouch, if crouching or kneeling then 1 else 0, dt)
 	rig.slide = smooth(rig.slide, if sliding then 1 else 0, dt, 16)
 	rig.sprint = smooth(rig.sprint, if speed > SPRINT_SPEED and not lowered then 1 else 0, dt, 8)
 	rig.air = smooth(rig.air, if airborne then 1 else 0, dt, 10)
 	rig.lean = smooth(rig.lean, character:GetAttribute("Lean") or 0, dt, Config.LeanSpeed)
 	rig.pitch = smooth(rig.pitch, character:GetAttribute("LookPitch") or 0, dt, 15)
 	rig.busy = smooth(rig.busy, if busy then 1 else 0, dt, 10)
+	rig.kneel = smooth(rig.kneel, if kneeling then 1 else 0, dt, 10)
 	rig.kick = smooth(rig.kick, 0, dt, 18)
+
+	-- Hands on a gadget / ability move or a plant / defuse / fortify hold: the same moves you do in
+	-- first person (HandsAnimator), from their head, looking where they look
+	local head = character:FindFirstChild("Head") :: BasePart?
+	local eye = CFrame.new(if head then head.Position else rootPos + Vector3.new(0, 1.5, 0)) * yawOnly(root.CFrame).Rotation * CFrame.Angles(rig.pitch, 0, 0)
+	local moveKind, moveContext = HandsAnimator.Current(other, character, root, eye)
+	if moveKind and moveContext then
+		local left, right = HandsAnimator.Sample(moveKind, moveContext)
+		rig.workLeft = left or (eye * CFrame.new(-0.45, -0.9, -1.2)).Position
+		rig.workRight = right or (eye * CFrame.new(0.45, -0.9, -1.2)).Position
+	end
+	rig.work = smooth(rig.work, if moveKind then 1 else 0, dt, 14)
 
 	-- Step cycle: steps get longer the faster you go
 	local stepLength = math.clamp(speed * 0.11, 0.9, 2.4) * (1 - rig.crouch * 0.4)
@@ -351,7 +375,7 @@ local function animate(rig: Rig, other: Player, dt: number)
 	rig.rootJoint.motor.Transform = rootTransform
 
 	-- Lean sideways, bend toward where they look, hunch a bit when crouched or busy
-	local waistPitch = rig.pitch * 0.45 - math.rad(12) * rig.crouch - math.rad(25) * rig.busy
+	local waistPitch = rig.pitch * 0.45 - math.rad(12) * rig.crouch - math.rad(25) * rig.kneel
 	-- Bladed stance: the upper body turns toward the gun side so the left shoulder comes forward
 	-- (Roblox arms are short; square on, the left hand can't reach the front of the gun).
 	-- Handguns are held square on, both arms pushed out in front.
@@ -361,7 +385,7 @@ local function animate(rig: Rig, other: Player, dt: number)
 	local upperTorsoCF = childCFrame(rig.waist, lowerTorsoCF, waistTransform)
 	rig.waist.motor.Transform = waistTransform
 	-- The head turns back the other way so it still looks straight ahead; down when busy
-	rig.neck.motor.Transform = CFrame.Angles(rig.pitch * 0.55 - math.rad(15) * rig.busy, -twist, 0)
+	rig.neck.motor.Transform = CFrame.Angles(rig.pitch * 0.55 - math.rad(15) * rig.kneel, -twist, 0)
 
 	-- ── Legs ──
 	poseLeg(rig.left, -1, lowerTorsoCF, rig, facing, moveDir, ground)
@@ -399,6 +423,13 @@ local function animate(rig: Rig, other: Player, dt: number)
 			- aim.UpVector * (0.3 + 0.35 * lowReady)
 			- aim.RightVector * 0.4
 	local gunCF = CFrame.new(gripTarget) * gunRotation * CFrame.new(-gun.rightGrip)
+	-- Hands busy: the gun hangs at the right hip on its sling instead of floating
+	local sling = math.max(rig.work, rig.busy)
+	if sling > 0.01 then
+		local hip = (lowerTorsoCF * CFrame.new(0.95, 0.1, -0.2)).Position
+		local slung = CFrame.new(hip) * facing.Rotation * CFrame.Angles(-math.rad(70), 0, 0) * CFrame.new(-gun.rightGrip)
+		gunCF = gunCF:Lerp(slung, easeInOut(sling))
+	end
 	moveGun(gun, gunCF)
 
 	-- Roblox hands are big blocks: aim them a little under the grips so the gun sits on top of
@@ -430,8 +461,11 @@ local function animate(rig: Rig, other: Player, dt: number)
 			leftHand = magWell:Lerp(leftHand, easeInOut((t - 0.7) / 0.3))
 		end
 	end
-	if rig.busy > 0.01 then
-		-- Deploying cover / planting / defusing: both hands reach down in front
+	if rig.work > 0.01 then
+		leftHand = leftHand:Lerp(rig.workLeft, rig.work)
+		rightHand = rightHand:Lerp(rig.workRight, rig.work)
+	elseif rig.busy > 0.01 then
+		-- Deploying cover: both hands reach down in front
 		local reachLeft = (root.CFrame * CFrame.new(-0.5, -2.3, -1.8)).Position
 		local reachRight = (root.CFrame * CFrame.new(0.5, -2.3, -1.8)).Position
 		leftHand = leftHand:Lerp(reachLeft, rig.busy)

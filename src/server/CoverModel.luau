@@ -12,10 +12,10 @@
 
 local CoverModel = {}
 
--- The deploying player's hands grab the two carry handles (DeployArms on the client puts each
+-- The deploying player's hands grab the two carry handles (HandsAnimator on the client puts each
 -- hand at X = ±1.1, on the top edge, 0.1 studs behind the back face), so the grips go exactly there.
-local HANDLE_SPREAD = 1.1 -- keep in sync with DeployArms.HAND_SPREAD
-local HANDLE_OUT = 0.1 -- keep in sync with DeployArms (size.Z / 2 + 0.1)
+local HANDLE_SPREAD = 1.1 -- keep in sync with HandsAnimator (the "Cover" move)
+local HANDLE_OUT = 0.1 -- keep in sync with HandsAnimator (size.Z / 2 + 0.1)
 
 -- Colors
 local STEEL = Color3.fromRGB(92, 98, 96) -- the armor plate

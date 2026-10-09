@@ -32,6 +32,7 @@ return {
 	BarricadeTime = 2.5, -- hold G to board up a doorway / window
 	ReinforceTime = 4.5, -- hold G to put a steel reinforcement on a soft wall section
 	ReinforcementsPerDefender = 2, -- team pool per round = this × defenders (Siege's original rule)
+	MeleeCooldown = 1.5, -- seconds between knife swings (a stab to the body kills)
 	RoundTime = 120,
 	PostRoundTime = 5,
 	MatchOverTime = 10,

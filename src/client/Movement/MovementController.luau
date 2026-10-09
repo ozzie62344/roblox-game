@@ -383,8 +383,11 @@ local function step(dt: number)
 
 	linearVelocity.PlaneVelocity = Vector2.new(velocity.X, velocity.Z)
 
-	-- Crouching and sliding lower the whole character (hitbox included), not just the camera
-	local lowered = state.crouching or state.sliding or state.deploying or state.interacting
+	-- Crouching and sliding lower the whole character (hitbox included), not just the camera.
+	-- Planting / defusing kneels too; barricading and reinforcing are done standing.
+	local interaction = player:GetAttribute("Interaction")
+	local kneeling = state.interacting and (interaction == "Plant" or interaction == "Defuse")
+	local lowered = state.crouching or state.sliding or state.deploying or kneeling
 	local targetDrop = if lowered then Config.CrouchHeightDrop else 0
 	heightDrop += (targetDrop - heightDrop) * (1 - math.exp(-Config.CrouchTransitionSpeed * dt))
 	if heightDrop < 0.01 and not lowered then

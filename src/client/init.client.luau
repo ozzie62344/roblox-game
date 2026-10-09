@@ -18,6 +18,7 @@ require(Combat.Melee).Start()
 require(Combat.DamageIndicator).Start()
 require(Combat.DestructionEffects).Start()
 require(script:WaitForChild("Abilities").AbilityController).Start() -- after MovementController: gets X first
+require(script.Abilities.HandsAnimator).Start()
 require(Match.MatchHud).Start()
 require(Match.TeamHighlights).Start()
 require(Match.Spectate).Start()

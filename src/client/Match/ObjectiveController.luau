@@ -133,7 +133,7 @@ local function barricadeSlot(): BasePart?
 	return best
 end
 
--- The wall section you're looking at, if it can still be reinforced (FortifyService)
+-- The wall section or hatch you're looking at, if it can still be reinforced (FortifyService)
 local function reinforceSlot(): BasePart?
 	local map = Workspace:FindFirstChild("Map")
 	local slots = map and map:FindFirstChild("ReinforceSlots")
@@ -145,7 +145,8 @@ local function reinforceSlot(): BasePart?
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	params.FilterDescendantsInstances = { player.Character :: Model, Workspace.CurrentCamera }
 	local result = Workspace:Raycast(camera.Position, camera.LookVector * BARRICADE_REACH, params)
-	if not result or result.Instance:GetAttribute("Breakable") ~= "Soft" then
+	local kind = result and result.Instance:GetAttribute("Breakable")
+	if kind ~= "Soft" and kind ~= "Hatch" then
 		return nil
 	end
 	for _, slot in slots:GetChildren() do
