@@ -1,6 +1,7 @@
 -- The match loop: waiting → match starting → rounds → match over.
 -- Each round: loadout freeze → (Attack/Defend: defender prep) → action → post-round. One life per round.
---   AttackDefend: attackers plant at A or B (ObjectiveService); defenders stop or defuse it.
+--   AttackDefend: attackers plant at A or B (ObjectiveService); defenders stop or defuse it. On
+--                 maps with several site pairs the defenders pick the pair during the freeze.
 --   Elimination:  wipe the other team, or have more players alive when time runs out.
 -- One team attacks, the other defends; sides swap at halftime.
 -- Clients read the current state from attributes on ReplicatedStorage.MatchState.
@@ -17,6 +18,7 @@ local MapService = require(script.Parent.MapService)
 local ObjectiveService = require(script.Parent.ObjectiveService)
 
 local KillFeed = ReplicatedStorage.Remotes.KillFeed :: RemoteEvent
+local PickSite = ReplicatedStorage.Remotes.PickSite :: RemoteEvent
 local MatchState = ReplicatedStorage.MatchState
 
 local RoundService = {}
@@ -73,37 +75,53 @@ local function aliveCount(teamName: string): number
 	return count
 end
 
--- Spawn pads live in <Map or TestArena>/TeamSpawns, each with a "Side" attribute ("Attack" / "Defend")
+-- Spawn pads live in <Map or TestArena>/TeamSpawns, each with a "Side" attribute ("Attack" / "Defend").
+-- Defender pads can belong to a site pair ("Pair"): defenders spawn in the pair they're defending.
 local function getSpawns(side: string): { BasePart }
 	local mapRoot = Workspace:FindFirstChild("Map") or Workspace:FindFirstChild("TestArena")
 	local folder = mapRoot and mapRoot:FindFirstChild("TeamSpawns")
-	local spawns = {}
+	local spawns, inPair = {}, {}
+	local sitePair = MatchState:GetAttribute("SitePair")
 	if folder then
 		for _, part in folder:GetChildren() do
 			if part:IsA("BasePart") and part:GetAttribute("Side") == side then
 				table.insert(spawns, part)
+				if sitePair and part:GetAttribute("Pair") == sitePair then
+					table.insert(inPair, part)
+				end
 			end
 		end
 	end
-	return spawns
+	return if #inPair > 0 then inPair else spawns
 end
 
-local function spawnTeam(teamName: string, side: string)
+-- Puts a team on one of its side's pads (a random one if there are several), side by side,
+-- frozen until the round starts
+local function placeTeam(teamName: string, side: string)
 	local members = teams[teamName]:GetPlayers()
 	local spawns = getSpawns(side)
+	if #spawns == 0 then
+		return
+	end
+	local pad = spawns[math.random(#spawns)]
 	for i, player in members do
-		player:SetAttribute("Location", "Match")
-		player:LoadCharacterAsync()
 		local character = player.Character
 		local root = getRoot(player)
-		if character and root and #spawns > 0 then
-			local pad = spawns[(i - 1) % #spawns + 1]
+		if character and root then
 			-- Spread teammates out side by side on the pad, facing the way the pad faces
 			local sideOffset = (i - (#members + 1) / 2) * 4
 			character:PivotTo(pad.CFrame * CFrame.new(sideOffset, 3, 0))
-			root.Anchored = true -- frozen until the round starts
+			root.Anchored = true
 		end
 	end
+end
+
+local function spawnTeam(teamName: string, side: string)
+	for _, player in teams[teamName]:GetPlayers() do
+		player:SetAttribute("Location", "Match")
+		player:LoadCharacterAsync()
+	end
+	placeTeam(teamName, side)
 end
 
 local function unfreezeTeam(teamName: string)
@@ -198,8 +216,13 @@ end
 -- Returns winner ("Blue" / "Orange" / "Draw") and a reason, or nil if the match was aborted
 local function runRound(round: number, mode: string, attack: string): (string?, string?)
 	local defend = otherTeam(attack)
+	-- Fresh map every round: broken walls, glass and barricades all come back
+	MapService.Load(MatchState:GetAttribute("Map") or MatchConfig.DefaultMap)
 	AbilityService.ClearDeployables()
 	ObjectiveService.EndRound()
+	-- Site pair: random until the defenders pick one during the freeze (PickSite)
+	local sitePairs = ObjectiveService.GetPairs()
+	MatchState:SetAttribute("SitePair", if #sitePairs > 0 then sitePairs[math.random(#sitePairs)] else nil)
 	-- Players without a team (teams were full) sit the match out
 	for _, player in Players:GetPlayers() do
 		if player.Neutral and player.Character then
@@ -212,6 +235,8 @@ local function runRound(round: number, mode: string, attack: string): (string?, 
 	for _, teamName in MatchConfig.TeamOrder do
 		startedWith[teamName] = #teams[teamName]:GetPlayers()
 	end
+	-- Defenders' shared wall reinforcements (FortifyService)
+	MatchState:SetAttribute("Reinforcements", startedWith[defend] * MatchConfig.ReinforcementsPerDefender)
 
 	-- Loadouts are handed out (or drafted) during the freeze
 	local loadoutMode = MatchState:GetAttribute("LoadoutMode") or MatchConfig.DefaultLoadoutMode
@@ -244,7 +269,10 @@ local function runRound(round: number, mode: string, attack: string): (string?, 
 	unfreezeTeam(attack)
 	unfreezeTeam(defend)
 
-	setPhase("Action", MatchConfig.RoundTime, if mode == "AttackDefend" then "ATTACK!" else nil)
+	-- Attackers find out which pair is being defended now
+	local sitePair = MatchState:GetAttribute("SitePair")
+	local actionBanner = if mode ~= "AttackDefend" then nil elseif sitePair then `ATTACK · {string.upper(sitePair)}` else "ATTACK!"
+	setPhase("Action", MatchConfig.RoundTime, actionBanner)
 	local deadline = os.clock() + MatchConfig.RoundTime
 	local planted = false
 	endRoundNow = false
@@ -329,6 +357,7 @@ local function runMatch()
 	ObjectiveService.EndRound()
 	MatchState:SetAttribute("Round", 0)
 	MatchState:SetAttribute("AttackTeam", nil)
+	MatchState:SetAttribute("SitePair", nil)
 	setScores({ Blue = 0, Orange = 0 })
 	resetToFreeRoam()
 end
@@ -451,6 +480,20 @@ function RoundService.Start()
 		task.spawn(onPlayerAdded, player)
 	end
 	Players.PlayerAdded:Connect(onPlayerAdded)
+
+	-- Defenders choosing where to defend during the freeze (SitePicker): the last pick counts, and
+	-- the whole team moves to that pair's spawn right away
+	PickSite.OnServerEvent:Connect(function(player, pair)
+		local attackTeam = MatchState:GetAttribute("AttackTeam")
+		if not matchRunning or MatchState:GetAttribute("Phase") ~= "PreRound" or not player.Team or player.Team.Name == attackTeam then
+			return
+		end
+		if typeof(pair) ~= "string" or not table.find(ObjectiveService.GetPairs(), pair) then
+			return
+		end
+		MatchState:SetAttribute("SitePair", pair)
+		placeTeam(player.Team.Name, "Defend")
+	end)
 
 	task.spawn(mainLoop)
 end

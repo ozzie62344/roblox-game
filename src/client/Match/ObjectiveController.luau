@@ -1,7 +1,8 @@
 -- Attack / Defend on the client:
 --   • Hold G to plant (attackers, inside a site) or defuse (defenders, next to the charge)
 --   • "HOLD [G]" prompt + progress bar; you're locked in place while doing it
---   • A / B site markers, and a countdown marker on the planted charge
+--   • A / B site markers (only the defended pair's, on maps with several), and a countdown
+--     marker on the planted charge
 --   • The charge blinks and beeps faster as it gets close to detonating
 
 local ContextActionService = game:GetService("ContextActionService")
@@ -25,6 +26,14 @@ local ObjectiveController = {}
 local SITE_COLOR = Color3.fromRGB(255, 200, 60)
 local BOMB_COLOR = Color3.fromRGB(255, 60, 60)
 local ACTIVE_PHASES = { Prep = true, Action = true, Planted = true, PostRound = true }
+local BUILD_PHASES = { Prep = true, Action = true, Planted = true } -- when defenders can barricade
+local BARRICADE_REACH = 7 -- studs from your eyes to the middle of the doorway / window
+local INTERACTIONS = {
+	Plant = { time = MatchConfig.PlantTime, label = "PLANTING...", color = Color3.fromRGB(255, 60, 60) },
+	Defuse = { time = MatchConfig.DefuseTime, label = "DEFUSING...", color = Color3.fromRGB(90, 170, 255) },
+	Barricade = { time = MatchConfig.BarricadeTime, label = "BARRICADING...", color = Color3.fromRGB(200, 150, 90) },
+	Reinforce = { time = MatchConfig.ReinforceTime, label = "REINFORCING...", color = Color3.fromRGB(150, 160, 175) },
+}
 
 local prompt: TextLabel
 local progressBack: Frame
@@ -62,8 +71,28 @@ local function getSites(): { BasePart }
 	return sites
 end
 
+-- Maps with several site pairs: only the pair the defenders picked ("SitePair") is in play, and
+-- attackers don't see which until the round goes live. Between matches every site shows.
+-- shortcut: the pick is a public MatchState attribute, so a cheater could read it early; send it
+-- only to defenders if that ever matters
+local function isActiveSite(site: BasePart): boolean
+	local pair = site:GetAttribute("Pair")
+	local picked = MatchState:GetAttribute("SitePair")
+	if pair == nil or picked == nil then
+		return true
+	end
+	local phase = MatchState:GetAttribute("Phase")
+	if myRole() == "Attack" and (phase == "PreRound" or phase == "Prep") then
+		return false
+	end
+	return pair == picked
+end
+
 local function inSite(position: Vector3): boolean
 	for _, site in getSites() do
+		if not isActiveSite(site) then
+			continue
+		end
 		local localPos = site.CFrame:PointToObjectSpace(position)
 		local half = site.Size / 2
 		if math.abs(localPos.X) <= half.X and math.abs(localPos.Z) <= half.Z and math.abs(localPos.Y) <= half.Y + 4 then
@@ -83,23 +112,86 @@ local function aliveRoot(): BasePart?
 	return nil
 end
 
--- What G would do right now ("Plant" / "Defuse"), if anything
-local function availableAction(): string?
-	local phase = MatchState:GetAttribute("Phase")
-	local root = aliveRoot()
-	if not isAttackDefend() or not root or root.Anchored then
+-- The empty doorway / window you're looking at, close enough to board up (BarricadeService)
+local function barricadeSlot(): BasePart?
+	local map = Workspace:FindFirstChild("Map")
+	local slots = map and map:FindFirstChild("BarricadeSlots")
+	if not slots then
 		return nil
 	end
-	local role = myRole()
-	local bombPosition = MatchState:GetAttribute("BombPosition")
-	if role == "Attack" and phase == "Action" and not bombPosition and inSite(root.Position) then
-		return "Plant"
-	elseif role == "Defend" and phase == "Planted" and bombPosition then
-		if (root.Position - bombPosition).Magnitude <= MatchConfig.DefuseRange then
-			return "Defuse"
+	local camera = Workspace.CurrentCamera.CFrame
+	local best, bestDot = nil, 0.6
+	for _, slot in slots:GetChildren() do
+		if slot:IsA("BasePart") and slot.Name == "Slot" and not slot:GetAttribute("Built") then
+			local offset = slot.Position - camera.Position
+			local dot = offset.Unit:Dot(camera.LookVector)
+			if offset.Magnitude <= BARRICADE_REACH and dot > bestDot then
+				best, bestDot = slot, dot
+			end
+		end
+	end
+	return best
+end
+
+-- The wall section you're looking at, if it can still be reinforced (FortifyService)
+local function reinforceSlot(): BasePart?
+	local map = Workspace:FindFirstChild("Map")
+	local slots = map and map:FindFirstChild("ReinforceSlots")
+	if not slots or (not player.Neutral and (MatchState:GetAttribute("Reinforcements") or 0) <= 0) then
+		return nil
+	end
+	local camera = Workspace.CurrentCamera.CFrame
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { player.Character :: Model, Workspace.CurrentCamera }
+	local result = Workspace:Raycast(camera.Position, camera.LookVector * BARRICADE_REACH, params)
+	if not result or result.Instance:GetAttribute("Breakable") ~= "Soft" then
+		return nil
+	end
+	for _, slot in slots:GetChildren() do
+		if slot:IsA("BasePart") and not slot:GetAttribute("Built") and not slot:GetAttribute("Breached") then
+			local localHit = slot.CFrame:PointToObjectSpace(result.Position)
+			local half = slot.Size / 2
+			if math.abs(localHit.X) <= half.X and math.abs(localHit.Y) <= half.Y and math.abs(localHit.Z) <= half.Z then
+				return slot
+			end
 		end
 	end
 	return nil
+end
+
+-- What G would do right now ("Plant" / "Defuse" / "Reinforce" / "Barricade"), if anything, and
+-- the wall section / doorway it's for
+local function availableAction(): (string?, BasePart?)
+	local phase = MatchState:GetAttribute("Phase")
+	local root = aliveRoot()
+	if not root or root.Anchored then
+		return nil, nil
+	end
+	local role = myRole()
+	local bombPosition = MatchState:GetAttribute("BombPosition")
+	if isAttackDefend() then
+		if role == "Attack" and phase == "Action" and not bombPosition and inSite(root.Position) then
+			return "Plant", nil
+		elseif role == "Defend" and phase == "Planted" and bombPosition then
+			if (root.Position - bombPosition).Magnitude <= MatchConfig.DefuseRange then
+				return "Defuse", nil
+			end
+		end
+	end
+	-- Defenders reinforce walls and barricade doorways (anyone can while free roaming, to try it).
+	-- Looking at a wall means reinforce; looking through an empty doorway means barricade.
+	if player.Neutral or (role == "Defend" and BUILD_PHASES[phase]) then
+		local wall = reinforceSlot()
+		if wall then
+			return "Reinforce", wall
+		end
+		local slot = barricadeSlot()
+		if slot then
+			return "Barricade", slot
+		end
+	end
+	return nil, nil
 end
 
 local function marker(text: string, color: Color3): (BillboardGui, TextLabel)
@@ -215,8 +307,9 @@ local function updateSiteMarkers(show: boolean)
 			siteMarkers[site] = gui
 			siteFloors[site] = buildSiteFloor(site)
 		end
-		gui.Enabled = show
-		siteFloors[site].Parent = if show then Workspace.CurrentCamera else nil
+		local visible = show and isActiveSite(site)
+		gui.Enabled = visible
+		siteFloors[site].Parent = if visible then Workspace.CurrentCamera else nil
 	end
 	for site, gui in siteMarkers do
 		if not site.Parent then
@@ -261,17 +354,17 @@ local function update()
 		bombAnchor.Parent = nil
 	end
 
-	-- Plant / defuse in progress: progress bar, and locked in place
+	-- Plant / defuse / barricade in progress: progress bar, and locked in place
 	local interaction = player:GetAttribute("Interaction")
 	local endsAt = player:GetAttribute("InteractEndsAt")
 	state.interacting = interaction ~= nil
-	if interaction and endsAt then
-		local duration = if interaction == "Plant" then MatchConfig.PlantTime else MatchConfig.DefuseTime
+	local info = interaction and INTERACTIONS[interaction]
+	if info and endsAt then
 		progressBack.Visible = true
-		progressFill.Size = UDim2.fromScale(math.clamp(1 - (endsAt - now) / duration, 0, 1), 1)
-		progressFill.BackgroundColor3 = if interaction == "Plant" then BOMB_COLOR else Color3.fromRGB(90, 170, 255)
+		progressFill.Size = UDim2.fromScale(math.clamp(1 - (endsAt - now) / info.time, 0, 1), 1)
+		progressFill.BackgroundColor3 = info.color
 		prompt.Visible = true
-		prompt.Text = if interaction == "Plant" then "PLANTING..." else "DEFUSING..."
+		prompt.Text = info.label
 		return
 	end
 	progressBack.Visible = false
@@ -280,6 +373,9 @@ local function update()
 	prompt.Visible = action ~= nil
 	if action then
 		prompt.Text = `HOLD [G] TO {string.upper(action)}`
+		if action == "Reinforce" and not player.Neutral then
+			prompt.Text ..= ` ({MatchState:GetAttribute("Reinforcements") or 0} LEFT)`
+		end
 	end
 end
 
@@ -288,8 +384,9 @@ function ObjectiveController.Start()
 
 	ContextActionService:BindAction("Interact", function(_, inputState)
 		if inputState == Enum.UserInputState.Begin then
-			if availableAction() and not (state.devPanelOpen or state.mouseUnlocked or state.deploying) then
-				Interact:FireServer("Begin")
+			local action, slot = availableAction()
+			if action and not (state.devPanelOpen or state.mouseUnlocked or state.deploying) then
+				Interact:FireServer("Begin", action, slot)
 			end
 		else
 			Interact:FireServer("End")

@@ -8,6 +8,8 @@ local Workspace = game:GetService("Workspace")
 
 local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local Dummies = require(script.Parent.Dummies)
+local DestructionService = require(script.Parent.DestructionService)
+local FortifyService = require(script.Parent.FortifyService)
 local TestArena = require(script.Parent.TestArena)
 local House = require(script.Parent.Maps.House)
 local Lobby = require(script.Parent.Maps.Lobby)
@@ -43,8 +45,10 @@ function MapService.Load(name: string): boolean
 		local studioMap = studioMaps and studioMaps:FindFirstChild(name)
 		local map = if studioMap then studioMap:Clone() else builders[name]()
 		map.Name = "Map"
+		FortifyService.Prepare(map)
 		map.Parent = Workspace
 	end
+	DestructionService.Reset()
 	MatchState:SetAttribute("Map", name)
 	return true
 end

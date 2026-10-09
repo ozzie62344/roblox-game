@@ -96,6 +96,53 @@ local Sounds = {
 			"rbxassetid://114280224323666", -- AS_shotgun_foley-03
 			"rbxassetid://103060570812555", -- AS_shotgun_foley-04
 		},
+		DrywallBreak = { -- Pro Sound Effects (licensed, Creator Store)
+			"rbxassetid://9114199583", -- Drywall Crunch 1
+			"rbxassetid://9114199593", -- Drywall Crunch 2
+			"rbxassetid://9114199757", -- Drywall Crunch 3
+			"rbxassetid://9114199750", -- Drywall Crunch 4
+		},
+		WoodBreak = { -- barricades (Creator Store)
+			"rbxassetid://138044840389379", -- wood_plank_break2
+			"rbxassetid://126645609816652", -- wood_plank_break3
+			"rbxassetid://114129279405032", -- wood_plank_break4
+		},
+		Explosion = { -- breach charges (Creator Store)
+			"rbxassetid://101767123218902", -- Grenade_Explosion_Close
+			"rbxassetid://134825578212679", -- Grenade Explosion_01
+			"rbxassetid://139210252225248", -- grenade explosion
+		},
+		Zap = { -- shock wires, EMP, gadgets getting fried (Pro Sound Effects)
+			"rbxassetid://9116279560", -- Lightning Flashes Quick Electrical Bursts 56
+			"rbxassetid://9116275293", -- Lightning Flashes Quick Electrical Bursts 3
+			"rbxassetid://9116276051", -- Lightning Flashes Quick Electrical Bursts 11
+		},
+		GlassBreak = { -- windows (Creator Store)
+			"rbxassetid://118987440163311", -- glass_shatter_01
+			"rbxassetid://138326537963545", -- glass_shatter_05
+			"rbxassetid://132457128699700", -- glass_shatter_07
+			"rbxassetid://139826391278483", -- glass_shatter_09
+		},
+	},
+
+	-- Walls, barricades and windows breaking (DestructionEffects). Breaking things is loud on
+	-- purpose, like in Siege: you hear people opening up walls.
+	Destruction = {
+		Range = 140,
+		HoleVolume = 0.2, -- a bullet punching through
+		ChunkVolume = 0.9, -- a knife knocking a chunk out
+		SmashVolume = 1.1, -- a whole barricade broken down
+		GlassVolume = 0.9,
+		BlastVolume = 1.4, -- breach charge / thermite going off
+		BlastRange = 350,
+		ZapVolume = 0.8,
+	},
+
+	-- Thermite burning through steel (Pro Sound Effects "Tesla Coil 4": arcing, welding-like)
+	ThermiteBurn = {
+		Id = "rbxassetid://9119992790",
+		Range = 90,
+		Volume = 0.9,
 	},
 
 	-- Knife (F). Placeholders: Roblox's built-in classic sword sounds.

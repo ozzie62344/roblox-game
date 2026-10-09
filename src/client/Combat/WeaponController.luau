@@ -29,6 +29,8 @@ local ReloadStarted = Remotes:WaitForChild("ReloadStarted") :: RemoteEvent
 local player = Players.LocalPlayer
 local random = Random.new()
 
+local MAX_PENETRATIONS = 4 -- same as WeaponService
+
 local WeaponController = {}
 
 local weapon = Weapons.Rifle
@@ -166,13 +168,24 @@ local function fire(character: Model)
 
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { character }
 
 	local shots = {}
 	local hitKind: string? = nil
 	for _ = 1, weapon.Pellets do
 		local direction = if weapon.Pellets > 1 then spreadDirection(aimCFrame, weapon.PelletSpread) else aimDirection
-		local result = Workspace:Raycast(origin, direction * weapon.Range, params)
+		-- Bullets go through glass, drywall and barricades (the server breaks them, see WeaponService)
+		local ignore: { Instance } = { character }
+		local result
+		for _ = 1, MAX_PENETRATIONS + 1 do
+			params.FilterDescendantsInstances = ignore
+			result = Workspace:Raycast(origin, direction * weapon.Range, params)
+			local breakable = result and result.Instance:GetAttribute("Breakable")
+			if not breakable or breakable == "Panel" then
+				break -- solid (armor panels are bulletproof)
+			end
+			Effects.Impact(result.Position, result.Normal)
+			table.insert(ignore, result.Instance)
+		end
 		local endPosition = if result then result.Position else origin + direction * weapon.Range
 		table.insert(shots, { direction, if result then result.Instance else nil, endPosition })
 

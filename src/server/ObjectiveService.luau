@@ -1,6 +1,7 @@
 -- Attack / Defend objective: attackers plant a charge at site A or B (hold G inside the site),
 -- defenders defuse it (hold G next to it) before it detonates.
--- Sites are parts with a "Site" attribute ("A" / "B") in <Map or TestArena>/Objectives.
+-- Sites are parts with a "Site" attribute ("A" / "B") in <Map or TestArena>/Objectives. Maps with
+-- several site pairs also give each site a "Pair"; only the pair the defenders picked is in play.
 -- RoundService starts/ends it each round and polls GetStatus().
 -- Clients read MatchState attributes (BombSite, BombPosition, DetonateAt) and the player
 -- attributes Interaction / InteractEndsAt (for the progress bar).
@@ -29,7 +30,7 @@ local detonateAt = 0
 local charge: BasePart? = nil
 local interactors: { [Player]: { kind: string, endsAt: number } } = {}
 
-local function getSites(): { BasePart }
+local function allSites(): { BasePart }
 	local mapRoot = Workspace:FindFirstChild("Map") or Workspace:FindFirstChild("TestArena")
 	local folder = mapRoot and mapRoot:FindFirstChild("Objectives")
 	local sites = {}
@@ -38,6 +39,20 @@ local function getSites(): { BasePart }
 			if part:IsA("BasePart") and part:GetAttribute("Site") then
 				table.insert(sites, part)
 			end
+		end
+	end
+	return sites
+end
+
+-- Sites in play: the pair the defenders picked (MatchState "SitePair", set by RoundService), plus
+-- any site that isn't part of a pair
+local function getSites(): { BasePart }
+	local picked = MatchState:GetAttribute("SitePair")
+	local sites = {}
+	for _, site in allSites() do
+		local pair = site:GetAttribute("Pair")
+		if pair == nil or picked == nil or pair == picked then
+			table.insert(sites, site)
 		end
 	end
 	return sites
@@ -204,13 +219,27 @@ function ObjectiveService.GetStatus(): Status
 	return status
 end
 
+-- The map's site pairs, e.g. { "Basement", "Bedrooms", "Kitchen", "Office" } (empty if it has none)
+function ObjectiveService.GetPairs(): { string }
+	local found = {}
+	for _, site in allSites() do
+		local pair = site:GetAttribute("Pair")
+		if pair and not table.find(found, pair) then
+			table.insert(found, pair)
+		end
+	end
+	table.sort(found)
+	return found
+end
+
 function ObjectiveService.Start()
-	Interact.OnServerEvent:Connect(function(player, action)
+	Interact.OnServerEvent:Connect(function(player, action, kind)
 		if action == "End" then
 			stopInteracting(player)
 			return
 		end
-		if action ~= "Begin" or interactors[player] then
+		-- Barricades / reinforcements share the G key but are FortifyService's job
+		if action ~= "Begin" or kind == "Barricade" or kind == "Reinforce" or interactors[player] then
 			return
 		end
 		local kind = if player.Team == attackTeam then "Plant" else "Defuse"

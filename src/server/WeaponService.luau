@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
+local DestructionService = require(script.Parent.DestructionService)
 
 local Remotes = ReplicatedStorage.Remotes
 local FireRemote = Remotes.Fire :: RemoteEvent
@@ -22,6 +23,10 @@ local MAX_ORIGIN_DISTANCE = 8 -- studs between the player's head and where they 
 local HIT_TOLERANCE = 5 -- extra studs allowed between the claimed hit point and the part (for lag)
 local RELOAD_TOLERANCE = 0.15
 local MAX_BURST = 3 -- shots that can arrive bunched together because of network jitter
+local MAX_PENETRATIONS = 4 -- breakable surfaces one bullet can go through
+-- Damage left after going through each kind of breakable surface (Siege: glass and barricades
+-- give no protection; drywall loss isn't documented, 0.8 is our pick). Headshots still kill.
+local PENETRATION_DAMAGE = { Glass = 1, Soft = 0.8, Barricade = 1 }
 
 local WeaponService = {}
 
@@ -100,6 +105,37 @@ local function isBlocked(origin: Vector3, target: Vector3, shooter: Model): bool
 	return result ~= nil and findHumanoid(result.Instance) == nil
 end
 
+-- Follows a bullet from origin to endPosition. Glass, drywall and barricades on the way take the
+-- hit (holes, shattering) and let it through a bit weaker; any other wall stops it. Returns the
+-- damage multiplier that reaches the end, or nil if something solid is in the way.
+local function traceShot(origin: Vector3, endPosition: Vector3, shooter: Model, hitKind: DestructionService.HitKind): number?
+	local offset = endPosition - origin
+	local distance = offset.Magnitude
+	if distance < 1 then
+		return 1
+	end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	local ignore: { Instance } = { shooter }
+	local multiplier = 1
+	for _ = 1, MAX_PENETRATIONS + 1 do
+		params.FilterDescendantsInstances = ignore
+		local result = Workspace:Raycast(origin, offset.Unit * (distance - 0.5), params)
+		-- Nothing in the way, or another character (fine, like isBlocked)
+		if not result or findHumanoid(result.Instance) then
+			return multiplier
+		end
+		local breakable = result.Instance:GetAttribute("Breakable")
+		if not breakable or breakable == "Panel" then
+			return nil -- solid (armor panels are bulletproof)
+		end
+		multiplier *= PENETRATION_DAMAGE[breakable] or 1
+		DestructionService.Hit(result.Instance :: BasePart, result.Position, hitKind)
+		table.insert(ignore, result.Instance)
+	end
+	return nil
+end
+
 type Hit = { humanoid: Humanoid, damage: number, headshot: boolean }
 
 -- Validates one bullet/pellet. Returns its end position (for tracers) and the hit, if any.
@@ -126,7 +162,9 @@ local function checkShot(player: Player, character: Model, weapon: Weapons.Weapo
 	if distance > 1 and toEnd.Unit:Dot(direction) < 0.98 then
 		return nil, nil
 	end
-	if not hitPart then
+	-- Every bullet breaks what it passes through, hit or miss
+	local through = traceShot(origin, endPosition, character, if weapon.Pellets > 1 then "Pellet" else "Bullet")
+	if not hitPart or not through then
 		return endPosition, nil
 	end
 
@@ -135,9 +173,6 @@ local function checkShot(player: Player, character: Model, weapon: Weapons.Weapo
 		return endPosition, nil
 	end
 	if (endPosition - hitPart.Position).Magnitude > hitPart.Size.Magnitude / 2 + HIT_TOLERANCE then
-		return endPosition, nil
-	end
-	if isBlocked(origin, endPosition, character) then
 		return endPosition, nil
 	end
 	-- No friendly fire
@@ -150,7 +185,7 @@ local function checkShot(player: Player, character: Model, weapon: Weapons.Weapo
 	end
 
 	local headshot = hitPart.Name == "Head"
-	local damage = damageAtDistance(weapon, distance, headshot)
+	local damage = damageAtDistance(weapon, distance, headshot) * (if headshot then 1 else through)
 	return endPosition, { humanoid = targetHumanoid, damage = damage, headshot = headshot }
 end
 
@@ -232,11 +267,29 @@ end
 -- Knife (F): one hit kills. The client says who it stabbed; the server checks the target is
 -- really close, in front of the attacker, alive, not a teammate, and not behind a wall.
 local MELEE_RANGE = 6.5 -- studs between root parts
+local MELEE_WALL_REACH = 7.5 -- studs from the head to where the knife hits a wall / barricade
 local MELEE_COOLDOWN = 0.7
 local MELEE_DAMAGE = 200
 local lastMelee: { [Player]: number } = {}
 
-local function onMelee(player: Player, targetPart: any)
+-- Knife on a wall / barricade / window: the point must be within reach and actually on the part
+local function meleeBreakable(character: Model, part: BasePart, point: any)
+	local head = character:FindFirstChild("Head") :: BasePart?
+	if typeof(point) ~= "Vector3" or not head or (point - head.Position).Magnitude > MELEE_WALL_REACH then
+		return
+	end
+	local localPoint = part.CFrame:PointToObjectSpace(point)
+	local half = part.Size / 2 + Vector3.one * 0.5
+	if math.abs(localPoint.X) > half.X or math.abs(localPoint.Y) > half.Y or math.abs(localPoint.Z) > half.Z then
+		return
+	end
+	if isBlocked(head.Position, point, character) then
+		return -- reaching through another wall
+	end
+	DestructionService.Hit(part, point, "Melee")
+end
+
+local function onMelee(player: Player, targetPart: any, hitPoint: any)
 	local now = os.clock()
 	if now - (lastMelee[player] or 0) < MELEE_COOLDOWN then
 		return
@@ -251,6 +304,10 @@ local function onMelee(player: Player, targetPart: any)
 	end
 	if not (typeof(targetPart) == "Instance" and targetPart:IsA("BasePart")) then
 		return -- a swing that hit nothing
+	end
+	if DestructionService.IsBreakable(targetPart) then
+		meleeBreakable(character, targetPart, hitPoint)
+		return
 	end
 	local targetHumanoid = findHumanoid(targetPart)
 	local targetRoot = targetHumanoid and targetHumanoid.Parent and targetHumanoid.Parent:FindFirstChild("HumanoidRootPart") :: BasePart?
@@ -282,6 +339,34 @@ local function onReload(player: Player)
 	end
 	data.reloadEnd = os.clock() + data.weapon.ReloadTime
 	ReloadStarted:FireAllClients(player, data.weapon.Name)
+end
+
+-- An explosion (breach charge, thermite) at `center`: damage falls off with distance. Anyone on
+-- `shieldedSide` (the placer's side of the wall) only takes 40%, like Siege's breach charge.
+-- Teammates are spared; you can still hurt yourself.
+function WeaponService.Blast(attacker: Player, center: Vector3, radius: number, maxDamage: number, shieldedSide: Vector3?)
+	local done: { [Humanoid]: boolean } = {}
+	for _, part in Workspace:GetPartBoundsInRadius(center, radius) do
+		local humanoid = findHumanoid(part)
+		if not humanoid or done[humanoid] or humanoid.Health <= 0 then
+			continue
+		end
+		done[humanoid] = true
+		local root = humanoid.Parent and humanoid.Parent:FindFirstChild("HumanoidRootPart") :: BasePart?
+		if not root then
+			continue
+		end
+		local offset = root.Position - center
+		local damage = maxDamage * math.clamp(1 - offset.Magnitude / radius, 0, 1)
+		if shieldedSide and offset:Dot(shieldedSide) > 0 then
+			damage *= 0.4
+		end
+		local target = Players:GetPlayerFromCharacter(humanoid.Parent)
+		local teammate = target ~= nil and target ~= attacker and not attacker.Neutral and target.Team == attacker.Team
+		if damage >= 1 and not teammate and not isProtected(humanoid) then
+			applyDamage(attacker, humanoid, damage, false, center)
+		end
+	end
 end
 
 function WeaponService.Refill(player: Player)

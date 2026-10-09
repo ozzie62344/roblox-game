@@ -29,7 +29,9 @@
         "SetLean": { "$className": "RemoteEvent" },
         "SetCrouch": { "$className": "RemoteEvent" },
         "LookPitch": { "$className": "UnreliableRemoteEvent" },
-        "DevAction": { "$className": "RemoteEvent" }
+        "DevAction": { "$className": "RemoteEvent" },
+        "Destruction": { "$className": "RemoteEvent" },
+        "PickSite": { "$className": "RemoteEvent" }
       }
     },
 

@@ -1,6 +1,8 @@
 -- Hands out a weapon + ability to every player each round.
 --   Draft:  each player is offered 3 loadouts and picks one (can change until the timer ends)
 --   Random: each player gets a random loadout
+-- Abilities come from your side's pool: Siege gadgets with Side = "Attack" only go to attackers,
+-- "Defend" only to defenders, and abilities without a Side to either (Abilities.luau).
 -- Clients are told through LoadoutOffer(options, deadline, isRandom) and pick with DraftPick(index).
 
 local Players = game:GetService("Players")
@@ -39,17 +41,29 @@ local function shuffle<T>(list: { T }): { T }
 	return list
 end
 
-local function randomAbility(): string
-	local names = keysOf(Abilities)
+local function randomAbility(side: string): string
+	local names = {}
+	for _, name in keysOf(Abilities) do
+		local abilitySide = Abilities[name].Side
+		if abilitySide == nil or abilitySide == side then
+			table.insert(names, name)
+		end
+	end
 	return names[math.random(#names)]
 end
 
+-- "Attack" or "Defend" this round
+local function sideOf(player: Player): string
+	local attackTeam = ReplicatedStorage.MatchState:GetAttribute("AttackTeam")
+	return if player.Team and player.Team.Name == attackTeam then "Attack" else "Defend"
+end
+
 -- Different weapons on every card so the choice actually matters
-local function generateOptions(count: number): { Loadout }
+local function generateOptions(count: number, side: string): { Loadout }
 	local weaponNames = shuffle(keysOf(Weapons))
 	local options = {}
 	for i = 1, math.min(count, #weaponNames) do
-		table.insert(options, { Weapon = weaponNames[i], Ability = randomAbility() })
+		table.insert(options, { Weapon = weaponNames[i], Ability = randomAbility(side) })
 	end
 	return options
 end
@@ -64,12 +78,13 @@ function LoadoutService.StartRound(players: { Player }, mode: string, duration: 
 	table.clear(offers)
 	local deadline = Workspace:GetServerTimeNow() + duration
 	for _, player in players do
+		local side = sideOf(player)
 		if mode == "Random" then
-			local loadout = generateOptions(1)[1]
+			local loadout = generateOptions(1, side)[1]
 			apply(player, loadout)
 			LoadoutOffer:FireClient(player, { loadout }, deadline, true)
 		else
-			local options = generateOptions(MatchConfig.DraftOptions)
+			local options = generateOptions(MatchConfig.DraftOptions, side)
 			offers[player] = { options = options, picked = false }
 			LoadoutOffer:FireClient(player, options, deadline, false)
 		end

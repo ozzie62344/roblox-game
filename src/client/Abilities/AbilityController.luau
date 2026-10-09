@@ -1,6 +1,7 @@
--- X uses your active ability (Recon Pulse, Ghost Step, Deployable Cover). Dash also lives on X,
--- so for Dash this passes the key through to MovementController.
--- Also draws ability effects the server sends: reveals, the pulse wave, "scanned" warnings.
+-- X uses your active ability (Recon Pulse, Ghost Step, Deployable Cover and the Siege gadgets).
+-- Dash also lives on X, so for Dash this passes the key through to MovementController.
+-- Also draws ability effects the server sends: reveals, pulse waves (scan / EMP), "scanned"
+-- warnings and gadget status messages ("JAMMED", "CHARGE SET"...).
 
 local ContextActionService = game:GetService("ContextActionService")
 local Debris = game:GetService("Debris")
@@ -56,8 +57,8 @@ local function revealCharacters(characters: { Model }, duration: number)
 	end
 end
 
--- Expanding sphere so everyone can see a scan just happened (and roughly where)
-local function pulseWave(origin: Vector3, radius: number)
+-- Expanding sphere so everyone can see a scan (red) or an EMP (blue) just happened, and where
+local function pulseWave(origin: Vector3, radius: number, color: Color3?)
 	local wave = Instance.new("Part")
 	wave.Shape = Enum.PartType.Ball
 	wave.Anchored = true
@@ -66,7 +67,7 @@ local function pulseWave(origin: Vector3, radius: number)
 	wave.CanTouch = false
 	wave.CastShadow = false
 	wave.Material = Enum.Material.ForceField
-	wave.Color = Color3.fromRGB(255, 90, 90)
+	wave.Color = color or Color3.fromRGB(255, 90, 90)
 	wave.Size = Vector3.one
 	wave.Position = origin
 	wave.Parent = Effects.GetFolder()
@@ -131,7 +132,8 @@ function AbilityController.Start()
 		if state.devPanelOpen or state.mouseUnlocked or state.draftOpen or state.spectating or state.deploying or state.interacting then
 			return Enum.ContextActionResult.Sink
 		end
-		if (player:GetAttribute("AbilityCharges") or 0) <= 0 then
+		-- (a placed breach charge can still be set off with no charges left; the server decides)
+		if (player:GetAttribute("AbilityCharges") or 0) <= 0 and not ability.Detonates then
 			Hud.ShowStatus("NO CHARGES LEFT", 1)
 			return Enum.ContextActionResult.Sink
 		end
@@ -144,8 +146,11 @@ function AbilityController.Start()
 			local characters, duration = ...
 			revealCharacters(characters, duration)
 		elseif kind == "Pulse" then
-			local origin, radius = ...
-			pulseWave(origin, radius)
+			local origin, radius, color = ...
+			pulseWave(origin, radius, color)
+		elseif kind == "Status" then
+			local text = ...
+			Hud.ShowStatus(text, 2)
 		elseif kind == "Scanned" then
 			Hud.ShowStatus("YOU'VE BEEN SCANNED", 2, REVEAL_COLOR)
 		elseif kind == "DeployStart" then

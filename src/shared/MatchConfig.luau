@@ -23,11 +23,15 @@ return {
 	SwapSidesAfterRounds = 3, -- halftime: attackers and defenders switch
 
 	-- Attack / Defend
-	PrepTime = 20, -- defenders set up while attackers wait in their spawn
+	PrepTime = 45, -- defenders set up (barricade, reinforce) while attackers wait in spawn (Siege ranked: 45)
 	PlantTime = 4, -- hold G inside a site
 	DefuseTime = 6, -- hold G next to the planted charge
 	FuseTime = 45, -- seconds from plant to detonation
 	DefuseRange = 5, -- studs from the charge
+	-- Defender fortifications (Siege numbers)
+	BarricadeTime = 2.5, -- hold G to board up a doorway / window
+	ReinforceTime = 4.5, -- hold G to put a steel reinforcement on a soft wall section
+	ReinforcementsPerDefender = 2, -- team pool per round = this × defenders (Siege's original rule)
 	RoundTime = 120,
 	PostRoundTime = 5,
 	MatchOverTime = 10,

@@ -70,8 +70,9 @@ local function buildKnife(): Model
 	return model
 end
 
--- Who's right in front of us? A thin ray first, then a fatter sphere sweep so it's not too picky.
-local function findTarget(character: Model): BasePart?
+-- What's right in front of us: someone to stab, or a wall / barricade / window to break?
+-- A thin ray first, then a fatter sphere sweep so it's not too picky.
+local function findTarget(character: Model): (BasePart?, Vector3?)
 	local camera = Workspace.CurrentCamera
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
@@ -80,14 +81,17 @@ local function findTarget(character: Model): BasePart?
 	local direction = camera.CFrame.LookVector * REACH
 	local result = Workspace:Raycast(origin, direction, params) or Workspace:Spherecast(origin, HIT_RADIUS, direction, params)
 	if not result then
-		return nil
+		return nil, nil
+	end
+	if result.Instance:GetAttribute("Breakable") then
+		return result.Instance, result.Position
 	end
 	local model = result.Instance:FindFirstAncestorOfClass("Model")
 	local humanoid = model and model:FindFirstChildOfClass("Humanoid")
 	if humanoid and humanoid.Health > 0 then
-		return result.Instance
+		return result.Instance, result.Position
 	end
-	return nil
+	return nil, nil
 end
 
 -- Stab pose over the swing: pull back slightly, thrust forward and a bit left, return
@@ -144,11 +148,11 @@ local function swing()
 		model:PivotTo(Workspace.CurrentCamera.CFrame * knifeOffset(t))
 		if not hitDone and t >= HIT_TIME then
 			hitDone = true
-			local target = findTarget(character)
-			if target then
+			local target, point = findTarget(character)
+			if target and not target:GetAttribute("Breakable") then
 				Effects.Sound(Sounds.Knife.Hit, nil, Sounds.Knife.Volume)
 			end
-			MeleeRemote:FireServer(target)
+			MeleeRemote:FireServer(target, point) -- breaking things makes its own sound (DestructionEffects)
 		end
 	end)
 end

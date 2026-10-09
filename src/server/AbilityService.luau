@@ -1,4 +1,5 @@
--- Active abilities (used with F): Recon Pulse, Ghost Step, Deployable Cover.
+-- Active abilities (used with X): Recon Pulse, Ghost Step, Deployable Cover here, and the Siege
+-- gadgets in GadgetService (breach charges, thermite, EMP, shock wire, jammer, armor panel).
 -- Charges are tracked here and mirrored to the "AbilityCharges" player attribute for the HUD.
 -- Charges refill whenever you spawn or your ability changes.
 
@@ -9,6 +10,7 @@ local Workspace = game:GetService("Workspace")
 
 local Abilities = require(ReplicatedStorage.Shared.Abilities)
 local CoverModel = require(script.Parent.CoverModel)
+local GadgetService = require(script.Parent.GadgetService)
 
 local Remotes = ReplicatedStorage.Remotes
 local UseAbility = Remotes.UseAbility :: RemoteEvent
@@ -190,6 +192,10 @@ local handlers: { [string]: Handler } = {
 	end,
 }
 
+for name, handler in GadgetService.Handlers do
+	handlers[name] = handler
+end
+
 function AbilityService.ResetCharges(player: Player)
 	local abilityName = player:GetAttribute("Ability")
 	local ability = if typeof(abilityName) == "string" then Abilities[abilityName] else nil
@@ -229,7 +235,7 @@ function AbilityService.Start()
 			return
 		end
 		local charges = player:GetAttribute("AbilityCharges") or 0
-		if charges <= 0 then
+		if charges <= 0 and not ability.Detonates then -- setting off a placed breach charge is free
 			return
 		end
 		local now = os.clock()
