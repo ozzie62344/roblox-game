@@ -1,6 +1,8 @@
 -- Driving your scout drone (DroneService): while your "Droning" attribute is set the camera rides
 -- the drone: WASD drives, Space hops, the mouse looks around, click spots an enemy for your team,
 -- Z goes back to your body (and back into the drone, or throws your second one, during the round).
+-- Near an enemy Signal Jammer the feed breaks up into static, the picture shakes and the drone
+-- crawls, worse the closer you get (and no spotting: the server agrees, GadgetService.Jammed).
 -- The drone's physics belong to this client, so its movement is set here every frame. Your body
 -- stays put meanwhile (state.droning roots it and puts the gun away).
 
@@ -11,8 +13,10 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
+local Abilities = require(ReplicatedStorage.Shared.Abilities)
 local Config = require(ReplicatedStorage.Shared.MovementConfig)
 local state = require(script.Parent.Parent.PlayerState)
+local Static = require(script.Parent.Static)
 
 local DroneRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Drone") :: RemoteEvent
 
@@ -27,11 +31,29 @@ local MAX_PITCH = math.rad(70)
 local FOV = 85 -- wide-angle lens
 local EYE = CFrame.new(0, 0.3, -0.45) -- matches DroneService.Eye
 local SPOT_RANGE = 70
+local JAM_RADIUS = Abilities.SignalJammer.Radius or 10
 
 local yaw, pitch = 0, 0
 local driving: Model? = nil -- the drone the camera is on
 local overlay: ScreenGui
 local countLabel: TextLabel
+local static: Static.Static
+local jam = 0 -- 0 = clear signal .. 1 = right on top of a jammer (smoothed)
+
+-- How badly enemy jammers interfere at `position` (the same jammers GadgetService.Jammed counts)
+local function jamAt(position: Vector3): number
+	local folder = Workspace:FindFirstChild("Deployables")
+	local myTeam = if player.Neutral or not player.Team then "" else player.Team.Name
+	local strongest = 0
+	for _, device in if folder then folder:GetChildren() else {} do
+		local owner = device:GetAttribute("OwnerTeam")
+		local body = device:IsA("Model") and device.PrimaryPart
+		if body and device:GetAttribute("Jammer") and (owner == "" or owner ~= myTeam) then
+			strongest = math.max(strongest, 1 - (body.Position - position).Magnitude / JAM_RADIUS)
+		end
+	end
+	return strongest
+end
 
 local function myDrone(): Model?
 	local folder = Workspace:FindFirstChild("Deployables")
@@ -89,11 +111,14 @@ local function buildOverlay()
 	title.TextColor3 = Color3.fromRGB(255, 80, 80)
 	countLabel = label(overlay, "", 14, UDim2.fromOffset(52, 72), Vector2.new(0, 0))
 	label(overlay, "WASD DRIVE  ·  SPACE HOP  ·  CLICK SPOT AN ENEMY  ·  Z BACK TO YOUR BODY", 14, UDim2.new(0.5, 0, 1, -48), Vector2.new(0.5, 1))
+	static = Static.new(overlay)
 end
 
 local function exit()
 	driving = nil
 	state.droning = false
+	jam = 0
+	static:Set(0)
 	Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
 	overlay.Enabled = false
 end
@@ -139,14 +164,17 @@ local function update()
 			end
 		end
 	end
-	local horizontal = if move.Magnitude > 0 then move.Unit * SPEED else Vector3.zero
+	jam += (math.clamp(jamAt(body.Position), 0, 1) - jam) * 0.2
+	local horizontal = if move.Magnitude > 0 then move.Unit * SPEED * (1 - 0.85 * jam) else Vector3.zero
 	body.AssemblyLinearVelocity = Vector3.new(horizontal.X, body.AssemblyLinearVelocity.Y, horizontal.Z)
 	body.AssemblyAngularVelocity = Vector3.zero
 	body.CFrame = CFrame.new(body.Position) * facing -- upright, facing where you look
 
 	camera.CameraType = Enum.CameraType.Scriptable -- every frame, in case anything else reset it
-	camera.CFrame = CFrame.new((body.CFrame * EYE).Position) * CFrame.fromOrientation(pitch, yaw, 0)
-	camera.FieldOfView = FOV
+	local shake = CFrame.Angles((math.random() - 0.5) * 0.08 * jam, (math.random() - 0.5) * 0.08 * jam, (math.random() - 0.5) * 0.12 * jam)
+	camera.CFrame = CFrame.new((body.CFrame * EYE).Position) * CFrame.fromOrientation(pitch, yaw, 0) * shake
+	camera.FieldOfView = FOV + (math.random() - 0.5) * 12 * jam
+	static:Set(jam * 1.2, if jam > 0.05 then "SIGNAL JAMMED" else nil)
 	local left = player:GetAttribute("DronesLeft")
 	countLabel.Text = if typeof(left) == "number" then `{left} MORE DRONE{if left == 1 then "" else "S"} THIS ROUND` else ""
 end
@@ -167,7 +195,7 @@ end
 -- Click: if there's an enemy under the crosshair, the server checks the drone can see them
 local function spot()
 	local drone = driving
-	if not drone then
+	if not drone or jam > 0.05 then
 		return
 	end
 	local camera = Workspace.CurrentCamera.CFrame
@@ -181,8 +209,8 @@ end
 function DroneController.Start()
 	buildOverlay()
 	ContextActionService:BindAction("Drone", function(_, inputState)
-		if inputState == Enum.UserInputState.Begin and not (state.devPanelOpen or state.mouseUnlocked or state.draftOpen) then
-			DroneRemote:FireServer("Toggle")
+		if inputState == Enum.UserInputState.Begin and not (state.devPanelOpen or state.mouseUnlocked) then
+			DroneRemote:FireServer("Toggle") -- (getting in puts the loadout cards away)
 		end
 		return Enum.ContextActionResult.Sink
 	end, false, Enum.KeyCode.Z, Enum.KeyCode.DPadUp)

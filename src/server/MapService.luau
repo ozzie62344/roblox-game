@@ -8,12 +8,14 @@ local ServerStorage = game:GetService("ServerStorage")
 local Workspace = game:GetService("Workspace")
 
 local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
+local CameraService = require(script.Parent.CameraService)
 local Dummies = require(script.Parent.Dummies)
 local DestructionService = require(script.Parent.DestructionService)
 local FortifyService = require(script.Parent.FortifyService)
 local TestArena = require(script.Parent.TestArena)
 local House = require(script.Parent.Maps.House)
 local Lobby = require(script.Parent.Maps.Lobby)
+local Warehouse = require(script.Parent.Maps.Warehouse)
 
 local MatchState = ReplicatedStorage.MatchState
 
@@ -21,9 +23,11 @@ local MapService = {}
 
 local builders: { [string]: () -> Model } = {
 	House = House.Build,
+	Warehouse = Warehouse.Build,
 }
 
-MapService.MapNames = { "House", "TestArena" }
+-- The maps players vote between before a match (the dev panel can also load the TestArena)
+MapService.MapNames = { "House", "Warehouse" }
 
 function MapService.Load(name: string): boolean
 	if name ~= "TestArena" and not builders[name] then
@@ -52,6 +56,7 @@ function MapService.Load(name: string): boolean
 			end
 		end
 		FortifyService.Prepare(map)
+		CameraService.Build(name, map)
 		map.Parent = Workspace
 	end
 	DestructionService.Reset()

@@ -19,6 +19,7 @@ local MapVote = {}
 -- Card colors per map (dark → light); anything else gets the last one
 local ART = {
 	House = { Color3.fromRGB(120, 60, 30), Color3.fromRGB(235, 160, 70) },
+	Warehouse = { Color3.fromRGB(45, 60, 80), Color3.fromRGB(230, 170, 40) },
 	TestArena = { Color3.fromRGB(40, 50, 70), Color3.fromRGB(120, 150, 190) },
 	Other = { Color3.fromRGB(40, 70, 50), Color3.fromRGB(110, 190, 120) },
 }

@@ -84,7 +84,7 @@ local Abilities: { [string]: Ability } = {
 		Side = "Attack",
 		Charges = 2,
 		Radius = 14,
-		Description = "Throw it to fry enemy electronics nearby, even through walls: shock wires and signal jammers.",
+		Description = "Throw it to fry enemy electronics nearby, even through walls: shock wires, signal jammers and cameras.",
 	},
 	ShockWire = {
 		Name = "Shock Wire",
@@ -101,7 +101,7 @@ local Abilities: { [string]: Ability } = {
 		Side = "Defend",
 		Charges = 2,
 		Radius = 10,
-		Description = "Drop it near a wall: breach charges close to it can't be set off. Can be shot or EMP'd.",
+		Description = "Drop it near a wall: breach charges close to it can't be set off and drones lose their signal. Can be shot or EMP'd.",
 	},
 	ArmorPanel = {
 		Name = "Armor Panel",

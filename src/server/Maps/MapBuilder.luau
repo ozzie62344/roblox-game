@@ -339,13 +339,13 @@ function MapBuilder.Hatch(self: Builder, x: number, z: number, top: number, size
 end
 
 -- Ceiling light: a small glowing panel with a light under it
-function MapBuilder.Light(self: Builder, position: Vector3, range: number?)
+function MapBuilder.Light(self: Builder, position: Vector3, range: number?, brightness: number?)
 	local panel = self:Part("Light", Vector3.new(2, 0.2, 2), CFrame.new(position), Color3.fromRGB(255, 244, 214), Enum.Material.Neon)
 	panel.CanCollide = false
 	panel.CastShadow = false
 	local light = Instance.new("PointLight")
 	light.Range = range or 26
-	light.Brightness = 1.2
+	light.Brightness = brightness or 1.2
 	light.Color = Color3.fromRGB(255, 236, 200)
 	light.Shadows = true
 	light.Parent = panel

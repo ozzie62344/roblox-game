@@ -288,7 +288,7 @@ function HandsAnimator.Current(who: Player, character: Model, root: BasePart, ey
 		end
 		return interaction, ctx
 	end
-	if who:GetAttribute("Droning") then
+	if who:GetAttribute("Droning") or who:GetAttribute("OnCams") then
 		return "Controller", { eye = eye, t = 1, elapsed = 0 }
 	end
 	local gestureAt = character:GetAttribute("GestureAt")

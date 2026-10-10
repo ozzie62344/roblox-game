@@ -17,6 +17,24 @@ local Sounds = {
 		WalkStride = 5.5,
 		CrouchStride = 4,
 		Duration = 0.3, -- seconds of the sound to play per step
+		OwnVolumeScale = 0.55, -- your own steps are quieter, so other people's stand out
+		-- What you're walking on changes the step (Footsteps picks one from the floor's material):
+		-- pitch, loudness and reach multipliers, tone (dB), and an extra layer from Sets
+		Surfaces = {
+			Hard = { Pitch = 1, Volume = 1, Range = 1, Treble = 2 }, -- concrete, tile, asphalt, brick
+			Metal = { Pitch = 1.12, Volume = 1.15, Range = 1.35, Treble = 5, Layer = "MetalStep", LayerVolume = 0.3 }, -- catwalks, stairs, containers
+			Wood = { Pitch = 0.8, Volume = 1.05, Range = 1.1, Bass = 5, Treble = -3 }, -- floorboards: deeper, hollow
+			Soft = { Pitch = 0.88, Volume = 0.5, Range = 0.6, Treble = -16 }, -- carpet, grass, dirt: muffled, short reach
+			Gravel = { Pitch = 1.3, Volume = 1, Range = 1.05, Treble = 6 }, -- gravel, cobbles: sharp and crunchy
+		},
+	},
+
+	-- Drones whine as they drive (DroneHum); louder the faster they go
+	DroneMotor = {
+		Id = "rbxassetid://9118377325", -- Robot Servo 4 (Pro Sound Effects)
+		Range = 45,
+		Volume = 0.5,
+		Pitch = 1.6,
 	},
 
 	Jump = {
@@ -117,6 +135,11 @@ local Sounds = {
 			"rbxassetid://9116275293", -- Lightning Flashes Quick Electrical Bursts 3
 			"rbxassetid://9116276051", -- Lightning Flashes Quick Electrical Bursts 11
 		},
+		MetalStep = { -- layered under steps on metal (Pro Sound Effects "Metal Grab, Hollow Metal Impact")
+			"rbxassetid://9116634359",
+			"rbxassetid://9116632805",
+			"rbxassetid://9116634384",
+		},
 		GlassBreak = { -- windows (Creator Store)
 			"rbxassetid://118987440163311", -- glass_shatter_01
 			"rbxassetid://138326537963545", -- glass_shatter_05
@@ -161,8 +184,11 @@ local Sounds = {
 		ReloadRange = 40, -- you can hear enemies reloading nearby
 	},
 
-	-- Sounds behind walls get muffled (quieter + duller) so you can tell they're not in the open
-	MuffleVolumeScale = 0.6,
+	-- Sounds behind walls get muffled (quieter + duller) so you can tell they're not in the open.
+	-- Each wall in the way muffles more (up to MaxWalls); through a floor or ceiling it's a deep,
+	-- bassy thump instead, so you can tell someone is above or below you.
+	MuffleVolumeScale = 0.6, -- per wall
+	MaxWalls = 3,
 }
 
 -- A random sound id from a set (see Sets above), or "" if there's no such set

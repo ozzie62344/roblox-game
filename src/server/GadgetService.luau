@@ -4,9 +4,10 @@
 --                          while an enemy Signal Jammer is near)
 --           Hard Breach    thermite: burns 3 s, then opens a reinforced wall section or hatch (an
 --                          electrified section fries it)
---           EMP Grenade    thrown; destroys enemy electronics in its radius, through walls
+--           EMP Grenade    thrown; destroys enemy electronics in its radius, through walls (defender
+--                          cameras too)
 --   Defend  Shock Wire     battery on a reinforced section: charges put on it get fried
---           Signal Jammer  breach charges within its radius can't be set off
+--           Signal Jammer  breach charges within its radius can't be set off, drones get static
 --           Armor Panel    bulletproof barricade on a doorway / window (10 knife hits or an explosive)
 -- Devices live in Workspace.Deployables (cleared every round); armor panels live in the map, which
 -- reloads every round. A device's body is Breakable = "Gadget", so a bullet or knife destroys it.
@@ -172,6 +173,7 @@ end
 
 -- ─── Attack ────────────────────────────────────────────────────────────────────
 
+-- Is `position` inside one of `player`'s enemies' Signal Jammers? (breach charges, drones)
 local function jammed(position: Vector3, player: Player): boolean
 	local radius = Abilities.SignalJammer.Radius or 10
 	for _, other in deployables():GetChildren() do
@@ -182,6 +184,7 @@ local function jammed(position: Vector3, player: Player): boolean
 	end
 	return false
 end
+GadgetService.Jammed = jammed
 
 local function detonate(player: Player, character: Model)
 	GadgetService.Gesture(character, "Detonate")
@@ -334,7 +337,14 @@ end
 
 local function emp(player: Player, position: Vector3, radius: number)
 	local fried = 0
-	for _, other in deployables():GetChildren() do
+	-- Deployed devices, and the defenders' cameras on the map (CameraService)
+	local devices = deployables():GetChildren()
+	local map = Workspace:FindFirstChild("Map")
+	local cameras = map and map:FindFirstChild("Cameras")
+	if cameras then
+		table.move(cameras:GetChildren(), 1, #cameras:GetChildren(), #devices + 1, devices)
+	end
+	for _, other in devices do
 		local body = other:IsA("Model") and other.PrimaryPart
 		if body and other:GetAttribute("Electronic") and isEnemyDevice(other, player) and (body.Position - position).Magnitude <= radius then
 			fry(other :: Model)

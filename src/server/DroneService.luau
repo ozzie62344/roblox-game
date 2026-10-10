@@ -4,7 +4,8 @@
 -- DroneController), spot enemies for the whole team (click), and find the site: once a drone (or,
 -- during the round, an attacker's own eyes) gets a clear view of the defended site, it's revealed
 -- to the attackers (MatchState "SiteFound"). Any bullet or knife destroys a drone (Breakable =
--- "Gadget"). While free roaming anyone can drive one, as many as they like, to try it out.
+-- "Gadget"). Near an enemy Signal Jammer the feed breaks up (DroneController) and the drone can't
+-- spot or find the site. While free roaming anyone can drive one, as many as they like.
 -- A player's "Droning" attribute says they're driving (their body stays where it is meanwhile);
 -- "DronesLeft" is how many they can still throw this round.
 
@@ -13,6 +14,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
+local GadgetService = require(script.Parent.GadgetService)
 local ObjectiveService = require(script.Parent.ObjectiveService)
 
 local Remotes = ReplicatedStorage.Remotes
@@ -171,11 +173,10 @@ local function toggle(player: Player)
 	end
 end
 
--- Click on the drone camera: everyone on your team sees that enemy for a few seconds
-local function spot(player: Player, target: any)
-	local drone = drones[player]
-	local eye = drone and player:GetAttribute("Droning") and DroneService.Eye(drone)
-	if not eye or typeof(target) ~= "Instance" or not target:IsA("Model") then
+-- Spotting from a drone or a defender camera (CameraService) at `eye`: if that enemy really is in
+-- view, everyone on your team sees them for a few seconds
+function DroneService.SpotFrom(player: Player, eye: Vector3, range: number, ignore: { Instance }, target: any)
+	if typeof(target) ~= "Instance" or not target:IsA("Model") then
 		return
 	end
 	local targetRoot = aliveRoot(target)
@@ -184,18 +185,27 @@ local function spot(player: Player, target: any)
 	local enemy = if targetPlayer
 		then targetPlayer ~= player and (player.Neutral or targetPlayer.Team ~= player.Team)
 		else dummies ~= nil and target:IsDescendantOf(dummies)
-	if not targetRoot or not enemy or (targetRoot.Position - eye).Magnitude > SPOT_RANGE then
+	if not targetRoot or not enemy or (targetRoot.Position - eye).Magnitude > range then
 		return
 	end
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { drone :: Model, target }
+	params.FilterDescendantsInstances = { target, table.unpack(ignore) }
 	if Workspace:Raycast(eye, targetRoot.Position - eye, params) then
 		return -- not actually in view
 	end
 	local team = if player.Neutral or not player.Team then { player } else player.Team:GetPlayers()
 	for _, teammate in team do
 		AbilityEffect:FireClient(teammate, "Reveal", { target }, SPOT_TIME)
+	end
+end
+
+-- Click on the drone camera (all static near an enemy jammer: no spotting)
+local function spot(player: Player, target: any)
+	local drone = drones[player]
+	local eye = drone and player:GetAttribute("Droning") and DroneService.Eye(drone)
+	if eye and not GadgetService.Jammed(eye, player) then
+		DroneService.SpotFrom(player, eye, SPOT_RANGE, { drone :: Model }, target)
 	end
 end
 
@@ -220,7 +230,7 @@ local function checkSite()
 	local eyes = {}
 	for player, drone in drones do
 		local eye = isAttacker(player) and DroneService.Eye(drone)
-		if eye then
+		if eye and not GadgetService.Jammed(eye, player) then -- (a jammed feed is all static)
 			table.insert(eyes, eye)
 		end
 	end

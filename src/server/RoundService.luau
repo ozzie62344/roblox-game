@@ -20,6 +20,7 @@ local Workspace = game:GetService("Workspace")
 
 local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local AbilityService = require(script.Parent.AbilityService)
+local CameraService = require(script.Parent.CameraService)
 local DroneService = require(script.Parent.DroneService)
 local LoadoutService = require(script.Parent.LoadoutService)
 local MapService = require(script.Parent.MapService)
@@ -283,6 +284,7 @@ local function runRound(round: number, mode: string, attack: string): (string?, 
 	local defend = otherTeam(attack)
 	-- Fresh map every round: broken walls, glass and barricades all come back
 	MapService.Load(MatchState:GetAttribute("Map") or MatchConfig.DefaultMap)
+	CameraService.SetOwner(defend)
 	AbilityService.ClearDeployables()
 	ObjectiveService.EndRound()
 	DroneService.Reset()

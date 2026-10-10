@@ -19,7 +19,7 @@ return {
 	DefaultLoadoutMode = "Draft",
 	DraftOptions = 3,
 
-	-- Map loaded when the server starts ("House" or "TestArena"); the dev panel can switch it
+	-- Map loaded when the server starts ("House", "Warehouse" or "TestArena"); the dev panel can switch it
 	DefaultMap = "House",
 
 	-- "AttackDefend" = Siege's Bomb mode: defenders guard a bomb at site A and B, attackers plant

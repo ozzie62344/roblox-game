@@ -35,7 +35,8 @@
         "Drone": { "$className": "RemoteEvent" },
         "SetRappel": { "$className": "RemoteEvent" },
         "Queue": { "$className": "RemoteEvent" },
-        "VoteMap": { "$className": "RemoteEvent" }
+        "VoteMap": { "$className": "RemoteEvent" },
+        "Cams": { "$className": "RemoteEvent" }
       }
     },
 

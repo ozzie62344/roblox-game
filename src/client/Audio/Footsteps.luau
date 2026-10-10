@@ -1,6 +1,7 @@
--- Footsteps, jumps and landings for every character, including your own.
+-- Footsteps, jumps and landings for every character, including your own (yours quieter).
 -- Sprinting is loud and carries far, walking is medium, crouching is nearly silent,
--- sliding makes no steps. This is how you hear people coming.
+-- sliding makes no steps. The floor changes the step (Sounds.Footstep.Surfaces): metal catwalks
+-- clank and carry, floorboards thud, carpet and grass are soft. This is how you hear people coming.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -23,18 +24,82 @@ type Tracker = {
 	lastVerticalSpeed: number,
 }
 
-local trackers: { [Model]: Tracker } = setmetatable({}, { __mode = "k" }) :: any
+-- (a plain table, cleaned up below: Roblox can drop an Instance key from a weak table while the
+-- character still exists, which would restart its step count)
+local trackers: { [Model]: Tracker } = {}
 
-local function isGrounded(character: Model, root: BasePart, humanoid: Humanoid): boolean
+-- What's under the character's feet (nil = in the air)
+local function groundUnder(character: Model, root: BasePart, humanoid: Humanoid): RaycastResult?
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	params.FilterDescendantsInstances = { character }
 	local reach = humanoid.HipHeight + root.Size.Y / 2 + 0.6
-	return Workspace:Raycast(root.Position, Vector3.new(0, -reach, 0), params) ~= nil
+	return Workspace:Raycast(root.Position, Vector3.new(0, -reach, 0), params)
+end
+
+local SURFACES: { [Enum.Material]: string } = {
+	[Enum.Material.Metal] = "Metal",
+	[Enum.Material.DiamondPlate] = "Metal",
+	[Enum.Material.CorrodedMetal] = "Metal",
+	[Enum.Material.Foil] = "Metal",
+	[Enum.Material.Wood] = "Wood",
+	[Enum.Material.WoodPlanks] = "Wood",
+	[Enum.Material.Carpet] = "Soft",
+	[Enum.Material.Fabric] = "Soft",
+	[Enum.Material.Rubber] = "Soft",
+	[Enum.Material.Grass] = "Soft",
+	[Enum.Material.LeafyGrass] = "Soft",
+	[Enum.Material.Ground] = "Soft",
+	[Enum.Material.Mud] = "Soft",
+	[Enum.Material.Sand] = "Soft",
+	[Enum.Material.Snow] = "Soft",
+	[Enum.Material.Pebble] = "Gravel",
+	[Enum.Material.Cobblestone] = "Gravel",
+	[Enum.Material.Salt] = "Gravel",
+}
+
+-- Carpets, tiles and marble are thin looks-only layers over the floorboards (the map's "Shell"
+-- folder), which rays can't see: keep a list of them per map and check the feet against it
+type Finish = { x1: number, x2: number, z1: number, z2: number, top: number, material: Enum.Material }
+local cachedShell: Instance? = nil -- the current map's (one map at a time)
+local cachedFinishes: { Finish } = {}
+
+local function finishAt(feet: Vector3): Enum.Material?
+	local map = Workspace:FindFirstChild("Map")
+	local shell = map and map:FindFirstChild("Shell")
+	if not shell then
+		return nil
+	end
+	if shell ~= cachedShell then
+		cachedShell = shell
+		cachedFinishes = {}
+		for _, part in shell:GetChildren() do
+			if part:IsA("BasePart") and part.Size.Y <= 0.1 and string.sub(part.Name, -5) == "Floor" then
+				local half = part.Size / 2
+				table.insert(cachedFinishes, { x1 = part.Position.X - half.X, x2 = part.Position.X + half.X, z1 = part.Position.Z - half.Z, z2 = part.Position.Z + half.Z, top = part.Position.Y + half.Y, material = part.Material })
+			end
+		end
+	end
+	for _, f in cachedFinishes do
+		if feet.X >= f.x1 and feet.X <= f.x2 and feet.Z >= f.z1 and feet.Z <= f.z2 and math.abs(feet.Y - f.top) < 1.5 then
+			return f.material
+		end
+	end
+	return nil
+end
+
+local function surfaceOf(ground: RaycastResult, feet: Vector3): string
+	local material = finishAt(feet) or ground.Material
+	return SURFACES[material] or "Hard"
 end
 
 local function update(dt: number)
 	local config = Sounds.Footstep
+	for character in trackers do
+		if not character.Parent then
+			trackers[character] = nil
+		end
+	end
 	for _, player in Players:GetPlayers() do
 		local character = player.Character
 		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
@@ -51,7 +116,8 @@ local function update(dt: number)
 
 		local velocity = root.AssemblyLinearVelocity
 		local speed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
-		local grounded = isGrounded(character, root, humanoid)
+		local ground = groundUnder(character, root, humanoid)
+		local grounded = ground ~= nil
 		local feet = root.Position - Vector3.new(0, humanoid.HipHeight + root.Size.Y / 2, 0)
 
 		-- Ghost Step: no sounds at all
@@ -91,15 +157,31 @@ local function update(dt: number)
 		tracker.distance += speed * dt
 		if tracker.distance >= stride then
 			tracker.distance = 0
+			local surface = config.Surfaces[surfaceOf(ground :: RaycastResult, feet)]
+			local own = player == Players.LocalPlayer
+			volume *= surface.Volume * (if own then config.OwnVolumeScale else 1)
+			range *= surface.Range
+			local pitch = surface.Pitch * random:NextNumber(0.92, 1.08)
 			Sound3D.Play(config.Id, feet, {
 				volume = volume,
 				range = range,
-				pitch = random:NextNumber(0.9, 1.1),
+				pitch = pitch,
+				treble = surface.Treble,
+				bass = surface.Bass,
 				-- The built-in sound is a loop of several steps; play just one
 				duration = config.Duration,
 				-- Your own steps don't need the wall check
-				muffle = player ~= Players.LocalPlayer,
+				muffle = not own,
 			})
+			if surface.Layer then
+				Sound3D.Play(Sounds.Pick(surface.Layer), feet, {
+					volume = volume * surface.LayerVolume,
+					range = range,
+					pitch = random:NextNumber(1.3, 1.6), -- (a light ring, not a bang)
+					duration = 0.25,
+					muffle = not own,
+				})
+			end
 		end
 	end
 end

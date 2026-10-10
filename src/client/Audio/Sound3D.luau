@@ -1,5 +1,6 @@
--- Plays positional sounds with a clear audible range, muffled when a wall is between
--- the sound and your camera (like hearing someone through a wall in Siege).
+-- Plays positional sounds with a clear audible range, muffled by what's between the sound and
+-- your camera (like hearing someone through a wall in Siege): each wall makes it quieter and
+-- duller, and a floor / ceiling in the way turns it into a deep thump from above or below.
 
 local Debris = game:GetService("Debris")
 local Players = game:GetService("Players")
@@ -17,9 +18,13 @@ export type Options = {
 	pitch: number?,
 	muffle: boolean?, -- check for walls (default true)
 	duration: number?, -- cut the sound off after this many seconds
+	treble: number?, -- tone in dB (footstep surfaces)
+	bass: number?,
 }
 
-local function isOccluded(position: Vector3): boolean
+-- How many walls (up to Sounds.MaxWalls) are between your camera and `position`, and whether one
+-- of them is a floor or ceiling
+function Sound3D.Obstruction(position: Vector3): (number, boolean)
 	local camera = Workspace.CurrentCamera
 	local ignore: { Instance } = { camera }
 	for _, player in Players:GetPlayers() do
@@ -38,7 +43,44 @@ local function isOccluded(position: Vector3): boolean
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	params.FilterDescendantsInstances = ignore
 	local from = camera.CFrame.Position
-	return Workspace:Raycast(from, position - from, params) ~= nil
+	local walls, throughFloor = 0, false
+	-- Step through one surface at a time (a ray that starts inside a part doesn't hit it again)
+	while walls < Sounds.MaxWalls do
+		local toSound = position - from
+		if toSound.Magnitude < 0.1 then
+			break
+		end
+		local hit = Workspace:Raycast(from, toSound, params)
+		if not hit then
+			break
+		end
+		walls += 1
+		throughFloor = throughFloor or math.abs(hit.Normal.Y) > 0.7
+		from = hit.Position + toSound.Unit * 0.05
+	end
+	return walls, throughFloor
+end
+
+-- Make `sound` sound like it's behind `walls` walls (and a floor). Replaces any earlier muffle.
+function Sound3D.Muffle(sound: Sound, walls: number, throughFloor: boolean)
+	local eq = sound:FindFirstChild("Muffle") :: EqualizerSoundEffect?
+	if walls == 0 then
+		if eq then
+			eq:Destroy()
+		end
+		return
+	end
+	if not eq then
+		eq = Instance.new("EqualizerSoundEffect")
+		eq.Name = "Muffle"
+		eq.Parent = sound
+	end
+	local muffle = eq :: EqualizerSoundEffect
+	if throughFloor then
+		muffle.HighGain, muffle.MidGain, muffle.LowGain = -32, -12, 5 -- deep thump from upstairs / downstairs
+	else
+		muffle.HighGain, muffle.MidGain, muffle.LowGain = -8 - 10 * walls, -3 - 3 * walls, 2
+	end
 end
 
 function Sound3D.Play(soundId: string, position: Vector3, options: Options?)
@@ -65,13 +107,16 @@ function Sound3D.Play(soundId: string, position: Vector3, options: Options?)
 	sound.RollOffMinDistance = 4
 	sound.RollOffMaxDistance = range
 
-	if opts.muffle ~= false and isOccluded(position) then
-		sound.Volume *= Sounds.MuffleVolumeScale
-		local eq = Instance.new("EqualizerSoundEffect")
-		eq.HighGain = -25
-		eq.MidGain = -8
-		eq.LowGain = 2
-		eq.Parent = sound
+	if opts.treble or opts.bass then
+		local tone = Instance.new("EqualizerSoundEffect")
+		tone.HighGain = opts.treble or 0
+		tone.LowGain = opts.bass or 0
+		tone.Parent = sound
+	end
+	if opts.muffle ~= false then
+		local walls, throughFloor = Sound3D.Obstruction(position)
+		sound.Volume *= Sounds.MuffleVolumeScale ^ walls
+		Sound3D.Muffle(sound, walls, throughFloor)
 	end
 
 	sound.Parent = attachment

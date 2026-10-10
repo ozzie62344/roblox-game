@@ -280,6 +280,7 @@ local function build()
 	heading(panel, "MAP (ends any match)", 26)
 	choiceGrid(panel, 27, {
 		{ value = "House", label = "House" },
+		{ value = "Warehouse", label = "Warehouse" },
 		{ value = "TestArena", label = "Test Arena" },
 	}, function()
 		return MatchState:GetAttribute("Map") or "House"
