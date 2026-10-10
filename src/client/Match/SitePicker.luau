@@ -21,6 +21,7 @@ local PICKED_COLOR = Color3.fromRGB(50, 110, 220)
 local bar: Frame
 local row: Frame
 local buttons: { [string]: TextButton } = {}
+local builtFrom = -1 -- how many sites the buttons were made from
 
 local function shouldShow(): boolean
 	local attackTeam = MatchState:GetAttribute("AttackTeam")
@@ -136,11 +137,19 @@ local function update()
 		if bar.Visible then
 			bar.Visible = false
 			clearButtons() -- the next round may be on a fresh map
+			builtFrom = -1
 		end
 		return
 	end
-	if next(buttons) == nil then
-		makeButtons() -- (the map can arrive a moment after the phase changes)
+	-- The map streams in (StreamingEnabled): far-off sites arrive a few seconds after the phase
+	-- changes, so remake the buttons whenever more of them show up
+	local map = Workspace:FindFirstChild("Map")
+	local objectives = map and map:FindFirstChild("Objectives")
+	local siteCount = if objectives then #objectives:GetChildren() else 0
+	if siteCount ~= builtFrom then
+		clearButtons()
+		makeButtons()
+		builtFrom = siteCount
 	end
 	bar.Visible = next(buttons) ~= nil
 	local picked = MatchState:GetAttribute("SitePair")

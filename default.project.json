@@ -31,13 +31,27 @@
         "LookPitch": { "$className": "UnreliableRemoteEvent" },
         "DevAction": { "$className": "RemoteEvent" },
         "Destruction": { "$className": "RemoteEvent" },
-        "PickSite": { "$className": "RemoteEvent" }
+        "PickSite": { "$className": "RemoteEvent" },
+        "Drone": { "$className": "RemoteEvent" },
+        "SetRappel": { "$className": "RemoteEvent" },
+        "Queue": { "$className": "RemoteEvent" },
+        "VoteMap": { "$className": "RemoteEvent" }
       }
+    },
+
+    "ReplicatedFirst": {
+      "$path": "src/first"
     },
 
     "ServerScriptService": {
       "Server": {
         "$path": "src/server"
+      }
+    },
+
+    "Workspace": {
+      "$properties": {
+        "StreamingEnabled": false
       }
     },
 

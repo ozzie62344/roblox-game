@@ -48,7 +48,7 @@ local Sounds = {
 		Pitch = 0.55,
 	},
 
-	-- Planted charge beeping (beeps speed up as it gets close to detonating).
+	-- Planted defuser beeping (beeps speed up as it gets close to defusing the bomb).
 	-- Placeholder: swap in a real beep from the Toolbox if this one doesn't play.
 	ChargeBeep = {
 		Id = "rbxasset://sounds/electronicpingshort.wav",

@@ -1,6 +1,6 @@
 -- LOBBY — where everyone waits between matches, in third person (so you can see your own
 -- character). It floats high above the play area so it never overlaps a map.
--- Later this is where map / mode voting will happen (the screens on the north wall).
+-- You queue for a match from here with the PLAY menu (client MainMenu, server Matchmaker).
 --
 --   ┌──────────────────────────────── north (screens) ─────────────────────────────┐
 --   │  couches                                                         couches     │
@@ -102,9 +102,9 @@ function Lobby.Build(): Model
 	end
 
 	-- Screens on the north wall (voting will go here later)
-	screen(map, at(0, 10, -HALF_Z + 0.6), 26, "LOBBY", "WAITING FOR THE NEXT MATCH")
-	screen(map, at(-28, 9, -HALF_Z + 0.6), 12, "MAPS", "VOTING SOON")
-	screen(map, at(28, 9, -HALF_Z + 0.6), 12, "MODES", "VOTING SOON")
+	screen(map, at(0, 10, -HALF_Z + 0.6), 26, "BREACH ROULETTE", "PRESS PLAY TO FIND A MATCH")
+	screen(map, at(-28, 9, -HALF_Z + 0.6), 12, "MODES", "1v1 · 2v2 · 3v3 · 4v4")
+	screen(map, at(28, 9, -HALF_Z + 0.6), 12, "MAPS", "VOTED IN EVERY MATCH")
 
 	-- Lounge corners
 	couch(map, at(-32, 0, -22), true)

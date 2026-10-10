@@ -261,8 +261,8 @@ function MapBuilder.RoomWall(self: Builder, style: Style, x1: number, z1: number
 end
 
 -- Straight flight filling x1..x2, z1..z2, climbing from y1 to y2 toward `toward` ("+X", "-X",
--- "+Z" or "-Z"). The steps are mostly for looks: you walk on an invisible wedge through the middle
--- of every tread, which also fills the space under the flight (nobody walks or shoots under it).
+-- "+Z" or "-Z"). The steps are mostly for looks: you walk on an invisible wedge running just over
+-- the treads, which also fills the space under the flight (nobody walks or shoots under it).
 function MapBuilder.Stairs(self: Builder, x1: number, z1: number, x2: number, z2: number, y1: number, y2: number, toward: string, color: Color3, material: Enum.Material?)
 	local dir = DIRECTIONS[toward]
 	local alongZ = dir.X == 0
@@ -280,9 +280,11 @@ function MapBuilder.Stairs(self: Builder, x1: number, z1: number, x2: number, z2
 	end
 	local wedge = Instance.new("WedgePart")
 	wedge.Name = "StairRamp"
-	wedge.Size = Vector3.new(width, rise, run)
-	-- Half a tread back so its slope runs through the middle of every tread, turned to climb forward
-	wedge.CFrame = frame * CFrame.new(0, rise / 2, -(run / 2 - tread / 2)) * CFrame.Angles(0, math.pi, 0)
+	-- From half a tread before the first step up to the front edge of the (solid) top step, so the
+	-- slope meets it flush: no lip at the top for a drone to catch on. Turned to climb forward.
+	local length = run - tread / 2
+	wedge.Size = Vector3.new(width, rise, length)
+	wedge.CFrame = frame * CFrame.new(0, rise / 2, -(run - 1.5 * tread) / 2) * CFrame.Angles(0, math.pi, 0)
 	wedge.Anchored = true
 	wedge.Transparency = 1
 	wedge.Parent = self.geometry
@@ -304,9 +306,10 @@ function MapBuilder.Railing(self: Builder, a: Vector3, b: Vector3, color: Color3
 		local p = a:Lerp(b, i / count)
 		cosmetic(self:Part(if post then "Post" else "Baluster", Vector3.new(width, height, width), CFrame.new(p + up * height / 2), railColor, Enum.Material.Wood))
 	end
+	-- (MapService puts guards in a collision group that only characters bump into: CanQuery =
+	-- false does nothing on a part that collides, so that's what keeps bullets going through)
 	local guard = self:Part("RailGuard", Vector3.new(0.3, RAIL_HEIGHT, length), CFrame.lookAt((a + b) / 2, b) * CFrame.new(0, RAIL_HEIGHT / 2, 0), railColor)
 	guard.Transparency = 1
-	guard.CanQuery = false
 	guard.CanTouch = false
 end
 

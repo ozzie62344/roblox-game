@@ -1,6 +1,12 @@
 -- Weapon stats. Shared so the client (feel/effects) and server (validation/damage) agree.
 -- The loadout system picks from every weapon in this list.
 --
+-- Balance (100 health, Siege rule: a headshot kills with anything but shotgun pellets). Body
+-- shots to kill up close / time to kill: SMG 5 / 0.27 s, Rifle 4 / 0.28 s, LMG 4 / 0.30 s,
+-- Autopistol 7 / 0.33 s, Marksman 3 / 0.40 s, Revolver 2 / 0.46 s, Sniper 2 / 1.2 s, Shotgun
+-- one shot inside ~8 studs. Range is the trade-off: SMG / Autopistol / Shotgun fall off fast,
+-- Rifle / LMG hold up to mid range, Marksman / Sniper barely fall off at all.
+--
 -- Sounds: FireSound / TailSound / ReloadSound name a set in Sounds.luau (Sets); a random one from the set plays.
 
 -- First-person looks: client/Combat/GunModels builds each weapon's detailed model by name.
@@ -60,19 +66,19 @@ local Weapons: { [string]: Weapon } = {
 		Name = "Rifle",
 		Description = "Reliable all-rounder.",
 		Automatic = true,
-		RPM = 720,
+		RPM = 650,
 		Damage = 25, -- body shots: 4 to kill
 		Pellets = 1,
 		PelletSpread = 0,
 		HeadshotDamage = 102, -- headshots are lethal, Siege-style
-		FalloffStart = 60,
-		FalloffEnd = 150,
+		FalloffStart = 50,
+		FalloffEnd = 130,
 		MinDamageScale = 0.7,
 		Range = 500,
 		MagazineSize = 30,
 		ReloadTime = 2.2,
 
-		HipSpread = 1.2,
+		HipSpread = 1.4,
 		AdsSpread = 0.1,
 		MoveSpreadBonus = 1.2,
 		AirSpreadBonus = 4,
@@ -82,7 +88,7 @@ local Weapons: { [string]: Weapon } = {
 		Scope = false,
 
 		-- Steady climb that drifts right
-		RecoilUp = 0.22,
+		RecoilUp = 0.25,
 		RecoilSide = 0.06,
 		RecoilDrift = 0.06,
 		RecoilMax = 3.5,
@@ -106,18 +112,18 @@ local Weapons: { [string]: Weapon } = {
 		Description = "Shreds up close, weak at range.",
 		Automatic = true,
 		RPM = 900,
-		Damage = 16,
+		Damage = 20, -- 5 to kill: a hair faster than the rifle up close
 		Pellets = 1,
 		PelletSpread = 0,
-		HeadshotDamage = 55,
-		FalloffStart = 25,
-		FalloffEnd = 70,
-		MinDamageScale = 0.6,
+		HeadshotDamage = 102,
+		FalloffStart = 20,
+		FalloffEnd = 55,
+		MinDamageScale = 0.5,
 		Range = 300,
 		MagazineSize = 32,
 		ReloadTime = 1.8,
 
-		HipSpread = 1.6,
+		HipSpread = 1.0, -- better hip fire than the rifle
 		AdsSpread = 0.35,
 		MoveSpreadBonus = 0.8,
 		AirSpreadBonus = 3,
@@ -150,14 +156,14 @@ local Weapons: { [string]: Weapon } = {
 		Name = "Shotgun",
 		Description = "8 pellets. One-shots up close.",
 		Automatic = false,
-		RPM = 70,
-		Damage = 10, -- per pellet
+		RPM = 75,
+		Damage = 15, -- per pellet: 7 of 8 kill
 		Pellets = 8,
-		PelletSpread = 4.5,
-		HeadshotDamage = 21, -- per pellet
-		FalloffStart = 10,
-		FalloffEnd = 35,
-		MinDamageScale = 0.3,
+		PelletSpread = 4.2,
+		HeadshotDamage = 28, -- per pellet
+		FalloffStart = 8,
+		FalloffEnd = 28,
+		MinDamageScale = 0.25,
 		Range = 120,
 		MagazineSize = 6,
 		ReloadTime = 2.6,
@@ -196,8 +202,8 @@ local Weapons: { [string]: Weapon } = {
 		Name = "Sniper",
 		Description = "Scoped. Headshots kill at any range.",
 		Automatic = false,
-		RPM = 45,
-		Damage = 70,
+		RPM = 50,
+		Damage = 80, -- two body shots (one if they're already hurt)
 		Pellets = 1,
 		PelletSpread = 0,
 		HeadshotDamage = 285,
@@ -214,7 +220,7 @@ local Weapons: { [string]: Weapon } = {
 		AirSpreadBonus = 6,
 		CrouchSpreadScale = 0.7,
 		AdsFovScale = 0.3,
-		AdsTime = 0.45,
+		AdsTime = 0.5,
 		Scope = true,
 
 		-- Huge kick, slow to settle
@@ -240,19 +246,19 @@ local Weapons: { [string]: Weapon } = {
 
 	Revolver = {
 		Name = "Revolver",
-		Description = "Hard-hitting, accurate, 6 shots.",
+		Description = "Two body shots up close. 6 rounds.",
 		Automatic = false,
-		RPM = 160,
-		Damage = 36,
+		RPM = 130,
+		Damage = 50,
 		Pellets = 1,
 		PelletSpread = 0,
 		HeadshotDamage = 120,
-		FalloffStart = 40,
-		FalloffEnd = 100,
-		MinDamageScale = 0.7,
+		FalloffStart = 30,
+		FalloffEnd = 80,
+		MinDamageScale = 0.6,
 		Range = 400,
 		MagazineSize = 6,
-		ReloadTime = 2.2,
+		ReloadTime = 2.4,
 
 		HipSpread = 0.9,
 		AdsSpread = 0.1,
@@ -281,6 +287,142 @@ local Weapons: { [string]: Weapon } = {
 		TailSound = "GunTail",
 		FirePitch = 0.85,
 		FireVolume = 1.1,
+		ReloadSound = "GunFoley",
+	},
+
+	LMG = {
+		Name = "LMG",
+		Description = "75-round belt. Slow to aim and reload.",
+		Automatic = true,
+		RPM = 600,
+		Damage = 25,
+		Pellets = 1,
+		PelletSpread = 0,
+		HeadshotDamage = 102,
+		FalloffStart = 60,
+		FalloffEnd = 160,
+		MinDamageScale = 0.75,
+		Range = 500,
+		MagazineSize = 75,
+		ReloadTime = 4.2,
+
+		HipSpread = 2.2,
+		AdsSpread = 0.25,
+		MoveSpreadBonus = 2,
+		AirSpreadBonus = 5,
+		CrouchSpreadScale = 0.6, -- settle in and it's accurate
+		AdsFovScale = 0.75,
+		AdsTime = 0.42,
+		Scope = false,
+
+		-- Slow, heavy climb that wanders right the longer you hold it
+		RecoilUp = 0.2,
+		RecoilSide = 0.1,
+		RecoilDrift = 0.08,
+		RecoilMax = 4,
+		RecoilRecover = 8,
+		RecoilRoll = 0.5,
+		ViewKick = 0.04,
+
+		AdsSensitivity = 0.65,
+
+		Look = {
+			Color = Color3.fromRGB(58, 62, 50), -- olive polymer furniture and ammo box
+		},
+		FireSound = "GunShot",
+		FirePitch = 0.85,
+		FireVolume = 1.15,
+		ReloadSound = "GunFoley",
+	},
+
+	Marksman = {
+		Name = "Marksman",
+		Description = "Semi-auto with a 4x scope. 3 body shots at any range.",
+		Automatic = false,
+		RPM = 300,
+		Damage = 45,
+		Pellets = 1,
+		PelletSpread = 0,
+		HeadshotDamage = 102,
+		FalloffStart = 120,
+		FalloffEnd = 260,
+		MinDamageScale = 0.85,
+		Range = 800,
+		MagazineSize = 15,
+		ReloadTime = 2.6,
+
+		HipSpread = 2.5,
+		AdsSpread = 0.03,
+		MoveSpreadBonus = 2,
+		AirSpreadBonus = 5,
+		CrouchSpreadScale = 0.7,
+		AdsFovScale = 0.55, -- through the prism scope, not a full-screen one
+		AdsTime = 0.34,
+		Scope = false,
+
+		-- A firm kick per shot that settles quickly
+		RecoilUp = 1.2,
+		RecoilSide = 0.15,
+		RecoilDrift = 0.1,
+		RecoilMax = 4,
+		RecoilRecover = 9,
+		RecoilRoll = 1,
+		ViewKick = 0.08,
+
+		AdsSensitivity = 0.5,
+
+		Look = {
+			Color = Color3.fromRGB(150, 128, 96), -- tan stock and grip
+		},
+		FireSound = "GunShot",
+		TailSound = "GunTail",
+		FirePitch = 0.9,
+		FireVolume = 1.15,
+		ReloadSound = "GunFoley",
+	},
+
+	Autopistol = {
+		Name = "Autopistol",
+		Description = "Full-auto pistol. Fastest to aim and reload.",
+		Automatic = true,
+		RPM = 1100,
+		Damage = 15,
+		Pellets = 1,
+		PelletSpread = 0,
+		HeadshotDamage = 102,
+		FalloffStart = 12,
+		FalloffEnd = 40,
+		MinDamageScale = 0.5,
+		Range = 250,
+		MagazineSize = 20,
+		ReloadTime = 1.5,
+
+		HipSpread = 0.9,
+		AdsSpread = 0.5,
+		MoveSpreadBonus = 0.5,
+		AirSpreadBonus = 2,
+		CrouchSpreadScale = 0.8,
+		AdsFovScale = 0.88,
+		AdsTime = 0.16,
+		Scope = false,
+
+		-- Light climb, lots of buzz side to side
+		RecoilUp = 0.16,
+		RecoilSide = 0.3,
+		RecoilDrift = 0.04,
+		RecoilMax = 3,
+		RecoilRecover = 15,
+		RecoilRoll = 0.6,
+		ViewKick = 0.05,
+
+		AdsSensitivity = 0.85,
+
+		Look = {
+			Color = Color3.fromRGB(38, 38, 42), -- black polymer frame
+		},
+		FireSound = "GunShot",
+		FirePitch = 1.35, -- small and snappy
+		FireVolume = 0.7,
 		ReloadSound = "GunFoley",
 	},
 }

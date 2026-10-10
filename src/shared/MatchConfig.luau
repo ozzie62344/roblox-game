@@ -1,11 +1,16 @@
 -- Match and round rules. Times are in seconds.
 
 return {
-	MinPlayers = 2, -- a match starts automatically once this many players are in
 	MaxTeamSize = 4,
 	RoundsToWin = 4,
 
-	StartCountdown = 5, -- "match starting" countdown
+	-- Lobby → match: in the lobby you press PLAY, tick the modes you want and queue (Matchmaker).
+	-- When a queue is full, everyone in it is teleported to a private match server (a reserved
+	-- server of this same place), votes on the map there, plays, and is sent back to a lobby.
+	QueueModes = { "1v1", "2v2", "3v3", "4v4" }, -- players per team = the first number
+	MapVoteTime = 15, -- the map vote is also the countdown before the match starts
+	ArrivalTimeout = 40, -- match server: start anyway if someone still hasn't arrived by then
+
 	PreRoundTime = 5, -- everyone frozen at spawn (Random loadouts)
 	DraftTime = 10, -- frozen pre-round is this long in Draft mode, to pick a loadout
 
@@ -17,19 +22,20 @@ return {
 	-- Map loaded when the server starts ("House" or "TestArena"); the dev panel can switch it
 	DefaultMap = "House",
 
-	-- "AttackDefend" = plant / defuse a charge at site A or B, "Elimination" = last team standing.
-	-- (Lobby voting will choose this later.)
+	-- "AttackDefend" = Siege's Bomb mode: defenders guard a bomb at site A and B, attackers plant
+	-- a defuser on one; "Elimination" = last team standing. (Lobby voting will choose this later.)
 	DefaultGameMode = "AttackDefend",
 	SwapSidesAfterRounds = 3, -- halftime: attackers and defenders switch
 
 	-- Attack / Defend
 	PrepTime = 45, -- defenders set up (barricade, reinforce) while attackers wait in spawn (Siege ranked: 45)
-	PlantTime = 4, -- hold G inside a site
-	DefuseTime = 6, -- hold G next to the planted charge
-	FuseTime = 45, -- seconds from plant to detonation
-	DefuseRange = 5, -- studs from the charge
+	PlantTime = 4, -- attackers: hold G inside a bomb site to plant the defuser
+	DisableTime = 6, -- defenders: hold G next to the planted defuser to disable it
+	DefuserTime = 45, -- seconds from plant until the defuser has defused the bomb (attackers win)
+	DisableRange = 5, -- studs from the defuser
 	-- Defender fortifications (Siege numbers)
 	BarricadeTime = 2.5, -- hold G to board up a doorway / window
+	UnbarricadeTime = 1, -- defenders: hold G on a barricade to take it down (no shooting it apart)
 	ReinforceTime = 4.5, -- hold G to put a steel reinforcement on a soft wall section
 	ReinforcementsPerDefender = 2, -- team pool per round = this × defenders (Siege's original rule)
 	MeleeCooldown = 1.5, -- seconds between knife swings (a stab to the body kills)

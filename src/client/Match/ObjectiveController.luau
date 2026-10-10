@@ -1,9 +1,9 @@
 -- Attack / Defend on the client:
---   • Hold G to plant (attackers, inside a site) or defuse (defenders, next to the charge)
+--   • Hold G to plant the defuser (attackers, inside a bomb site) or disable it (defenders, next to it)
 --   • "HOLD [G]" prompt + progress bar; you're locked in place while doing it
 --   • A / B site markers (only the defended pair's, on maps with several), and a countdown
---     marker on the planted charge
---   • The charge blinks and beeps faster as it gets close to detonating
+--     marker on the planted defuser
+--   • The defuser blinks and beeps faster as it gets close to defusing the bomb
 
 local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
@@ -24,15 +24,16 @@ local player = Players.LocalPlayer
 local ObjectiveController = {}
 
 local SITE_COLOR = Color3.fromRGB(255, 200, 60)
-local BOMB_COLOR = Color3.fromRGB(255, 60, 60)
+local DEFUSER_COLOR = Color3.fromRGB(255, 60, 60)
 local ACTIVE_PHASES = { Prep = true, Action = true, Planted = true, PostRound = true }
 local BUILD_PHASES = { Prep = true, Action = true, Planted = true } -- when defenders can barricade
 local BARRICADE_REACH = 7 -- studs from your eyes to the middle of the doorway / window
 local INTERACTIONS = {
-	Plant = { time = MatchConfig.PlantTime, label = "PLANTING...", color = Color3.fromRGB(255, 60, 60) },
-	Defuse = { time = MatchConfig.DefuseTime, label = "DEFUSING...", color = Color3.fromRGB(90, 170, 255) },
-	Barricade = { time = MatchConfig.BarricadeTime, label = "BARRICADING...", color = Color3.fromRGB(200, 150, 90) },
-	Reinforce = { time = MatchConfig.ReinforceTime, label = "REINFORCING...", color = Color3.fromRGB(150, 160, 175) },
+	Plant = { time = MatchConfig.PlantTime, label = "PLANTING DEFUSER...", prompt = "PLANT THE DEFUSER", color = Color3.fromRGB(255, 60, 60) },
+	Disable = { time = MatchConfig.DisableTime, label = "DISABLING DEFUSER...", prompt = "DISABLE THE DEFUSER", color = Color3.fromRGB(90, 170, 255) },
+	Barricade = { time = MatchConfig.BarricadeTime, label = "BARRICADING...", prompt = "BARRICADE", color = Color3.fromRGB(200, 150, 90) },
+	Unbarricade = { time = MatchConfig.UnbarricadeTime, label = "TAKING IT DOWN...", prompt = "TAKE DOWN THE BARRICADE", color = Color3.fromRGB(200, 150, 90) },
+	Reinforce = { time = MatchConfig.ReinforceTime, label = "REINFORCING...", prompt = "REINFORCE", color = Color3.fromRGB(150, 160, 175) },
 }
 
 local prompt: TextLabel
@@ -40,9 +41,9 @@ local progressBack: Frame
 local progressFill: Frame
 local siteMarkers: { [BasePart]: BillboardGui } = {}
 local siteFloors: { [BasePart]: Model } = {}
-local bombMarker: BillboardGui
-local bombMarkerText: TextLabel
-local bombAnchor: Part
+local defuserMarker: BillboardGui
+local defuserMarkerText: TextLabel
+local defuserAnchor: Part
 local nextBeep = 0
 
 local function isAttackDefend(): boolean
@@ -72,7 +73,8 @@ local function getSites(): { BasePart }
 end
 
 -- Maps with several site pairs: only the pair the defenders picked ("SitePair") is in play, and
--- attackers don't see which until the round goes live. Between matches every site shows.
+-- attackers don't see which until a drone (or one of them) finds it ("SiteFound", DroneService).
+-- Between matches every site shows.
 -- shortcut: the pick is a public MatchState attribute, so a cheater could read it early; send it
 -- only to defenders if that ever matters
 local function isActiveSite(site: BasePart): boolean
@@ -81,8 +83,7 @@ local function isActiveSite(site: BasePart): boolean
 	if pair == nil or picked == nil then
 		return true
 	end
-	local phase = MatchState:GetAttribute("Phase")
-	if myRole() == "Attack" and (phase == "PreRound" or phase == "Prep") then
+	if myRole() == "Attack" and not MatchState:GetAttribute("SiteFound") then
 		return false
 	end
 	return pair == picked
@@ -133,6 +134,33 @@ local function barricadeSlot(): BasePart?
 	return best
 end
 
+-- The barricade you're looking at (close enough to pull down): its doorway / window slot
+local function builtBarricade(): BasePart?
+	local map = Workspace:FindFirstChild("Map")
+	local slots = map and map:FindFirstChild("BarricadeSlots")
+	if not slots then
+		return nil
+	end
+	local camera = Workspace.CurrentCamera.CFrame
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { player.Character :: Model, Workspace.CurrentCamera }
+	local result = Workspace:Raycast(camera.Position, camera.LookVector * BARRICADE_REACH, params)
+	if not result or result.Instance:GetAttribute("Breakable") ~= "Barricade" then
+		return nil
+	end
+	for _, slot in slots:GetChildren() do
+		if slot:IsA("BasePart") and slot.Name == "Slot" and slot:GetAttribute("Built") then
+			local localHit = slot.CFrame:PointToObjectSpace(result.Position)
+			local half = slot.Size / 2 + Vector3.one * 0.3
+			if math.abs(localHit.X) <= half.X and math.abs(localHit.Y) <= half.Y and math.abs(localHit.Z) <= half.Z then
+				return slot
+			end
+		end
+	end
+	return nil
+end
+
 -- The wall section or hatch you're looking at, if it can still be reinforced (FortifyService)
 local function reinforceSlot(): BasePart?
 	local map = Workspace:FindFirstChild("Map")
@@ -161,22 +189,31 @@ local function reinforceSlot(): BasePart?
 	return nil
 end
 
--- What G would do right now ("Plant" / "Defuse" / "Reinforce" / "Barricade"), if anything, and
+-- What G would do right now ("Plant" / "Disable" / "Reinforce" / "Barricade" / "Unbarricade"), if anything, and
 -- the wall section / doorway it's for
+local function teammatePlanting(): boolean
+	for _, other in Players:GetPlayers() do
+		if other ~= player and other:GetAttribute("Interaction") == "Plant" then
+			return true
+		end
+	end
+	return false
+end
+
 local function availableAction(): (string?, BasePart?)
 	local phase = MatchState:GetAttribute("Phase")
 	local root = aliveRoot()
-	if not root or root.Anchored then
+	if not root or root.Anchored or state.droning then
 		return nil, nil
 	end
 	local role = myRole()
-	local bombPosition = MatchState:GetAttribute("BombPosition")
+	local defuserPosition = MatchState:GetAttribute("DefuserPosition")
 	if isAttackDefend() then
-		if role == "Attack" and phase == "Action" and not bombPosition and inSite(root.Position) then
+		if role == "Attack" and phase == "Action" and not defuserPosition and inSite(root.Position) and not teammatePlanting() then
 			return "Plant", nil
-		elseif role == "Defend" and phase == "Planted" and bombPosition then
-			if (root.Position - bombPosition).Magnitude <= MatchConfig.DefuseRange then
-				return "Defuse", nil
+		elseif role == "Defend" and phase == "Planted" and defuserPosition then
+			if (root.Position - defuserPosition).Magnitude <= MatchConfig.DisableRange then
+				return "Disable", nil
 			end
 		end
 	end
@@ -190,6 +227,10 @@ local function availableAction(): (string?, BasePart?)
 		local slot = barricadeSlot()
 		if slot then
 			return "Barricade", slot
+		end
+		local boarded = builtBarricade()
+		if boarded then
+			return "Unbarricade", boarded
 		end
 	end
 	return nil, nil
@@ -252,21 +293,21 @@ local function build()
 	progressFill.BorderSizePixel = 0
 	progressFill.Parent = progressBack
 
-	-- The bomb marker follows an invisible anchor part placed at the charge
-	bombAnchor = Instance.new("Part")
-	bombAnchor.Anchored = true
-	bombAnchor.CanCollide = false
-	bombAnchor.CanQuery = false
-	bombAnchor.CanTouch = false
-	bombAnchor.Transparency = 1
-	bombAnchor.Size = Vector3.one
-	bombMarker, bombMarkerText = marker("", BOMB_COLOR)
-	bombMarker.Size = UDim2.fromOffset(56, 44)
-	bombMarker.StudsOffset = Vector3.new(0, 3, 0)
-	bombMarker.Adornee = bombAnchor
-	bombMarker.Enabled = false
+	-- The countdown marker follows an invisible anchor part placed at the defuser
+	defuserAnchor = Instance.new("Part")
+	defuserAnchor.Anchored = true
+	defuserAnchor.CanCollide = false
+	defuserAnchor.CanQuery = false
+	defuserAnchor.CanTouch = false
+	defuserAnchor.Transparency = 1
+	defuserAnchor.Size = Vector3.one
+	defuserMarker, defuserMarkerText = marker("", DEFUSER_COLOR)
+	defuserMarker.Size = UDim2.fromOffset(56, 44)
+	defuserMarker.StudsOffset = Vector3.new(0, 3, 0)
+	defuserMarker.Adornee = defuserAnchor
+	defuserMarker.Enabled = false
 	-- 3D markers go straight into PlayerGui (they don't draw inside a ScreenGui)
-	bombMarker.Parent = player.PlayerGui
+	defuserMarker.Parent = player.PlayerGui
 end
 
 -- Painted area on the floor showing exactly where you can plant: a faint yellow fill and a
@@ -325,37 +366,37 @@ end
 local function update()
 	local phase = MatchState:GetAttribute("Phase")
 	local attackDefend = isAttackDefend() and ACTIVE_PHASES[phase] == true
-	local bombPosition = MatchState:GetAttribute("BombPosition")
+	local defuserPosition = MatchState:GetAttribute("DefuserPosition")
 	local now = Workspace:GetServerTimeNow()
 
 	-- Sites are shown the whole time you're in Attack / Defend mode (also between rounds, so
-	-- everyone can learn where they are), until the charge is planted
-	updateSiteMarkers(isAttackDefend() and not bombPosition)
+	-- everyone can learn where they are), until the defuser is planted
+	updateSiteMarkers(isAttackDefend() and not defuserPosition)
 
-	-- Planted charge: marker with countdown, blinking light, beeps that speed up
-	if attackDefend and bombPosition then
-		local remaining = (MatchState:GetAttribute("DetonateAt") or now) - now
-		bombAnchor.Position = bombPosition
-		bombAnchor.Parent = Workspace.CurrentCamera
-		bombMarker.Enabled = true
-		bombMarkerText.Text = tostring(math.max(0, math.ceil(remaining)))
+	-- Planted defuser: marker with countdown, blinking light, beeps that speed up
+	if attackDefend and defuserPosition then
+		local remaining = (MatchState:GetAttribute("DefusedAt") or now) - now
+		defuserAnchor.Position = defuserPosition
+		defuserAnchor.Parent = Workspace.CurrentCamera
+		defuserMarker.Enabled = true
+		defuserMarkerText.Text = tostring(math.max(0, math.ceil(remaining)))
 
-		local interval = math.clamp(remaining / MatchConfig.FuseTime, 0.12, 1)
-		local charge = Workspace:FindFirstChild("Charge")
-		local light = charge and charge:FindFirstChild("Light") :: BasePart?
+		local interval = math.clamp(remaining / MatchConfig.DefuserTime, 0.12, 1)
+		local defuser = Workspace:FindFirstChild("Defuser")
+		local light = defuser and defuser:FindFirstChild("Light") :: BasePart?
 		if light then
 			light.Transparency = if (now % interval) < interval / 2 then 0 else 0.8
 		end
 		if now >= nextBeep and remaining > 0 then
 			nextBeep = now + interval
-			Sound3D.Play(Sounds.ChargeBeep.Id, bombPosition, { volume = Sounds.ChargeBeep.Volume, range = Sounds.ChargeBeep.Range })
+			Sound3D.Play(Sounds.ChargeBeep.Id, defuserPosition, { volume = Sounds.ChargeBeep.Volume, range = Sounds.ChargeBeep.Range })
 		end
 	else
-		bombMarker.Enabled = false
-		bombAnchor.Parent = nil
+		defuserMarker.Enabled = false
+		defuserAnchor.Parent = nil
 	end
 
-	-- Plant / defuse / barricade in progress: progress bar, and locked in place
+	-- Plant / disable / barricade in progress: progress bar, and locked in place
 	local interaction = player:GetAttribute("Interaction")
 	local endsAt = player:GetAttribute("InteractEndsAt")
 	state.interacting = interaction ~= nil
@@ -373,7 +414,7 @@ local function update()
 	local action = availableAction()
 	prompt.Visible = action ~= nil
 	if action then
-		prompt.Text = `HOLD [G] TO {string.upper(action)}`
+		prompt.Text = `HOLD [G] TO {INTERACTIONS[action].prompt}`
 		if action == "Reinforce" and not player.Neutral then
 			prompt.Text ..= ` ({MatchState:GetAttribute("Reinforcements") or 0} LEFT)`
 		end

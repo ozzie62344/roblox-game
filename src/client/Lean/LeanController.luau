@@ -1,5 +1,6 @@
--- Hold Q / E to lean left / right. Shifts and tilts the camera (CameraEffects applies it)
--- and tells the server so other players see your body lean.
+-- Q / E lean left / right: tap to lean and tap again to stop, or hold (state.leanToggle, switched
+-- in the dev panel). Shifts and tilts the camera (CameraEffects applies it) and tells the server
+-- so other players see your body lean.
 
 local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
@@ -16,8 +17,8 @@ local player = Players.LocalPlayer
 
 local LeanController = {}
 
-local leftHeld = false
-local rightHeld = false
+local leftOn = false
+local rightOn = false
 local sentLean = 0
 
 -- Keep the camera from poking through walls when leaning next to them
@@ -42,7 +43,7 @@ local function maxOffsetToward(direction: number): number
 end
 
 local function update(dt: number)
-	local target = (if rightHeld then 1 else 0) - (if leftHeld then 1 else 0)
+	local target = (if rightOn then 1 else 0) - (if leftOn then 1 else 0)
 	-- Can't lean mid-slide, mid-dash, or while spectating
 	if state.sliding or state.dashing or state.spectating then
 		target = 0
@@ -61,19 +62,34 @@ local function update(dt: number)
 	end
 end
 
+-- side: -1 = Q (left), 1 = E (right). Toggle mode: a tap flips that side on (and the other off).
+local function leanInput(side: number, inputState: Enum.UserInputState)
+	local down = inputState == Enum.UserInputState.Begin
+	if not state.leanToggle then
+		if side < 0 then
+			leftOn = down
+		else
+			rightOn = down
+		end
+	elseif down then
+		local wasOn = if side < 0 then leftOn else rightOn
+		leftOn, rightOn = side < 0 and not wasOn, side > 0 and not wasOn
+	end
+end
+
 function LeanController.Start()
 	ContextActionService:BindAction("LeanLeft", function(_, inputState)
-		leftHeld = inputState == Enum.UserInputState.Begin
+		leanInput(-1, inputState)
 		return Enum.ContextActionResult.Sink
 	end, false, Enum.KeyCode.Q, Enum.KeyCode.DPadLeft)
 
 	ContextActionService:BindAction("LeanRight", function(_, inputState)
-		rightHeld = inputState == Enum.UserInputState.Begin
+		leanInput(1, inputState)
 		return Enum.ContextActionResult.Sink
 	end, false, Enum.KeyCode.E, Enum.KeyCode.DPadRight)
 
 	player.CharacterAdded:Connect(function()
-		leftHeld, rightHeld = false, false
+		leftOn, rightOn = false, false
 		state.lean, state.leanOffset = 0, 0
 	end)
 

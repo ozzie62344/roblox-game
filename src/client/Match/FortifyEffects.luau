@@ -66,7 +66,8 @@ local function update()
 		local folder = map and map:FindFirstChild(folderName)
 		for _, slot in if folder then folder:GetChildren() else {} do
 			local endsAt = slot:GetAttribute("BuildEndsAt")
-			if slot:IsA("BasePart") and typeof(endsAt) == "number" then
+			-- (taking a barricade down, "Unbarricade", has nothing going up)
+			if slot:IsA("BasePart") and typeof(endsAt) == "number" and LOOKS[slot:GetAttribute("BuildKind")] then
 				local entry = ghosts[slot]
 				if not entry then
 					entry = { part = newGhost(slot), endsAt = endsAt }

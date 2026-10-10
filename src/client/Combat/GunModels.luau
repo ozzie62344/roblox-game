@@ -742,12 +742,339 @@ local function buildRevolver(gun: Model, color: Color3): Part
 	return body
 end
 
+---------------------------------------------------------------------------------------------
+-- LMG: M249 style with a box of belted ammo, a hinged feed cover (the reflex sight rides on
+-- it), heat shield, side-folded carry handle and a folded bipod
+---------------------------------------------------------------------------------------------
+local function buildLmg(gun: Model, color: Color3): Part
+	local furniture = GunModels.Finish(color, Enum.Material.Plastic)
+	local furnitureDark = GunModels.Finish(color:Lerp(Color3.new(0, 0, 0), 0.25), Enum.Material.Plastic)
+	local optic = GunModels.Finish(Color3.fromRGB(40, 41, 44), Enum.Material.SmoothPlastic)
+
+	-- Receiver (the Body): a tall stamped box, belt port on the left, ejection port underneath
+	local body = box(gun, "Body", Vector3.new(0.13, 0.17, 0.8), CFrame.new(), STEEL)
+	box(gun, "FeedPort", Vector3.new(0.004, 0.05, 0.14), CFrame.new(-0.0655, 0.035, -0.12), HOLE)
+	box(gun, "EjectionPort", Vector3.new(0.09, 0.004, 0.16), CFrame.new(0.01, -0.0855, -0.02), HOLE)
+	for i = 0, 3 do
+		pin(gun, "Rivet", 0.134, 0.016, Vector3.new(0, -0.05, -0.3 + i * 0.2), DARK_STEEL)
+	end
+	-- Charging handle in its slot on the right
+	box(gun, "ChargingSlot", Vector3.new(0.004, 0.015, 0.3), CFrame.new(0.0655, 0.02, -0.2), HOLE)
+	box(gun, "ChargingHandle", Vector3.new(0.05, 0.025, 0.04), CFrame.new(0.09, 0.02, -0.28), STEEL)
+	box(gun, "ChargingLatch", Vector3.new(0.025, 0.05, 0.05), CFrame.new(0.125, 0.02, -0.28), POLYMER)
+
+	-- Feed cover, hinged at its front: everything named FeedCover... swings up with it on reloads
+	box(gun, "FeedCover", Vector3.new(0.136, 0.045, 0.44), CFrame.new(0, 0.1075, -0.06), STEEL)
+	box(gun, "FeedCoverLatch", Vector3.new(0.07, 0.035, 0.04), CFrame.new(0, 0.105, 0.18), DARK_STEEL)
+	rail(gun, "FeedCoverRail", -0.26, 0.1, 0.13, DARK_STEEL)
+	-- Reflex sight: base, two posts and a hood framing a glass window with a red dot
+	local dotY = 0.225
+	box(gun, "FeedCoverSightBase", Vector3.new(0.09, 0.03, 0.16), CFrame.new(0, 0.17, -0.06), optic)
+	for _, side in { -1, 1 } do
+		box(gun, "FeedCoverSightPost", Vector3.new(0.016, 0.09, 0.04), CFrame.new(side * 0.05, dotY, -0.09), optic)
+	end
+	box(gun, "FeedCoverSightHood", Vector3.new(0.116, 0.016, 0.05), CFrame.new(0, dotY + 0.053, -0.09), optic)
+	box(gun, "FeedCoverSightGlass", Vector3.new(0.084, 0.09, 0.004), CFrame.new(0, dotY, -0.1), LENS)
+	GunModels.Ball(gun, "FeedCoverSightDot", 0.008, Vector3.new(0, dotY, -0.095), RED_DOT)
+	addSight(body, Vector3.new(0, dotY, -0.09), 0.78)
+
+	-- Polymer handguard under the barrel (the left hand holds it)
+	box(gun, "Handguard", Vector3.new(0.15, 0.12, 0.46), CFrame.new(0, -0.05, -0.66), furniture)
+	tube(gun, "HandguardBelly", 0.46, 0.15, Vector3.new(0, -0.07, -0.66), furniture)
+	for _, side in { -1, 1 } do
+		for i = 0, 1 do
+			box(gun, "HandguardGroove", Vector3.new(0.004, 0.012, 0.34), CFrame.new(side * 0.076, -0.03 - i * 0.04, -0.66), HOLE)
+		end
+	end
+
+	-- Barrel under a vented heat shield, gas tube and block, front sight, flash hider
+	tube(gun, "BarrelExtension", 0.1, 0.1, Vector3.new(0, 0.02, -0.45), STEEL)
+	tube(gun, "Barrel", 1.1, 0.07, Vector3.new(0, 0.02, -1.05), STEEL)
+	box(gun, "HeatShield", Vector3.new(0.09, 0.025, 0.5), CFrame.new(0, 0.07, -0.72), DARK_STEEL)
+	for i = 0, 3 do
+		box(gun, "HeatShieldVent", Vector3.new(0.06, 0.004, 0.04), CFrame.new(0, 0.0835, -0.55 - i * 0.11), HOLE)
+	end
+	tube(gun, "GasTube", 0.75, 0.04, Vector3.new(0, -0.055, -0.95), STEEL)
+	box(gun, "GasBlock", Vector3.new(0.06, 0.12, 0.09), CFrame.new(0, -0.02, -1.33), STEEL)
+	box(gun, "FrontSight", Vector3.new(0.025, 0.08, 0.03), CFrame.new(0, 0.085, -1.52), STEEL)
+	tube(gun, "FlashHider", 0.16, 0.085, Vector3.new(0, 0.02, -1.68), STEEL)
+	for i = -1, 1 do
+		local slot = CFrame.new(0, 0.02, -1.7) * CFrame.Angles(0, 0, math.rad(i * 60)) * CFrame.new(0, 0.04, 0)
+		box(gun, "FlashHiderSlot", Vector3.new(0.014, 0.006, 0.09), slot, HOLE)
+	end
+	tube(gun, "Bore", 0.006, 0.034, Vector3.new(0, 0.02, -1.763), HOLE)
+	attach(body, "Muzzle", CFrame.new(0, 0.02, -1.767))
+
+	-- Carry handle clamped to the barrel, folded down to the left (out of the sight picture)
+	box(gun, "HandleClamp", Vector3.new(0.09, 0.05, 0.06), CFrame.new(0, 0.06, -1.0), STEEL)
+	GunModels.Rod(gun, "CarryHandleArm", Vector3.new(-0.03, 0.06, -1.0), Vector3.new(-0.13, 0.02, -1.0), 0.03, STEEL)
+	tube(gun, "CarryHandle", 0.26, 0.05, Vector3.new(-0.14, 0.02, -1.0), furniture)
+
+	-- Bipod folded back under the barrel
+	box(gun, "BipodMount", Vector3.new(0.07, 0.04, 0.07), CFrame.new(0, -0.1, -1.33), STEEL)
+	for _, side in { -1, 1 } do
+		tube(gun, "BipodLeg", 0.42, 0.03, Vector3.new(side * 0.03, -0.12, -1.1), STEEL)
+		box(gun, "BipodFoot", Vector3.new(0.04, 0.03, 0.035), CFrame.new(side * 0.03, -0.12, -0.88), RUBBER)
+	end
+
+	-- Ammo box (the Magazine) clipped under the receiver; the belt (Mag1..4) climbs into the
+	-- left side, so it leaves with the box on reloads
+	box(gun, "Magwell", Vector3.new(0.14, 0.03, 0.22), CFrame.new(0, -0.1, -0.12), STEEL)
+	box(gun, "Magazine", Vector3.new(0.22, 0.3, 0.3), CFrame.new(-0.03, -0.265, -0.12), furniture)
+	box(gun, "MagBase", Vector3.new(0.228, 0.025, 0.308), CFrame.new(-0.03, -0.425, -0.12), furnitureDark)
+	for i = 1, 4 do
+		local at = Vector3.new(-0.13, -0.12, -0.12):Lerp(Vector3.new(-0.075, 0.03, -0.12), (i - 1) / 3)
+		box(gun, `Mag{i}`, Vector3.new(0.035, 0.03, 0.15), CFrame.new(at) * CFrame.Angles(0, 0, math.rad(-50)), BRASS)
+	end
+
+	-- Trigger housing, trigger guard, trigger and pistol grip
+	box(gun, "TriggerHousing", Vector3.new(0.11, 0.07, 0.36), CFrame.new(0, -0.115, 0.2), furniture)
+	box(gun, "TriggerGuardFront", Vector3.new(0.03, 0.08, 0.025), CFrame.new(0, -0.19, 0.07), STEEL)
+	box(gun, "TriggerGuard", Vector3.new(0.03, 0.02, 0.17), CFrame.new(0, -0.235, 0.15), STEEL)
+	local triggerCFrame = CFrame.new(0, -0.185, 0.155) * CFrame.Angles(math.rad(12), 0, 0)
+	box(gun, "Trigger", Vector3.new(0.02, 0.065, 0.022), triggerCFrame, STEEL)
+	attach(body, "Trigger", CFrame.new(0, -0.202, 0.142))
+	local gripTop = CFrame.new(0, -0.15, 0.29) * CFrame.Angles(math.rad(-18), 0, 0)
+	box(gun, "Grip", Vector3.new(0.1, 0.35, 0.16), gripTop * CFrame.new(0, -0.175, 0), furniture)
+	box(gun, "GripBase", Vector3.new(0.104, 0.02, 0.165), gripTop * CFrame.new(0, -0.35, 0), furnitureDark)
+
+	-- Fixed polymer stock with a sloped toe and a thick butt pad
+	box(gun, "StockAdapter", Vector3.new(0.11, 0.12, 0.1), CFrame.new(0, -0.01, 0.45), STEEL)
+	box(gun, "Stock", Vector3.new(0.12, 0.15, 0.5), CFrame.new(0, -0.01, 0.75), furniture)
+	beam(gun, "StockToe", Vector3.new(0, -0.08, 0.52), Vector3.new(0, -0.26, 1.0), 0.11, 0.13, furniture)
+	box(gun, "ButtPad", Vector3.new(0.125, 0.36, 0.04), CFrame.new(0, -0.11, 1.02), RUBBER)
+
+	-- Hands: right on the pistol grip, left under the handguard
+	addGrip(body, "RightGrip", gripTop * CFrame.new(0, -0.165, 0), {
+		RadiusX = 0.05,
+		RadiusZ = 0.08,
+		ThumbAngle = 190,
+		ThumbLift = 0.04,
+		PalmAngle = 25,
+		TriggerFinger = true,
+	})
+	addGrip(body, "LeftGrip", underhandFrame(Vector3.new(0, -0.07, -0.68)), {
+		RadiusX = 0.078,
+		RadiusZ = 0.078,
+		ThumbAngle = 95,
+		ThumbLift = 0.18,
+		PalmAngle = 30,
+	})
+	return body
+end
+
+---------------------------------------------------------------------------------------------
+-- Marksman: SR-25 style semi-auto with a long free-float handguard, straight 15-round mag,
+-- precision stock and a 4x prism scope (a hollow housing you look straight through)
+---------------------------------------------------------------------------------------------
+local PRISM_Y = 0.26 -- height of the prism scope's sight line above the bore (high enough that the rail stays out of view)
+
+local function buildMarksman(gun: Model, color: Color3): Part
+	local anodized = GunModels.Finish(Color3.fromRGB(42, 43, 46), Enum.Material.Metal)
+	local furniture = GunModels.Finish(color, Enum.Material.Plastic)
+	local furnitureDark = GunModels.Finish(color:Lerp(Color3.new(0, 0, 0), 0.2), Enum.Material.Plastic)
+	local housing = GunModels.Finish(Color3.fromRGB(34, 35, 38), Enum.Material.SmoothPlastic)
+	local fiber = GunModels.Finish(Color3.fromRGB(255, 70, 40), Enum.Material.Neon)
+
+	-- Upper receiver (the Body): full-length top rail, ejection port, forward assist, charging handle
+	local body = box(gun, "Body", Vector3.new(0.1, 0.135, 0.76), CFrame.new(), anodized)
+	rail(gun, "UpperRail", -0.38, 0.38, 0.0675, anodized)
+	box(gun, "EjectionPort", Vector3.new(0.006, 0.05, 0.22), CFrame.new(0.0505, 0.002, -0.03), HOLE)
+	GunModels.Rod(gun, "ForwardAssist", Vector3.new(0.04, 0.02, 0.21), Vector3.new(0.09, 0.035, 0.31), 0.042, anodized)
+	box(gun, "ChargingHandle", Vector3.new(0.16, 0.022, 0.035), CFrame.new(0, 0.045, 0.398), anodized)
+	box(gun, "ChargingLatch", Vector3.new(0.035, 0.024, 0.05), CFrame.new(-0.085, 0.045, 0.392), anodized)
+
+	-- Lower receiver, mag well, straight steel magazine, bolt catch (the empty reload slaps it)
+	box(gun, "Lower", Vector3.new(0.11, 0.115, 0.64), CFrame.new(0, -0.123, 0.03), anodized)
+	box(gun, "Magwell", Vector3.new(0.12, 0.08, 0.28), CFrame.new(0, -0.205, -0.14), anodized)
+	magazine(gun, Vector3.new(0, -0.2, -0.14), 0.085, 0.24, { { 0.28, 3 } }, STEEL, POLYMER_DARK)
+	box(gun, "BoltCatch", Vector3.new(0.012, 0.045, 0.05), CFrame.new(-0.06, -0.108, -0.02), anodized)
+	box(gun, "Selector", Vector3.new(0.012, 0.022, 0.065), CFrame.new(-0.061, -0.1, 0.22), STEEL)
+	pin(gun, "FrontPin", 0.116, 0.024, Vector3.new(0, -0.09, -0.26), STEEL)
+	pin(gun, "RearPin", 0.116, 0.024, Vector3.new(0, -0.09, 0.31), STEEL)
+
+	-- Pistol grip, trigger guard and trigger
+	local gripTop = CFrame.new(0, -0.18, 0.225) * CFrame.Angles(math.rad(-18), 0, 0)
+	box(gun, "Grip", Vector3.new(0.1, 0.36, 0.165), gripTop * CFrame.new(0, -0.18, 0), furniture)
+	box(gun, "GripBase", Vector3.new(0.104, 0.02, 0.17), gripTop * CFrame.new(0, -0.355, 0), furnitureDark)
+	box(gun, "TriggerGuard", Vector3.new(0.03, 0.02, 0.16), CFrame.new(0, -0.26, 0.085), anodized)
+	box(gun, "TriggerGuardFront", Vector3.new(0.03, 0.08, 0.025), CFrame.new(0, -0.22, 0.015), anodized)
+	local triggerCFrame = CFrame.new(0, -0.21, 0.09) * CFrame.Angles(math.rad(12), 0, 0)
+	box(gun, "Trigger", Vector3.new(0.02, 0.065, 0.022), triggerCFrame, STEEL)
+	attach(body, "Trigger", CFrame.new(0, -0.227, 0.077))
+
+	-- Precision stock: buffer tube, adjustable cheek riser, sloped toe, thick recoil pad
+	tube(gun, "BufferTube", 0.56, 0.105, Vector3.new(0, -0.01, 0.65), anodized)
+	tube(gun, "CastleNut", 0.03, 0.115, Vector3.new(0, -0.01, 0.395), STEEL)
+	box(gun, "Stock", Vector3.new(0.13, 0.19, 0.5), CFrame.new(0, -0.03, 0.86), furniture)
+	box(gun, "CheekRiser", Vector3.new(0.11, 0.05, 0.3), CFrame.new(0, 0.09, 0.86), furniture)
+	for i = 0, 1 do
+		post(gun, "RiserPost", 0.04, 0.02, Vector3.new(0, 0.05, 0.76 + i * 0.2), STEEL)
+	end
+	beam(gun, "StockToe", Vector3.new(0, -0.1, 0.66), Vector3.new(0, -0.27, 1.11), 0.12, 0.15, furniture)
+	box(gun, "ButtPad", Vector3.new(0.135, 0.42, 0.045), CFrame.new(0, -0.11, 1.135), RUBBER)
+
+	-- Long free-float handguard with a top rail and M-LOK slots
+	tube(gun, "BarrelNut", 0.03, 0.115, Vector3.new(0, -0.005, -0.39), STEEL)
+	tube(gun, "Handguard", 1.0, 0.155, Vector3.new(0, -0.01, -0.9), anodized)
+	tube(gun, "HandguardCap", 0.03, 0.16, Vector3.new(0, -0.01, -1.41), anodized)
+	box(gun, "HandguardSpine", Vector3.new(0.06, 0.02, 1.0), CFrame.new(0, 0.06, -0.9), anodized)
+	rail(gun, "HandguardRail", -1.4, -0.4, 0.0675, anodized)
+	for _, side in { -1, 1 } do
+		for i = 0, 3 do
+			box(gun, "MLokSlot", Vector3.new(0.006, 0.028, 0.11), CFrame.new(side * 0.076, -0.01, -0.6 - i * 0.22), HOLE)
+		end
+	end
+
+	-- Barrel and a three-port muzzle brake
+	tube(gun, "Barrel", 0.42, 0.066, Vector3.new(0, 0, -1.62), STEEL)
+	tube(gun, "MuzzleBrake", 0.17, 0.09, Vector3.new(0, 0, -1.91), STEEL)
+	for _, side in { -1, 1 } do
+		for i = 0, 2 do
+			box(gun, "BrakePort", Vector3.new(0.006, 0.04, 0.03), CFrame.new(side * 0.0455, 0, -1.86 - i * 0.05), HOLE)
+		end
+	end
+	tube(gun, "Bore", 0.006, 0.032, Vector3.new(0, 0, -1.998), HOLE)
+	attach(body, "Muzzle", CFrame.new(0, 0, -2.0))
+
+	-- Prism scope: a mount, then walls, top and bottom around an open window you look through,
+	-- a bigger frame at the front, a rubber eyepiece, two clear lenses and a red chevron
+	local length, back = 0.26, 0.13
+	local front = back - length
+	box(gun, "ScopeMount", Vector3.new(0.08, 0.1, 0.18), CFrame.new(0, 0.145, 0.02), housing)
+	for _, side in { -1, 1 } do
+		box(gun, "ScopeWall", Vector3.new(0.022, 0.13, length), CFrame.new(side * 0.046, PRISM_Y, back - length / 2), housing)
+		box(gun, "ObjectiveSide", Vector3.new(0.025, 0.15, 0.05), CFrame.new(side * 0.0525, PRISM_Y, front - 0.02), housing)
+		box(gun, "EyepieceSide", Vector3.new(0.02, 0.09, 0.03), CFrame.new(side * 0.04, PRISM_Y, back + 0.015), RUBBER)
+	end
+	box(gun, "ScopeTop", Vector3.new(0.114, 0.025, length), CFrame.new(0, PRISM_Y + 0.0525, back - length / 2), housing)
+	box(gun, "ScopeBottom", Vector3.new(0.114, 0.03, length), CFrame.new(0, PRISM_Y - 0.05, back - length / 2), housing)
+	box(gun, "ObjectiveTop", Vector3.new(0.13, 0.03, 0.05), CFrame.new(0, PRISM_Y + 0.06, front - 0.02), housing)
+	box(gun, "ObjectiveBottom", Vector3.new(0.13, 0.03, 0.05), CFrame.new(0, PRISM_Y - 0.06, front - 0.02), housing)
+	box(gun, "EyepieceTop", Vector3.new(0.1, 0.02, 0.03), CFrame.new(0, PRISM_Y + 0.045, back + 0.015), RUBBER)
+	box(gun, "EyepieceBottom", Vector3.new(0.1, 0.02, 0.03), CFrame.new(0, PRISM_Y - 0.045, back + 0.015), RUBBER)
+	box(gun, "ObjectiveLens", Vector3.new(0.08, 0.09, 0.004), CFrame.new(0, PRISM_Y, front - 0.03), LENS)
+	box(gun, "OcularLens", Vector3.new(0.06, 0.07, 0.004), CFrame.new(0, PRISM_Y, back), LENS)
+	-- Red chevron (its tip is the aim point) over a thin black drop line
+	local chevron = CFrame.new(0, PRISM_Y, front + 0.03)
+	for _, side in { -1, 1 } do
+		box(gun, "ReticleChevron", Vector3.new(0.0022, 0.01, 0.002), chevron * CFrame.Angles(0, 0, math.rad(side * 40)) * CFrame.new(0, -0.005, 0), RED_DOT)
+	end
+	box(gun, "ReticleStadia", Vector3.new(0.0012, 0.02, 0.0012), chevron * CFrame.new(0, -0.022, 0), HOLE)
+	-- Fiber-optic strip on top (lights the reticle) and the adjustment turrets
+	box(gun, "FiberOptic", Vector3.new(0.014, 0.01, 0.16), CFrame.new(0, PRISM_Y + 0.07, -0.04), fiber)
+	post(gun, "ElevationTurret", 0.03, 0.05, Vector3.new(0, PRISM_Y + 0.075, 0.08), housing)
+	pin(gun, "WindageTurret", 0.03, 0.05, Vector3.new(0.072, PRISM_Y, 0.02), housing)
+	addSight(body, Vector3.new(0, PRISM_Y, back + 0.005), 0.42)
+
+	-- Hands: right on the pistol grip, left under the handguard
+	addGrip(body, "RightGrip", gripTop * CFrame.new(0, -0.17, 0), {
+		RadiusX = 0.05,
+		RadiusZ = 0.085,
+		ThumbAngle = 190,
+		ThumbLift = 0.04,
+		PalmAngle = 25,
+		TriggerFinger = true,
+	})
+	addGrip(body, "LeftGrip", underhandFrame(Vector3.new(0, -0.01, -1.02)), {
+		RadiusX = 0.078,
+		RadiusZ = 0.078,
+		ThumbAngle = 95,
+		ThumbLift = 0.18,
+		PalmAngle = 30,
+	})
+	return body
+end
+
+---------------------------------------------------------------------------------------------
+-- Autopistol: Glock 18C style: polymer frame, ported slide with a fire selector, white-dot
+-- sights and an extended magazine sticking out of the grip
+---------------------------------------------------------------------------------------------
+local function buildAutopistol(gun: Model, color: Color3): Part
+	local frame = GunModels.Finish(color, Enum.Material.Plastic)
+	local frameDark = GunModels.Finish(color:Lerp(Color3.new(0, 0, 0), 0.3), Enum.Material.Plastic)
+	local slide = GunModels.Finish(Color3.fromRGB(48, 49, 52), Enum.Material.Metal)
+	local dot = GunModels.Finish(Color3.fromRGB(235, 238, 225), Enum.Material.SmoothPlastic)
+	local bore = 0.075 -- height of the barrel's center line
+
+	-- Frame (the Body): the polymer dust cover under the slide, with an accessory rail slot
+	local body = box(gun, "Body", Vector3.new(0.085, 0.06, 0.42), CFrame.new(), frame)
+	box(gun, "FrameNose", Vector3.new(0.083, 0.05, 0.12), CFrame.new(0, -0.005, -0.27), frame)
+	box(gun, "RailSlot", Vector3.new(0.087, 0.01, 0.015), CFrame.new(0, -0.022, -0.26), HOLE)
+
+	-- Slide: everything named Slide... moves with it when it's racked
+	box(gun, "Slide", Vector3.new(0.09, 0.1, 0.6), CFrame.new(0, 0.08, -0.06), slide)
+	for _, side in { -1, 1 } do
+		for i = 0, 4 do
+			box(gun, "SlideSerration", Vector3.new(0.004, 0.07, 0.014), CFrame.new(side * 0.0455, 0.085, 0.13 + i * 0.024), HOLE)
+		end
+	end
+	box(gun, "SlideEjectionPort", Vector3.new(0.004, 0.045, 0.13), CFrame.new(0.0455, 0.09, -0.04), HOLE)
+	for i = 0, 1 do -- compensator cuts on top
+		box(gun, "SlidePort", Vector3.new(0.045, 0.004, 0.022), CFrame.new(0, 0.1305, -0.28 - i * 0.045), HOLE)
+	end
+	box(gun, "SlideMuzzle", Vector3.new(0.06, 0.06, 0.004), CFrame.new(0, bore, -0.3605), DARK_STEEL)
+	tube(gun, "SlideBore", 0.006, 0.032, Vector3.new(0, bore, -0.3625), HOLE)
+	attach(body, "Muzzle", CFrame.new(0, bore, -0.365))
+	box(gun, "SlideSelector", Vector3.new(0.012, 0.025, 0.03), CFrame.new(-0.0505, 0.07, 0.19), STEEL)
+
+	-- White-dot sights: a post up front, a notch at the back. Aim across the notch onto the post.
+	box(gun, "SlideFrontSight", Vector3.new(0.02, 0.03, 0.03), CFrame.new(0, 0.145, -0.33), DARK_STEEL)
+	GunModels.Ball(gun, "SlideFrontDot", 0.012, Vector3.new(0, 0.152, -0.3135), dot)
+	box(gun, "SlideRearSightBase", Vector3.new(0.07, 0.015, 0.04), CFrame.new(0, 0.1375, 0.21), DARK_STEEL)
+	for _, side in { -1, 1 } do
+		box(gun, "SlideRearSight", Vector3.new(0.024, 0.02, 0.035), CFrame.new(side * 0.022, 0.155, 0.21), DARK_STEEL)
+		GunModels.Ball(gun, "SlideRearDot", 0.01, Vector3.new(side * 0.022, 0.155, 0.192), dot)
+	end
+	-- Held out at arm's length when aimed, closer in at the hip (like the revolver)
+	addSight(body, Vector3.new(0, 0.158, 0.23), 1.1, Vector3.new(0.45, -0.17, 0.25))
+
+	-- Square trigger guard and trigger
+	box(gun, "TriggerGuardFront", Vector3.new(0.024, 0.085, 0.022), CFrame.new(0, -0.0725, -0.13), frame)
+	box(gun, "TriggerGuard", Vector3.new(0.024, 0.02, 0.2), CFrame.new(0, -0.115, -0.03), frame)
+	local triggerCFrame = CFrame.new(0, -0.065, -0.03) * CFrame.Angles(math.rad(10), 0, 0)
+	box(gun, "Trigger", Vector3.new(0.018, 0.06, 0.02), triggerCFrame, frameDark)
+	attach(body, "Trigger", CFrame.new(0, -0.082, -0.045))
+
+	-- Grip with stippled panels and a beavertail
+	local gripTop = CFrame.new(0, -0.03, 0.12) * CFrame.Angles(math.rad(-20), 0, 0)
+	box(gun, "Grip", Vector3.new(0.085, 0.34, 0.15), gripTop * CFrame.new(0, -0.17, 0), frame)
+	box(gun, "GripTexture", Vector3.new(0.088, 0.22, 0.11), gripTop * CFrame.new(0, -0.17, 0.005), frameDark)
+	box(gun, "Beavertail", Vector3.new(0.08, 0.03, 0.06), CFrame.new(0, -0.02, 0.21), frame)
+
+	-- Extended magazine: inside the grip and sticking out below it (drops out down the grip)
+	box(gun, "Magazine", Vector3.new(0.066, 0.5, 0.12), gripTop * CFrame.new(0, -0.27, 0.005), DARK_STEEL)
+	box(gun, "Mag1", Vector3.new(0.072, 0.17, 0.128), gripTop * CFrame.new(0, -0.43, 0.005), frameDark)
+	box(gun, "MagBase", Vector3.new(0.078, 0.03, 0.135), gripTop * CFrame.new(0, -0.525, 0.005), POLYMER_DARK)
+
+	-- Two-handed grip: the left hand wraps over the right hand's fingers, thumbs forward
+	addGrip(body, "RightGrip", gripTop * CFrame.new(0, -0.15, 0), {
+		RadiusX = 0.045,
+		RadiusZ = 0.08,
+		ThumbAngle = 200,
+		ThumbLift = 0.05,
+		PalmAngle = 20,
+		TriggerFinger = true,
+	})
+	addGrip(body, "LeftGrip", gripTop * CFrame.new(0, -0.21, 0), {
+		RadiusX = 0.11,
+		RadiusZ = 0.15,
+		ThumbAngle = -50, -- negative: the thumb stays on the palm side and points forward
+		ThumbLift = 0.12,
+		PalmAngle = 20,
+	})
+	return body
+end
+
 local BUILDERS: { [string]: (Model, Color3) -> Part } = {
 	Rifle = buildRifle,
 	SMG = buildSmg,
 	Shotgun = buildShotgun,
 	Sniper = buildSniper,
 	Revolver = buildRevolver,
+	LMG = buildLmg,
+	Marksman = buildMarksman,
+	Autopistol = buildAutopistol,
 }
 
 -- Builds the named gun (unknown names get the rifle). `finishColor` is the main finish

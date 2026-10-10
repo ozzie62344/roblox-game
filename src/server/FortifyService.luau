@@ -1,8 +1,11 @@
--- Siege defender fortifications, both on G (the same key as plant / defuse):
---   Barricade  look at an empty doorway / window, hold G. Wooden boards that are Breakable
+-- Siege defender fortifications, both on G (the same key as plant / disable):
+--   Barricade  look at an empty doorway / window, hold G. Wooden boards (a doorway's leave a gap
+--              at the bottom that drones fit under, like Siege) that are Breakable
 --              (DestructionService): bullets chip them, 3 knife hits or ~20 bullets smash them.
 --              Where they can go: invisible parts in <Map>/BarricadeSlots (Kind = "Door" /
 --              "Window"). Slots with Exterior = true start every round already barricaded.
+--              Defenders can take one down again (look at it, hold G: "Unbarricade") without
+--              shooting it apart.
 --   Reinforce  look at a soft wall, hold G. A steel plate goes up on your side of that wall
 --              section and stops bullets, knives and people (only hard breachers will get
 --              through, later). The defending team shares 2 per defender per round
@@ -24,6 +27,7 @@ local Workspace = game:GetService("Workspace")
 local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 
 local Interact = ReplicatedStorage.Remotes.Interact :: RemoteEvent
+local DestructionEvent = ReplicatedStorage.Remotes.Destruction :: RemoteEvent
 local MatchState = ReplicatedStorage.MatchState
 
 local FortifyService = {}
@@ -31,17 +35,20 @@ local FortifyService = {}
 local REACH = 8 -- studs from the head to the doorway / wall (a bit more than the client's 7)
 local BUILD_PHASES = { Prep = true, Action = true, Planted = true }
 local SECTION_LENGTH = 6 -- studs, roughly; each wall is split into equal sections
+local DRONE_GAP = 0.9 -- studs left open under a barricaded door (DroneService drones are 0.7 tall)
 local WOOD = Color3.fromRGB(176, 136, 92)
 local STEEL = Color3.fromRGB(92, 97, 104)
 
-type Kind = "Barricade" | "Reinforce"
+type Kind = "Barricade" | "Reinforce" | "Unbarricade"
 local KINDS = {
 	Barricade = { folder = "BarricadeSlots", time = MatchConfig.BarricadeTime },
 	Reinforce = { folder = "ReinforceSlots", time = MatchConfig.ReinforceTime },
+	Unbarricade = { folder = "BarricadeSlots", time = MatchConfig.UnbarricadeTime },
 }
 
 local working: { [Player]: { kind: Kind, slot: BasePart, endsAt: number, side: number } } = {}
 local reinforcements: { [BasePart]: Model } = setmetatable({}, { __mode = "k" }) :: any -- section → its steel
+local barricades: { [BasePart]: Model } = setmetatable({}, { __mode = "k" }) :: any -- doorway → its boards
 
 local function part(name: string, size: Vector3, cframe: CFrame, color: Color3, material: Enum.Material, parent: Instance): Part
 	local p = Instance.new("Part")
@@ -76,7 +83,15 @@ local function canWork(player: Player, kind: Kind, slot: BasePart): boolean
 	if not humanoid or humanoid.Health <= 0 or not root or not head or root.Anchored or not map then
 		return false
 	end
-	if not slot:IsDescendantOf(map) or slot.Parent.Name ~= KINDS[kind].folder or slot:GetAttribute("Built") then
+	if not slot:IsDescendantOf(map) or slot.Parent.Name ~= KINDS[kind].folder then
+		return false
+	end
+	-- Building needs an empty doorway / section; taking down needs boards there
+	if kind == "Unbarricade" then
+		if not barricades[slot] then
+			return false
+		end
+	elseif slot:GetAttribute("Built") then
 		return false
 	end
 	if slot:GetAttribute("Breached") then
@@ -109,16 +124,30 @@ local function stop(player: Player)
 	end
 end
 
+-- Where the boards go: the whole window, or a doorway minus a gap at the bottom that drones fit
+-- under and people don't (Siege)
+local function boardsFrame(slot: BasePart): (CFrame, Vector3)
+	if slot:GetAttribute("Kind") ~= "Door" then
+		return slot.CFrame, slot.Size
+	end
+	return slot.CFrame * CFrame.new(0, DRONE_GAP / 2, 0), slot.Size - Vector3.new(0, DRONE_GAP, 0)
+end
+
 local function buildBarricade(slot: BasePart)
 	local barricade = Instance.new("Model")
 	barricade.Name = "Barricade"
-	local boards = part("Boards", slot.Size, slot.CFrame, WOOD, Enum.Material.WoodPlanks, barricade)
+	local cframe, size = boardsFrame(slot)
+	local boards = part("Boards", size, cframe, WOOD, Enum.Material.WoodPlanks, barricade)
 	boards:SetAttribute("Breakable", "Barricade")
 	barricade.Parent = slot.Parent
 	slot:SetAttribute("Built", true)
-	-- Smashed? The doorway can be boarded up again
+	barricades[slot] = barricade
+	-- Smashed or taken down? The doorway can be boarded up again
 	barricade.Destroying:Connect(function()
 		slot:SetAttribute("Built", nil)
+		if barricades[slot] == barricade then
+			barricades[slot] = nil
+		end
 	end)
 end
 
@@ -171,6 +200,17 @@ end
 local function finish(player: Player, kind: Kind, slot: BasePart, side: number)
 	if kind == "Barricade" then
 		buildBarricade(slot)
+		return
+	elseif kind == "Unbarricade" then
+		-- Pulled down: the boards break apart (same effect as smashing them)
+		local barricade = barricades[slot]
+		local boards = barricade and barricade:FindFirstChildWhichIsA("BasePart")
+		if boards then
+			DestructionEvent:FireAllClients("Smash", boards.Position, 2, boards.Color, boards.Material)
+		end
+		if barricade then
+			barricade:Destroy()
+		end
 		return
 	end
 	buildReinforcement(slot, side)
@@ -292,7 +332,7 @@ function FortifyService.Start()
 		player:SetAttribute("Interaction", kind)
 		player:SetAttribute("InteractEndsAt", endsAt)
 		-- Everyone sees it going up (FortifyEffects): what, where, and when it's done
-		local cframe, size = slot.CFrame, slot.Size
+		local cframe, size = boardsFrame(slot)
 		if kind == "Reinforce" then
 			cframe, size = plateFrame(slot, side)
 		end

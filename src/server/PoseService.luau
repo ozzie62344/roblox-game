@@ -1,5 +1,5 @@
--- Stores each player's lean (-1, 0, 1), crouch (bool) and look pitch (radians, up/down) on their
--- character so every client can pose their body and aim their gun.
+-- Stores each player's lean (-1, 0, 1), crouch / prone (bools), look pitch (radians, up/down) and rappel
+-- rope height on their character so every client can pose their body, aim their gun and draw ropes.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -7,6 +7,7 @@ local Remotes = ReplicatedStorage.Remotes
 local SetLean = Remotes.SetLean :: RemoteEvent
 local SetCrouch = Remotes.SetCrouch :: RemoteEvent
 local LookPitch = Remotes.LookPitch :: UnreliableRemoteEvent
+local SetRappel = Remotes.SetRappel :: RemoteEvent
 
 local MAX_PITCH = math.rad(85)
 
@@ -22,12 +23,14 @@ function PoseService.Start()
 		end
 	end)
 
-	SetCrouch.OnServerEvent:Connect(function(player, crouching)
+	-- Lowered (crouching / sliding / lying down) and whether it's lying down (prone)
+	SetCrouch.OnServerEvent:Connect(function(player, crouching, prone)
 		if typeof(crouching) ~= "boolean" then
 			return
 		end
 		if player.Character then
 			player.Character:SetAttribute("Crouching", crouching)
+			player.Character:SetAttribute("Prone", prone == true)
 		end
 	end)
 
@@ -40,6 +43,15 @@ function PoseService.Start()
 			local clamped = math.clamp(pitch, -MAX_PITCH, MAX_PITCH)
 			player.Character:SetAttribute("LookPitch", math.round(clamped * 100) / 100)
 		end
+	end)
+
+	-- Where a rappelling player's rope is tied (a height; nil = let go). RappelController draws it.
+	SetRappel.OnServerEvent:Connect(function(player, top)
+		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		if not root or (top ~= nil and (typeof(top) ~= "number" or math.abs(top - root.Position.Y) > 60)) then
+			return
+		end
+		(player.Character :: Model):SetAttribute("RappelTop", top)
 	end)
 end
 

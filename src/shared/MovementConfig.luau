@@ -21,6 +21,12 @@ return {
 	CrouchHeightDrop = 1.2, -- how far your body (and hitbox) lowers when crouching or sliding
 	CrouchTransitionSpeed = 14,
 
+	-- Prone (tap C / Left Ctrl twice quickly; C again → crouch, Space or sprint → stand up)
+	ProneSpeed = 3.5,
+	ProneDoubleTap = 0.35, -- most seconds between the two taps
+	ProneHipHeight = 0.1, -- lying on the floor (the hitbox drops this low too)
+	ProneCameraDrop = 1.4, -- extra drop for your eyes (your body lies flat, so they're near the floor)
+
 	-- Slide (hold C / Left Ctrl while sprinting — lasts as long as you hold, up to SlideMaxDuration)
 	SlideMinStartSpeed = 14, -- must be moving at least this fast to slide
 	SlideBoost = 20, -- speed added when the slide starts

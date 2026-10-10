@@ -1,4 +1,4 @@
--- Client-side movement: sprint, crouch, slide, dash, wall jump.
+-- Client-side movement: sprint, crouch, prone (crawl), slide, dash, wall jump.
 -- We drive horizontal velocity ourselves through a LinearVelocity so momentum
 -- carries between moves. The Humanoid still handles jumping, gravity, stairs
 -- and animations.
@@ -40,9 +40,11 @@ local wallJumpsUsed = 0
 local lastWallNormal: Vector3? = nil -- the wall we last jumped off (by which way it faces)
 local lastGroundedTime = 0
 local standHipHeight = 2
-local heightDrop = 0 -- smoothed: how far we're currently lowered (crouch / slide)
+local heightDrop = 0 -- smoothed: how far we're currently lowered (crouch / slide / prone)
 local sentLowered = false
+local sentProne = false
 local jumpBlocked = false
+local lastCrouchTap = -math.huge
 
 local WALL_CHECK_DIRECTIONS = {}
 for i = 0, 7 do
@@ -109,8 +111,8 @@ local function endSlide()
 	state.sliding = false
 end
 
--- Don't stand up into a ceiling
-local function canStandUp(): boolean
+-- Is there room above your head to rise this much? (don't stand up into a ceiling)
+local function canRise(amount: number): boolean
 	local character = root and root.Parent
 	local head = character and character:FindFirstChild("Head") :: BasePart?
 	if not head then
@@ -119,12 +121,36 @@ local function canStandUp(): boolean
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	params.FilterDescendantsInstances = { character :: Instance }
-	return Workspace:Raycast(head.Position, Vector3.new(0, Config.CrouchHeightDrop + 0.6, 0), params) == nil
+	return Workspace:Raycast(head.Position, Vector3.new(0, amount + 0.6, 0), params) == nil
+end
+
+local function canStandUp(): boolean
+	return canRise(math.max(heightDrop, Config.CrouchHeightDrop))
 end
 
 local function tryStandUp()
 	if state.crouching and canStandUp() then
 		state.crouching = false
+	end
+end
+
+local function goProne()
+	endSlide()
+	state.dashing = false
+	state.crouching = false
+	state.prone = true
+end
+
+-- Up from lying down: to a crouch (C) or all the way up (Space / sprint), if there's room.
+-- Not enough room to stand? You end up crouched.
+local function getUp(toCrouch: boolean)
+	if not state.prone then
+		return
+	end
+	if not toCrouch and canRise(heightDrop) then
+		state.prone, state.crouching = false, false
+	elseif canRise(heightDrop - Config.CrouchHeightDrop) then
+		state.prone, state.crouching = false, true
 	end
 end
 
@@ -163,7 +189,7 @@ local function startSlide()
 end
 
 local function startDash()
-	if state.dashing or not root or not hasAbility("Dash") then
+	if state.dashing or state.prone or not root or not hasAbility("Dash") then
 		return
 	end
 	local now = os.clock()
@@ -288,22 +314,27 @@ local function step(dt: number)
 		end
 	end
 
-	-- Pulling up cover / planting / defusing: rooted in place, can't jump
-	local rooted = state.deploying or state.interacting
+	-- Pulling up cover / planting / disabling / driving a drone: rooted in place, can't jump.
+	-- Lying down: no jumping either (Space gets you up instead).
+	local rooted = state.deploying or state.interacting or state.droning
 	local wish = if rooted then Vector3.zero else wishDirection()
-	if rooted ~= jumpBlocked then
-		jumpBlocked = rooted
+	if (rooted or state.prone) ~= jumpBlocked then
+		jumpBlocked = rooted or state.prone
 		humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, not jumpBlocked)
 	end
 	if rooted then
 		endSlide()
 	end
 	local wantsToSprint = sprintHeld and wish:Dot(lookDirection()) > 0.5
+	if state.prone and wantsToSprint then
+		getUp(false)
+	end
 	if state.crouching and wantsToSprint then
 		tryStandUp()
 	end
 	state.sprinting = wantsToSprint
 		and not state.crouching
+		and not state.prone
 		and not state.aiming
 		and not state.leaning
 		and os.clock() - state.lastShot > Config.SprintBlockAfterShot
@@ -350,6 +381,9 @@ local function step(dt: number)
 			if state.crouching then
 				targetSpeed = math.min(targetSpeed, Config.CrouchSpeed)
 			end
+			if state.prone then
+				targetSpeed = math.min(targetSpeed, Config.ProneSpeed)
+			end
 		end
 		local speed = velocity.Magnitude
 
@@ -384,11 +418,14 @@ local function step(dt: number)
 	linearVelocity.PlaneVelocity = Vector2.new(velocity.X, velocity.Z)
 
 	-- Crouching and sliding lower the whole character (hitbox included), not just the camera.
-	-- Planting / defusing kneels too; barricading and reinforcing are done standing.
+	-- Planting / disabling kneels too; barricading and reinforcing are done standing. Lying down
+	-- drops it nearly to the floor (other players see the body lie flat: BodyAnimator).
 	local interaction = player:GetAttribute("Interaction")
-	local kneeling = state.interacting and (interaction == "Plant" or interaction == "Defuse")
-	local lowered = state.crouching or state.sliding or state.deploying or kneeling
-	local targetDrop = if lowered then Config.CrouchHeightDrop else 0
+	local kneeling = state.interacting and (interaction == "Plant" or interaction == "Disable")
+	local lowered = state.crouching or state.sliding or state.deploying or kneeling or state.prone
+	local targetDrop = if state.prone then math.max(standHipHeight - Config.ProneHipHeight, Config.CrouchHeightDrop)
+		elseif lowered then Config.CrouchHeightDrop
+		else 0
 	heightDrop += (targetDrop - heightDrop) * (1 - math.exp(-Config.CrouchTransitionSpeed * dt))
 	if heightDrop < 0.01 and not lowered then
 		if heightDrop > 0 then
@@ -399,9 +436,9 @@ local function step(dt: number)
 	else
 		humanoid.HipHeight = standHipHeight - heightDrop
 	end
-	if lowered ~= sentLowered then
-		sentLowered = lowered
-		SetCrouch:FireServer(lowered)
+	if lowered ~= sentLowered or state.prone ~= sentProne then
+		sentLowered, sentProne = lowered, state.prone
+		SetCrouch:FireServer(lowered, state.prone)
 	end
 
 	state.velocity = velocity
@@ -422,10 +459,12 @@ local function cleanupCharacter()
 	state.sliding = false
 	state.dashing = false
 	state.crouching = false
+	state.prone = false
 	state.speed = 0
 	state.velocity = Vector3.zero
 	heightDrop = 0
 	sentLowered = false
+	sentProne = false
 	jumpBlocked = false
 end
 
@@ -472,13 +511,25 @@ function MovementController.Start()
 		return Enum.ContextActionResult.Pass
 	end, false, Enum.KeyCode.LeftShift, Enum.KeyCode.ButtonL3)
 
-	-- C / Ctrl: hold to slide while sprinting (letting go ends the slide), otherwise tap to toggle crouch
+	-- C / Ctrl: hold to slide while sprinting (letting go ends the slide), otherwise tap to toggle
+	-- crouch. Two quick taps: lie down (prone); tap again to come back up to a crouch.
 	ContextActionService:BindAction("CrouchSlide", function(_, inputState)
 		slideHeld = inputState == Enum.UserInputState.Begin
 		if inputState ~= Enum.UserInputState.Begin or state.deploying or state.interacting then
 			return Enum.ContextActionResult.Sink
 		end
-		if state.sprinting or (not isGrounded() and sprintHeld) then
+		local now = os.clock()
+		local doubleTap = now - lastCrouchTap < Config.ProneDoubleTap
+		lastCrouchTap = now
+		if state.prone then
+			getUp(true)
+			lastCrouchTap = -math.huge -- a quick tap after this isn't another double tap
+		-- (not in the lobby: your own third-person body there would lie on its collidable torso and
+		-- hold you up off the floor)
+		elseif doubleTap and isGrounded() and not state.rappelling and not state.inLobby then
+			goProne()
+			lastCrouchTap = -math.huge
+		elseif state.sprinting or (not isGrounded() and sprintHeld) then
 			startSlide()
 		elseif state.crouching then
 			tryStandUp()
@@ -501,7 +552,11 @@ function MovementController.Start()
 			return
 		end
 		if input.KeyCode == Enum.KeyCode.Space or input.KeyCode == Enum.KeyCode.ButtonA then
-			tryWallJump()
+			if state.prone then
+				getUp(false)
+			else
+				tryWallJump()
+			end
 		end
 	end)
 

@@ -7,7 +7,11 @@
 --     they're looking (up/down comes from the "LookPitch" attribute), kicking when they shoot
 --   • lean, sprint (gun lowered), reload (left hand to the mag and to a pouch), deploying cover
 --     (reaching down), slide (leaning back)
---   • gadget / ability moves and plant / defuse / barricade / reinforce holds: the same hand
+--   • lying down (prone): the body tips forward flat onto the floor, chest up on the elbows, head
+--     up, gun out in front, legs stretched behind; crawling draws one knee up at a time
+--   • rappelling: feet braced against the wall (stepping up / down it as they move), leaning back
+--     off it, left hand up on the rope, gun in the right
+--   • gadget / ability moves and plant / disable / barricade / reinforce holds: the same hand
 --     moves as first person (HandsAnimator), with the gun slung at the hip
 --
 -- How the joints are moved: each R15 joint (a Motor6D, or an AnimationConstraint on avatars with
@@ -45,6 +49,7 @@ local SMOOTH = 12 -- how quickly poses blend
 local GUN_SCALE = 1.35 -- held guns are drawn bigger than real so they read on chunky Roblox hands
 local PITCH_SEND_RATE = 1 / 12 -- seconds between sending our own look pitch
 local PITCH_SEND_STEP = math.rad(1.5) -- only send when it changed at least this much
+local PRONE_DROP = 0.55 -- lying down: how far the tipped-over body drops to rest on the floor
 
 local UP = Vector3.yAxis
 
@@ -67,13 +72,16 @@ type Rig = {
 	phase: number,
 	stride: number,
 	crouch: number,
+	prone: number,
+	rappel: number,
+	lastRootPos: Vector3?, -- (a rappeller's velocity reads zero: speed comes from how far they moved)
 	slide: number,
 	sprint: number,
 	air: number,
 	lean: number,
 	pitch: number,
-	busy: number, -- deploying cover / planting / defusing / fortifying
-	kneel: number, -- deploying cover / planting / defusing (fortifying is done standing)
+	busy: number, -- deploying cover / planting / disabling / fortifying
+	kneel: number, -- deploying cover / planting / disabling (fortifying is done standing)
 	work: number, -- hands on a gadget / ability move or a hold (HandsAnimator)
 	workLeft: Vector3,
 	workRight: Vector3,
@@ -234,7 +242,7 @@ local function makeRig(character: Model): Rig?
 	return {
 		character = character, humanoid = humanoid, root = root,
 		rootJoint = rootJoint, waist = waist, neck = neck, left = left, right = right,
-		phase = 0, stride = 0, crouch = 0, slide = 0, sprint = 0, air = 0, lean = 0, pitch = 0,
+		phase = 0, stride = 0, crouch = 0, prone = 0, rappel = 0, slide = 0, sprint = 0, air = 0, lean = 0, pitch = 0,
 		busy = 0, kneel = 0, work = 0, workLeft = Vector3.zero, workRight = Vector3.zero,
 		kick = 0, reloadStart = 0, reloadEnd = 0,
 	}
@@ -275,27 +283,44 @@ local function poseLeg(side: Side, sign: number, lowerTorsoCF: CFrame, rig: Rig,
 	-- In the air: feet tucked up under the body
 	local tucked = hipPos - UP * legLength * 0.7 + forward * (if sign < 0 then 0.5 else -0.3)
 	target = target:Lerp(tucked, rig.air)
+	-- Lying down: legs stretched out behind along the floor; crawling draws one knee up at a time
+	if rig.prone > 0.01 then
+		local crawl = math.max(0, math.sin(phase)) * math.min(rig.stride, 1)
+		local floorY = (ground or (hipPos.Y - 1)) + 0.25
+		local proneTarget = Vector3.new(hipPos.X, floorY, hipPos.Z)
+			- forward * legLength * (0.92 - 0.4 * crawl)
+			+ right * sign * (0.3 + 0.45 * crawl)
+		target = target:Lerp(proneTarget, rig.prone)
+	end
+	-- Rappelling: feet braced flat against the wall in front, walking up / down it in turn
+	if rig.rappel > 0.01 then
+		local step = math.sin(phase) * math.min(rig.stride, 1) * 0.45
+		local braced = hipPos + forward * 1.15 - UP * (1.0 - step) + right * sign * 0.45
+		target = target:Lerp(braced, rig.rappel)
+	end
 
-	-- Knees point forward (and a touch outward); the folded slide leg points its knee down
-	local pole = forward + right * sign * 0.15
+	-- Knees point forward (and a touch outward); lying down they point at the floor; braced on a
+	-- wall they point up and out
+	local pole = (forward + right * sign * 0.15):Lerp(right * sign * 0.4 - UP, rig.prone):Lerp(UP + right * sign * 0.4, rig.rappel)
 	local kneePos, anklePos = solveTwoBone(hipPos, target, side.upperLeg, side.lowerLeg, pole)
 	local upperCF = limbCFrame(side.hip.c1.Position, side.knee.c0.Position, Vector3.new(0, 0, -1), hipPos, kneePos, pole)
 	local lowerCF = limbCFrame(side.knee.c1.Position, side.ankle.c0.Position, Vector3.new(0, 0, -1), kneePos, anklePos, pole)
-	-- Feet stay flat, facing the way the body faces
-	local footCF = CFrame.new(anklePos) * facing * CFrame.new(-side.ankle.c1.Position)
+	-- Feet stay flat, facing the way the body faces (lying down: toes dug into the floor; on a
+	-- rope: soles flat on the wall)
+	local footCF = CFrame.new(anklePos) * facing * CFrame.Angles(math.rad(80) * rig.rappel - math.rad(70) * rig.prone, 0, 0) * CFrame.new(-side.ankle.c1.Position)
 
 	side.hip.motor.Transform = transformFor(side.hip, lowerTorsoCF, upperCF)
 	side.knee.motor.Transform = transformFor(side.knee, upperCF, lowerCF)
 	side.ankle.motor.Transform = transformFor(side.ankle, lowerCF, footCF)
 end
 
-local function poseArm(side: Side, sign: number, upperTorsoCF: CFrame, handTarget: Vector3)
+local function poseArm(side: Side, sign: number, upperTorsoCF: CFrame, handTarget: Vector3, prone: number)
 	local shoulderPos = (upperTorsoCF * side.shoulder.c0).Position
 	-- Aim the wrist a little short of the grip so the hand (not the wrist) ends up on it
 	local toTarget = handTarget - shoulderPos
 	local wristTarget = handTarget - (if toTarget.Magnitude > 1e-3 then toTarget.Unit else -UP) * 0.3
-	-- Elbows hang down and out
-	local pole = upperTorsoCF.RightVector * sign * 0.8 - upperTorsoCF.UpVector
+	-- Elbows hang down and out (lying down: propped on the floor)
+	local pole = (upperTorsoCF.RightVector * sign * 0.8 - upperTorsoCF.UpVector):Lerp(upperTorsoCF.RightVector * sign * 0.6 - UP, prone)
 	local elbowPos, wristPos = solveTwoBone(shoulderPos, wristTarget, side.upperArm, side.lowerArm, pole)
 	local bend = elbowPos - (shoulderPos + wristPos) / 2
 	local hint = if bend.Magnitude > 1e-3 then bend else pole
@@ -328,18 +353,26 @@ local function animate(rig: Rig, other: Player, dt: number)
 	local moveDir = if speed > 0.5 then flatVelocity.Unit else facing.LookVector
 
 	-- What are they doing? (attributes set by the server from their own client)
-	local lowered = character:GetAttribute("Crouching") == true -- crouching OR sliding
-	local sliding = lowered and speed > SPRINT_SPEED * 0.8
-	local crouching = lowered and not sliding
+	local lowered = character:GetAttribute("Crouching") == true -- crouching OR sliding OR lying down
+	local prone = character:GetAttribute("Prone") == true
+	local sliding = lowered and not prone and speed > SPRINT_SPEED * 0.8
+	local crouching = lowered and not sliding and not prone
 	local deployingCover = character:GetAttribute("Deploying") == true
 	local interaction = other:GetAttribute("Interaction")
 	local busy = deployingCover or interaction ~= nil
-	local kneeling = deployingCover or interaction == "Plant" or interaction == "Defuse"
+	local kneeling = not prone and (deployingCover or interaction == "Plant" or interaction == "Disable")
 	local rootPos = root.CFrame.Position
 	local ground = groundHeight(rig, rootPos)
-	local airborne = ground == nil or rootPos.Y - ground > rig.humanoid.HipHeight + root.Size.Y / 2 + 1.2
+	local rappelling = typeof(character:GetAttribute("RappelTop")) == "number"
+	local airborne = not rappelling and (ground == nil or rootPos.Y - ground > rig.humanoid.HipHeight + root.Size.Y / 2 + 1.2)
+	-- On a rope they're moved by hand (their velocity reads zero): how fast are they climbing?
+	local moved = if rig.lastRootPos then (rootPos - rig.lastRootPos).Magnitude / math.max(dt, 1e-3) else 0
+	rig.lastRootPos = rootPos
+	local gait = if rappelling then moved else speed
 
 	rig.crouch = smooth(rig.crouch, if crouching or kneeling then 1 else 0, dt)
+	rig.prone = smooth(rig.prone, if prone then 1 else 0, dt, 8)
+	rig.rappel = smooth(rig.rappel, if rappelling then 1 else 0, dt, 10)
 	rig.slide = smooth(rig.slide, if sliding then 1 else 0, dt, 16)
 	rig.sprint = smooth(rig.sprint, if speed > SPRINT_SPEED and not lowered then 1 else 0, dt, 8)
 	rig.air = smooth(rig.air, if airborne then 1 else 0, dt, 10)
@@ -349,7 +382,7 @@ local function animate(rig: Rig, other: Player, dt: number)
 	rig.kneel = smooth(rig.kneel, if kneeling then 1 else 0, dt, 10)
 	rig.kick = smooth(rig.kick, 0, dt, 18)
 
-	-- Hands on a gadget / ability move or a plant / defuse / fortify hold: the same moves you do in
+	-- Hands on a gadget / ability move or a plant / disable / fortify hold: the same moves you do in
 	-- first person (HandsAnimator), from their head, looking where they look
 	local head = character:FindFirstChild("Head") :: BasePart?
 	local eye = CFrame.new(if head then head.Position else rootPos + Vector3.new(0, 1.5, 0)) * yawOnly(root.CFrame).Rotation * CFrame.Angles(rig.pitch, 0, 0)
@@ -361,31 +394,34 @@ local function animate(rig: Rig, other: Player, dt: number)
 	end
 	rig.work = smooth(rig.work, if moveKind then 1 else 0, dt, 14)
 
-	-- Step cycle: steps get longer the faster you go
-	local stepLength = math.clamp(speed * 0.11, 0.9, 2.4) * (1 - rig.crouch * 0.4)
-	rig.stride = smooth(rig.stride, if speed > MOVE_SPEED then stepLength else 0, dt, 10)
-	if speed > MOVE_SPEED then
-		rig.phase = (rig.phase + speed * dt * math.pi / math.max(stepLength * 2, 0.5)) % (math.pi * 2)
+	-- Step cycle: steps get longer the faster you go (on a rope: steps up / down the wall)
+	local stepLength = math.clamp(gait * 0.11, 0.9, 2.4) * (1 - rig.crouch * 0.4)
+	rig.stride = smooth(rig.stride, if gait > MOVE_SPEED then stepLength else 0, dt, 10)
+	if gait > MOVE_SPEED then
+		rig.phase = (rig.phase + gait * dt * math.pi / math.max(stepLength * 2, 0.5)) % (math.pi * 2)
 	end
 
-	-- ── Torso ── a slight bounce while walking, leaning back in a slide
-	local bob = -math.abs(math.sin(rig.phase)) * 0.12 * math.min(rig.stride, 1) * (1 - rig.slide)
-	local rootTransform = CFrame.new(0, bob, 0) * CFrame.Angles(math.rad(22) * rig.slide, 0, 0)
+	-- ── Torso ── a slight bounce while walking, leaning back in a slide, tipped flat lying down
+	local bob = -math.abs(math.sin(rig.phase)) * 0.12 * math.min(rig.stride, 1) * (1 - rig.slide) * (1 - rig.prone)
+	local rootTransform = CFrame.new(0, bob, 0) * CFrame.Angles(math.rad(22) * rig.slide + math.rad(14) * rig.rappel, 0, 0)
+	rootTransform = rootTransform:Lerp(CFrame.new(0, -PRONE_DROP, 0) * CFrame.Angles(-math.rad(88), 0, 0), rig.prone)
 	local lowerTorsoCF = childCFrame(rig.rootJoint, root.CFrame, rootTransform)
 	rig.rootJoint.motor.Transform = rootTransform
 
-	-- Lean sideways, bend toward where they look, hunch a bit when crouched or busy
-	local waistPitch = rig.pitch * 0.45 - math.rad(12) * rig.crouch - math.rad(25) * rig.kneel
+	-- Lean sideways, bend toward where they look, hunch a bit when crouched or busy; lying down,
+	-- the chest comes up onto the elbows
+	local waistPitch = rig.pitch * 0.45 - math.rad(12) * rig.crouch - math.rad(25) * rig.kneel + math.rad(28) * rig.prone
 	-- Bladed stance: the upper body turns toward the gun side so the left shoulder comes forward
 	-- (Roblox arms are short; square on, the left hand can't reach the front of the gun).
-	-- Handguns are held square on, both arms pushed out in front.
+	-- Handguns are held square on, both arms pushed out in front. Lying down: square on too.
 	local handgun = rig.gun ~= nil and rig.gun.handgun
-	local twist = math.rad(if handgun then -10 else -38) * (1 - rig.busy)
+	local twist = math.rad(if handgun then -10 else -38) * (1 - rig.busy) * (1 - rig.prone)
 	local waistTransform = CFrame.Angles(waistPitch, twist, -rig.lean * math.rad(Config.LeanBodyAngle))
 	local upperTorsoCF = childCFrame(rig.waist, lowerTorsoCF, waistTransform)
 	rig.waist.motor.Transform = waistTransform
-	-- The head turns back the other way so it still looks straight ahead; down when busy
-	rig.neck.motor.Transform = CFrame.Angles(rig.pitch * 0.55 - math.rad(15) * rig.kneel, -twist, 0)
+	-- The head turns back the other way so it still looks straight ahead; down when busy; lying
+	-- down it tips back up to look forward
+	rig.neck.motor.Transform = CFrame.Angles(rig.pitch * 0.55 - math.rad(15) * rig.kneel + math.rad(58) * rig.prone, -twist, 0)
 
 	-- ── Legs ──
 	poseLeg(rig.left, -1, lowerTorsoCF, rig, facing, moveDir, ground)
@@ -461,6 +497,11 @@ local function animate(rig: Rig, other: Player, dt: number)
 			leftHand = magWell:Lerp(leftHand, easeInOut((t - 0.7) / 0.3))
 		end
 	end
+	if rig.rappel > 0.01 then
+		-- Left hand up on the rope (RappelController draws it to this point), gun in the right
+		local rope = rootPos + facing.LookVector * 0.5 - facing.RightVector * 0.45 + UP * 2.2
+		leftHand = leftHand:Lerp(rope, rig.rappel)
+	end
 	if rig.work > 0.01 then
 		leftHand = leftHand:Lerp(rig.workLeft, rig.work)
 		rightHand = rightHand:Lerp(rig.workRight, rig.work)
@@ -471,8 +512,8 @@ local function animate(rig: Rig, other: Player, dt: number)
 		leftHand = leftHand:Lerp(reachLeft, rig.busy)
 		rightHand = rightHand:Lerp(reachRight, rig.busy * 0.8)
 	end
-	poseArm(rig.right, 1, upperTorsoCF, rightHand)
-	poseArm(rig.left, -1, upperTorsoCF, leftHand)
+	poseArm(rig.right, 1, upperTorsoCF, rightHand, rig.prone)
+	poseArm(rig.left, -1, upperTorsoCF, leftHand, rig.prone)
 end
 
 local function release(character: Model)

@@ -6,7 +6,8 @@
 -- What moves on its own:
 --   • the gun
 --   • its moving pieces ("groups": Magazine, Bolt, Pump, Cylinder, ChargingHandle, CockingHandle,
---     plus a loose shotgun shell and a revolver speedloader that only show up during reloads)
+--     FeedCover, Slide, plus a loose shotgun shell and a revolver speedloader that only show up
+--     during reloads)
 --   • each hand (normally on its grip, but animations can move it anywhere)
 --   • the arms, worked out every frame from shoulder → elbow → wrist ("two-bone IK")
 -- Every part is anchored and repositioned each frame in one batch (Workspace:BulkMoveTo).
@@ -32,6 +33,8 @@ local DEFAULT_EYE_RELIEF = 0.7 -- studs from your eye to the sight when aimed in
 local TUNED_NEAR_PLANE = 0.1
 -- Sprint: muzzle swung down and to the left
 local SPRINT_POSE = CFrame.new(0, -0.06, 0.05) * CFrame.Angles(math.rad(-25), math.rad(35), math.rad(10))
+-- Crawling: gun pulled in low and canted, rocking with each pull forward
+local CRAWL_POSE = CFrame.new(0.05, -0.14, 0.12) * CFrame.Angles(math.rad(-12), math.rad(18), math.rad(28))
 
 local SLEEVE_COLOR = Color3.fromRGB(62, 68, 56)
 local GLOVE_COLOR = Color3.fromRGB(28, 28, 30)
@@ -94,10 +97,12 @@ local function memberOf(groupName: string, partName: string): boolean
 		return partName == "ChargingHandle" or partName == "ChargingLatch"
 	elseif groupName == "CockingHandle" then
 		return partName == "CockingHandle" or partName == "CockingKnob"
+	elseif groupName == "FeedCover" or groupName == "Slide" then
+		return string.sub(partName, 1, #groupName) == groupName -- the LMG's cover (with its sight), the pistol's slide
 	end
 	return false
 end
-local GROUP_NAMES = { "Magazine", "Bolt", "Pump", "Cylinder", "ChargingHandle", "CockingHandle" }
+local GROUP_NAMES = { "Magazine", "Bolt", "Pump", "Cylinder", "ChargingHandle", "CockingHandle", "FeedCover", "Slide" }
 -- Named gun parts whose positions animations use as targets
 local POINT_NAMES = { "BoltCatch", "BoltShroud", "BoltKnob", "Shell", "CylinderLatch", "ChargingHandle", "Magwell" }
 
@@ -475,6 +480,8 @@ function Viewmodel.new(weapon: Weapons.Weapon)
 		kick = 0,
 		bobTime = 0,
 		sprintAlpha = 0,
+		crawlAlpha = 0,
+		crawlTime = 0,
 		-- Animation playing (reload / draw)
 		clip = nil :: { any }?,
 		clipStart = 0,
@@ -650,6 +657,7 @@ end
 type Pose = {
 	aimAlpha: number,
 	sprinting: boolean,
+	crawling: boolean,
 	reloading: boolean,
 	speed: number,
 	grounded: boolean,
@@ -661,6 +669,8 @@ function Viewmodel:Update(dt: number, cameraCFrame: CFrame, pose: Pose)
 	end
 
 	self.sprintAlpha = approach(self.sprintAlpha, if pose.sprinting and not self.clip then 1 else 0, 10)
+	self.crawlAlpha = approach(self.crawlAlpha, if pose.crawling and not self.clip then 1 - pose.aimAlpha else 0, 8)
+	self.crawlTime += dt * math.clamp(pose.speed, 0, 6) * 1.8
 	self.kick = approach(self.kick, 0, 25)
 
 	-- Walk bob, mostly gone while aiming
@@ -672,7 +682,9 @@ function Viewmodel:Update(dt: number, cameraCFrame: CFrame, pose: Pose)
 	-- Ease the hip -> aim move so the sight glides in and settles exactly on center
 	local aim = pose.aimAlpha * pose.aimAlpha * (3 - 2 * pose.aimAlpha)
 	local offset = self.hipOffset:Lerp(self.aimOffset, aim)
-	local action = CFrame.new():Lerp(SPRINT_POSE, self.sprintAlpha)
+	local rock = math.sin(self.crawlTime)
+	local crawlPose = CRAWL_POSE * CFrame.new(rock * 0.04, math.abs(math.cos(self.crawlTime)) * 0.05, 0) * CFrame.Angles(0, 0, rock * 0.1)
+	local action = CFrame.new():Lerp(SPRINT_POSE, self.sprintAlpha) * CFrame.new():Lerp(crawlPose, self.crawlAlpha)
 	local kick = CFrame.new(0, 0, self.kick) * CFrame.Angles(self.kick * 0.15, 0, 0)
 	local base = cameraCFrame * offset * bob * action * kick
 

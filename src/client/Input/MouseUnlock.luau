@@ -33,7 +33,7 @@ local lastYaw: number? = nil
 local lastPitch = 0
 
 local function isFree(): boolean
-	return state.mouseUnlocked or state.devPanelOpen or state.draftOpen
+	return state.mouseUnlocked or state.devPanelOpen or state.draftOpen or state.voteOpen
 end
 
 local function yawPitch(look: Vector3): (number, number)
@@ -47,9 +47,20 @@ end
 local function update()
 	local free = isFree()
 
-	-- Third person (lobby, spectating): moving the mouse turns the camera around you, like a
+	-- Lobby: a normal Roblox cursor for the menus; right-drag turns the camera (Roblox's camera
+	-- owns the mouse while you drag, so only undo our lock)
+	if state.inLobby and not state.spectating then
+		if UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
+			UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+		end
+		UserInputService.MouseIconEnabled = true
+		hint.Visible = false
+		return
+	end
+
+	-- Spectating (third person): moving the mouse turns the camera around them, like a
 	-- third-person shooter. Roblox's own camera handles it; we just lock the cursor.
-	if (state.inLobby or state.spectating) and not free then
+	if state.spectating and not free then
 		UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
 		UserInputService.MouseIconEnabled = false
 		hint.Visible = false

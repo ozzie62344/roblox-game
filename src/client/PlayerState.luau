@@ -9,21 +9,26 @@ return {
 	sprinting = false,
 	sliding = false,
 	crouching = false,
+	prone = false, -- lying down / crawling (double-tap crouch)
 	dashing = false,
 	lastWallJump = -math.huge,
+	rappelling = false, -- hanging on a rope on the outside of a building (RappelController)
+	rappelSpeed = 0, -- studs/second you're moving along the wall on the rope
 
 	-- Lean: -1 (left) .. 1 (right), smoothed
 	lean = 0,
 	leanOffset = 0, -- studs the camera is shifted sideways (shortened if a wall is in the way)
 	leaning = false,
+	leanToggle = true, -- tap Q / E to lean and again to stop (false: lean only while held); dev panel
 
 	-- Deploying cover: locked in place, gun lowered, camera looks down then follows the cover up
 	deploying = false,
-	interacting = false, -- planting / defusing: also locks you in place
+	interacting = false, -- planting / disabling: also locks you in place
 	meleeing = false, -- knife swing in progress (gun lowered, can't shoot)
 	aimSensitivity = 1, -- mouse speed multiplier while aiming (set by the gun)
 	deployPitch = 0, -- radians, applied to the camera like recoil
 	gesturing = false, -- hands busy with a gadget / ability move (HandsAnimator): gun put away
+	droning = false, -- driving your scout drone (DroneController): body rooted, gun put away
 
 	-- Weapon
 	aiming = false,
@@ -41,6 +46,7 @@ return {
 	devPanelOpen = false,
 	mouseUnlocked = false,
 	draftOpen = false, -- loadout cards on screen (cursor free)
+	voteOpen = false, -- map vote on screen (cursor free)
 	loadoutWindow = false, -- you can still change your loadout (until the round starts)
 	spectating = false,
 }

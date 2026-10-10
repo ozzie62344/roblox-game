@@ -31,7 +31,8 @@ local REVEAL_COLOR = Color3.fromRGB(255, 60, 60)
 
 local startDeploy: (duration: number) -> ()
 
-local function revealCharacters(characters: { Model }, duration: number)
+-- Highlighted through walls with a ping over their head. text replaces the usual status message.
+local function revealCharacters(characters: { Model }, duration: number, text: string?)
 	for _, character in characters do
 		if not character.Parent or character == player.Character then
 			continue
@@ -44,13 +45,32 @@ local function revealCharacters(characters: { Model }, duration: number)
 		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 		highlight.Adornee = character
 		highlight.Parent = Effects.GetFolder()
+		local ping = Instance.new("BillboardGui")
+		ping.Name = "RevealPing"
+		ping.Size = UDim2.fromOffset(22, 22)
+		ping.StudsOffset = Vector3.new(0, 3.2, 0)
+		ping.AlwaysOnTop = true
+		ping.Adornee = character:FindFirstChild("Head") :: BasePart?
+		local diamond = Instance.new("Frame")
+		diamond.AnchorPoint = Vector2.new(0.5, 0.5)
+		diamond.Position = UDim2.fromScale(0.5, 0.5)
+		diamond.Size = UDim2.fromScale(0.7, 0.7)
+		diamond.Rotation = 45
+		diamond.BackgroundColor3 = REVEAL_COLOR
+		diamond.BorderSizePixel = 0
+		diamond.Parent = ping
+		ping.Parent = player.PlayerGui -- 3D GUIs don't draw inside a ScreenGui
 		-- Fade out over the last half second
 		task.delay(math.max(duration - 0.5, 0), function()
 			TweenService:Create(highlight, TweenInfo.new(0.5), { FillTransparency = 1, OutlineTransparency = 1 }):Play()
+			TweenService:Create(diamond, TweenInfo.new(0.5), { BackgroundTransparency = 1 }):Play()
 		end)
 		Debris:AddItem(highlight, duration)
+		Debris:AddItem(ping, duration)
 	end
-	if #characters > 0 then
+	if text then
+		Hud.ShowStatus(text, 1.5, REVEAL_COLOR)
+	elseif #characters > 0 then
 		Hud.ShowStatus(`{#characters} ENEMIES REVEALED`, 1.5, REVEAL_COLOR)
 	else
 		Hud.ShowStatus("NO ENEMIES IN RANGE", 1.5)
@@ -129,7 +149,7 @@ function AbilityController.Start()
 		if not ability or ability.Kind ~= "Active" then
 			return Enum.ContextActionResult.Pass -- Dash (or nothing): let MovementController have X
 		end
-		if state.devPanelOpen or state.mouseUnlocked or state.draftOpen or state.spectating or state.deploying or state.interacting then
+		if state.devPanelOpen or state.mouseUnlocked or state.draftOpen or state.spectating or state.deploying or state.interacting or state.droning then
 			return Enum.ContextActionResult.Sink
 		end
 		-- (a placed breach charge can still be set off with no charges left; the server decides)
@@ -143,8 +163,8 @@ function AbilityController.Start()
 
 	AbilityEffect.OnClientEvent:Connect(function(kind: string, ...)
 		if kind == "Reveal" then
-			local characters, duration = ...
-			revealCharacters(characters, duration)
+			local characters, duration, text = ...
+			revealCharacters(characters, duration, text)
 		elseif kind == "Pulse" then
 			local origin, radius, color = ...
 			pulseWave(origin, radius, color)

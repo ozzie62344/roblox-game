@@ -1,11 +1,12 @@
--- Handles dev panel actions. Only devs can use it: everyone in Studio, the game's owner,
--- and anyone whose UserId is in DEV_USER_IDS.
+-- Handles dev panel actions. Only the game's owner can use it (and anyone in a Studio test).
+-- The server sets "IsDev" and checks it on every action; clients can't set it themselves.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Abilities = require(ReplicatedStorage.Shared.Abilities)
+local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local AbilityService = require(script.Parent.AbilityService)
 local Dummies = require(script.Parent.Dummies)
 local MapService = require(script.Parent.MapService)
@@ -14,21 +15,7 @@ local WeaponService = require(script.Parent.WeaponService)
 
 local DevAction = ReplicatedStorage.Remotes.DevAction :: RemoteEvent
 
--- Add teammates' UserIds here to give them dev access in live servers
-local DEV_USER_IDS: { number } = {}
-
-
 local DevService = {}
-
-local function isDev(player: Player): boolean
-	if RunService:IsStudio() then
-		return true
-	end
-	if game.CreatorType == Enum.CreatorType.User and player.UserId == game.CreatorId then
-		return true
-	end
-	return table.find(DEV_USER_IDS, player.UserId) ~= nil
-end
 
 local actions: { [string]: (player: Player, arg: any) -> () } = {
 	SetAbility = function(player, ability)
@@ -84,6 +71,14 @@ local actions: { [string]: (player: Player, arg: any) -> () } = {
 		RoundService.SetGameMode(mode)
 	end,
 
+	-- Which team someone plays on from the next match (RoundService.assignTeams); "Auto" = random
+	SetTeam = function(_, arg)
+		local target, team = typeof(arg) == "table" and arg.Player, typeof(arg) == "table" and arg.Team
+		if typeof(target) == "Instance" and target:IsA("Player") and (team == "Auto" or table.find(MatchConfig.TeamOrder, team)) then
+			target:SetAttribute("TeamPick", if team == "Auto" then nil else team)
+		end
+	end,
+
 	-- Switching maps ends any running match and respawns everyone on the new map
 	LoadMap = function(_, mapName)
 		if typeof(mapName) ~= "string" then
@@ -127,7 +122,12 @@ local actions: { [string]: (player: Player, arg: any) -> () } = {
 
 function DevService.Start()
 	local function onPlayerAdded(player: Player)
-		player:SetAttribute("IsDev", isDev(player))
+		local owner = player.UserId == game.CreatorId
+		if game.CreatorType == Enum.CreatorType.Group then
+			local ok, rank = pcall(player.GetRankInGroup, player, game.CreatorId)
+			owner = ok and rank == 255
+		end
+		player:SetAttribute("IsDev", RunService:IsStudio() or owner)
 	end
 	for _, player in Players:GetPlayers() do
 		onPlayerAdded(player)

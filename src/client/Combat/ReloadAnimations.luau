@@ -71,12 +71,13 @@ local function pieceSize(info: Info, name: string): Vector3
 	return if group then group.size else Vector3.new(0.15, 0.4, 0.2)
 end
 
--- ── Box-magazine swap, shared by the rifle, SMG and sniper ──
+-- ── Box-magazine swap, shared by the rifle, SMG, sniper, marksman and LMG ──
 -- Left hand grabs the mag, strips it out (it falls away), fetches a new one from the pouch,
 -- brings it under the mag well, seats it with a push, taps it. Times are fractions of the reload.
-local function magSwap(info: Info, from: number, to: number, tilt: CFrame): { Keyframe }
+-- `grabAt` = where on the mag the hand holds it (its own space), for mags that aren't slim.
+local function magSwap(info: Info, from: number, to: number, tilt: CFrame, grabAt: Vector3?): { Keyframe }
 	local size = pieceSize(info, "Magazine")
-	local grab = grabOn(info, Vector3.new(-0.02, -size.Y * 0.25, 0))
+	local grab = grabOn(info, grabAt or Vector3.new(-0.02, -size.Y * 0.25, 0))
 	local function at(f: number): number
 		return from + (to - from) * f
 	end
@@ -252,6 +253,62 @@ CLIPS.Revolver = function(info)
 		{ t = 0.91, ease = "back", groups = { Cylinder = { "rest" } }, events = { "CylinderClose" } },
 		{ t = 1, ease = "inOut", gun = CFrame.new(), left = { "grip" } },
 	}
+	return keys
+end
+
+-- SR-25: the same moves as the AR-15 (it has a bolt catch too)
+CLIPS.Marksman = CLIPS.Rifle
+
+-- M249: pop the feed cover, swap the ammo box, lay the new belt on the tray, slam the cover shut
+CLIPS.LMG = function(info)
+	local tilt = CFrame.new(-0.04, -0.03, 0.02) * deg(8, -10, -14)
+	local cover = info.groups.FeedCover
+	local coverSize = if cover then cover.size else Vector3.new(0.14, 0.2, 0.48)
+	local hinge = Vector3.new(0, -coverSize.Y / 2, -coverSize.Z / 2) -- its front bottom edge
+	local open = { "gun", CFrame.new(hinge) * deg(-75, 0, 0) * CFrame.new(-hinge) }
+	local latch = grabOn(info, Vector3.new(-0.05, -0.06, coverSize.Z / 2 - 0.03))
+	local tray = (if cover then cover.rest.Position else Vector3.new(0, 0.18, -0.04)) + Vector3.new(-0.07, -0.1, 0)
+	local box = pieceSize(info, "Magazine")
+	local keys: { Keyframe } = {
+		{ t = 0, gun = CFrame.new(), left = { "grip" }, groups = { FeedCover = { "rest" }, Magazine = { "rest" } } },
+		{ t = 0.08, ease = "inOut", gun = tilt, left = { "group", "FeedCover", latch } },
+		{ t = 0.14, ease = "back", groups = { FeedCover = open }, left = { "group", "FeedCover", latch }, events = { "CoverOpen" } },
+	}
+	append(keys, magSwap(info, 0.14, 0.66, tilt, Vector3.new(-box.X / 2 - 0.04, -box.Y * 0.15, 0)))
+	table.insert(keys, { t = 0.74, ease = "inOut", left = { "gun", grabOn(info, tray) }, events = { "BeltIn" } })
+	table.insert(keys, { t = 0.82, ease = "inOut", left = { "group", "FeedCover", latch * CFrame.new(0, 0.08, 0) } })
+	table.insert(keys, { t = 0.88, ease = "in", groups = { FeedCover = { "rest" } }, left = { "group", "FeedCover", latch }, gun = tilt * CFrame.new(0, -0.02, 0), events = { "CoverClose" } })
+	table.insert(keys, { t = 1, ease = "inOut", gun = CFrame.new(), left = { "grip" } })
+	return keys
+end
+
+-- Glock 18: the left hand lets go, the extended mag drops out down the grip, a fresh one goes
+-- in with a slap; if it ran empty, the slide is racked to chamber a round
+CLIPS.Autopistol = function(info)
+	local tilt = CFrame.new(0.02, 0.02, 0.06) * deg(10, 12, 22)
+	local down = -info.grips.Right.UpVector -- out of the bottom of the grip
+	local size = pieceSize(info, "Magazine")
+	local grab = grabOn(info, Vector3.new(-0.03, -size.Y * 0.35, 0))
+	local keys: { Keyframe } = {
+		{ t = 0, gun = CFrame.new(), left = { "grip" }, groups = { Magazine = { "rest" }, Slide = { "rest" } } },
+		{ t = 0.1, ease = "inOut", gun = tilt, left = { "camera", POUCH * CFrame.new(0.25, 0.45, 0.1) } },
+		{ t = 0.18, ease = "out", groups = { Magazine = { "gun", CFrame.new(down * 0.3) } }, events = { "MagOut" } },
+		-- Old mag falls away while the hand fetches a new one
+		{ t = 0.32, ease = "in", groups = { Magazine = { "gun", CFrame.new(down * 1.6 + Vector3.new(0.05, 0, 0.3)) * deg(25, 0, 10) } }, left = { "camera", POUCH } },
+		{ t = 0.4, ease = "inOut", hide = { Magazine = true }, left = { "camera", POUCH } },
+		{ t = 0.44, ease = "linear", groups = { Magazine = { "hand", "Left", grab:Inverse() } }, left = { "camera", POUCH } },
+		-- Lined up under the grip, then pushed home
+		{ t = 0.62, ease = "inOut", groups = { Magazine = { "gun", CFrame.new(down * 0.3) } }, left = { "group", "Magazine", grab } },
+		{ t = 0.7, ease = "back", groups = { Magazine = { "rest" } }, left = { "group", "Magazine", grab }, gun = tilt * CFrame.new(0, 0.02, 0), events = { "MagIn" } },
+	}
+	if info.empty then
+		local slide = pieceSize(info, "Slide")
+		local pinch = grabOn(info, Vector3.new(-0.07, 0.01, slide.Z / 2 - 0.08)) -- the rear serrations
+		table.insert(keys, { t = 0.78, ease = "inOut", left = { "group", "Slide", pinch }, gun = tilt * deg(0, -6, 0) })
+		table.insert(keys, { t = 0.84, ease = "out", groups = { Slide = { "gun", CFrame.new(0, 0, 0.16) } }, left = { "group", "Slide", pinch }, events = { "SlideBack" } })
+		table.insert(keys, { t = 0.88, ease = "in", groups = { Slide = { "rest" } }, left = { "camera", POUCH * CFrame.new(0.4, 0.7, -0.2) }, events = { "SlideForward" } })
+	end
+	table.insert(keys, { t = 1, ease = "inOut", gun = CFrame.new(), left = { "grip" } })
 	return keys
 end
 

@@ -2,6 +2,7 @@
 -- A map built in Studio (ServerStorage/Maps/<name>, saved in the place file, not in Rojo) wins
 -- over the code-built version. RoundService / ObjectiveService read spawns and sites from it.
 
+local PhysicsService = game:GetService("PhysicsService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 local Workspace = game:GetService("Workspace")
@@ -45,6 +46,11 @@ function MapService.Load(name: string): boolean
 		local studioMap = studioMaps and studioMaps:FindFirstChild(name)
 		local map = if studioMap then studioMap:Clone() else builders[name]()
 		map.Name = "Map"
+		for _, part in map:GetDescendants() do
+			if part:IsA("BasePart") and part.Name == "RailGuard" then
+				part.CollisionGroup = "Guards"
+			end
+		end
 		FortifyService.Prepare(map)
 		map.Parent = Workspace
 	end
@@ -68,6 +74,14 @@ function MapService.GetMapSpawn(): CFrame?
 end
 
 function MapService.Start()
+	-- Railing guards (invisible walls that stop people falling off balconies and stairs) block
+	-- characters and nothing else. Roblox ignores CanQuery = false on anything that collides, so
+	-- they'd stop bullets and line-of-sight checks too; raycasts use the Default group, which
+	-- guards don't collide with. (RoundService puts characters in "Characters".)
+	PhysicsService:RegisterCollisionGroup("Characters")
+	PhysicsService:RegisterCollisionGroup("Guards")
+	PhysicsService:CollisionGroupSetCollidable("Guards", "Default", false)
+
 	-- The lobby always exists, floating above whatever map is loaded
 	local lobby = Lobby.Build()
 	lobby.Parent = Workspace

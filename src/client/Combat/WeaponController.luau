@@ -70,6 +70,8 @@ local function computeSpread(): number
 	spread += weapon.MoveSpreadBonus * moveAlpha * (1 - state.aimAlpha * 0.7)
 	if not state.grounded or state.sliding then
 		spread += weapon.AirSpreadBonus
+	elseif state.prone then
+		spread *= weapon.CrouchSpreadScale * 0.7 -- lying down steadies your aim the most
 	elseif state.crouching then
 		spread *= weapon.CrouchSpreadScale
 	end
@@ -251,9 +253,9 @@ local function update(dt: number)
 		return
 	end
 
-	local uiOpen = state.devPanelOpen or state.mouseUnlocked or state.draftOpen
-	-- cover / plant / defuse / fortify / knife / gadget moves
-	local handsBusy = state.deploying or state.interacting or state.meleeing or state.gesturing
+	local uiOpen = state.devPanelOpen or state.mouseUnlocked or state.draftOpen or state.voteOpen
+	-- cover / plant / disable / fortify / knife / gadget moves / driving a drone
+	local handsBusy = state.deploying or state.interacting or state.meleeing or state.gesturing or state.droning
 	state.aiming = aimHeld and not reloading and not uiOpen and not handsBusy
 	local aimStep = dt / weapon.AdsTime
 	state.aimAlpha = math.clamp(state.aimAlpha + (if state.aiming then aimStep else -aimStep), 0, 1)
@@ -304,8 +306,9 @@ local function update(dt: number)
 		viewmodel:Update(dt, camera.CFrame, {
 			aimAlpha = state.aimAlpha,
 			sprinting = state.sprinting,
+			crawling = (state.prone and state.speed > 1) or (state.rappelling and state.rappelSpeed > 1), -- (hand over hand on a rope rocks the same way)
 			reloading = reloading,
-			speed = state.speed,
+			speed = if state.rappelling then state.rappelSpeed else state.speed,
 			grounded = state.grounded,
 		})
 	end

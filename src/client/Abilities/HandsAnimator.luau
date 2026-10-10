@@ -1,15 +1,15 @@
 -- First-person hands for everything that isn't shooting: sticking gadgets on walls and floors,
 -- throwing the EMP, the detonator, the recon scanner, the ghost step wrist tap, pushing an armor
--- panel into a doorway, planting / defusing the charge, barricading, reinforcing and pulling up
+-- panel into a doorway, planting / disabling the defuser, barricading, reinforcing and pulling up
 -- deployable cover. Two gloved arms come from your shoulders and reach (two-bone IK) for points
 -- in the world or in front of your eyes, holding small props; the gun is put away meanwhile
 -- (WeaponController hides it while state.gesturing / interacting / deploying).
 --   • short moves ("gestures"): the server sets Gesture / GestureTarget / GestureAt on your
 --     character when an ability goes off (GadgetService.Gesture)
---   • holds: your Interaction / InteractEndsAt attributes (plant, defuse, barricade, reinforce)
+--   • holds: your Interaction / InteractEndsAt attributes (plant, disable, barricade, reinforce)
 --   • deployable cover: AbilityController calls PlayCover with the server's timing
 -- Other players' bodies do the same moves in third person: BodyAnimator calls Current / Sample
--- with their head instead of your camera.
+-- with their head instead of your camera (and shows someone driving a drone holding a tablet).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -41,8 +41,9 @@ HandsAnimator.Gestures = {
 -- Holds last as long as the server's timers
 local HOLD_TIME = {
 	Plant = MatchConfig.PlantTime,
-	Defuse = MatchConfig.DefuseTime,
+	Disable = MatchConfig.DisableTime,
 	Barricade = MatchConfig.BarricadeTime,
+	Unbarricade = MatchConfig.UnbarricadeTime,
 	Reinforce = MatchConfig.ReinforceTime,
 }
 
@@ -50,7 +51,7 @@ local UPPER_ARM, FOREARM = 1.15, 1.15
 -- Camera-space anchors
 local SHOULDERS = { Left = Vector3.new(-0.75, -0.95, -0.15), Right = Vector3.new(0.75, -0.95, -0.15) }
 local REST = { Left = Vector3.new(-0.45, -0.9, -1.2), Right = Vector3.new(0.45, -0.9, -1.2) }
-local LOOK_DOWN = math.rad(28) -- planting / defusing: eyes down on the charge
+local LOOK_DOWN = math.rad(28) -- planting / disabling: eyes down on the defuser
 local HELD = CFrame.new(0, 0.05, -0.3) -- a prop in the fist, just past the knuckles
 local COVER_GRAB = 0.2 -- matches AbilityService: first 20% of the cover deploy is the grab
 
@@ -62,7 +63,7 @@ export type Context = {
 	size: Vector3?, -- cover: its size
 	slot: BasePart?, -- barricade / reinforce: the doorway / wall section / hatch being worked on
 	ground: Vector3?, -- plant: the spot on the floor
-	bomb: Vector3?, -- defuse
+	defuser: Vector3?, -- disable: the planted defuser
 }
 -- A prop held in a hand, sitting somewhere, or on its way from one to the other (alpha 0 → 1)
 type Prop = { hand: string?, offset: CFrame?, at: CFrame?, alpha: number? }
@@ -195,24 +196,36 @@ function HandsAnimator.Sample(kind: string, ctx: Context): (Vector3?, Vector3?, 
 		props.band = { hand = "Left", offset = CFrame.new(0, 0, 0.18) }
 		return restL:Lerp(wrist, raise), restR:Lerp(wrist + side * 0.32 + up * (0.16 - 0.1 * tap), raise), props
 	elseif kind == "Plant" then
-		-- Carry the charge down, set it on the floor, type the code in
+		-- Carry the defuser down, set it on the floor, type the code in
 		local ground = ctx.ground or cam(0, -4, -1.5)
 		local down = ramp(t, 0, 0.12)
 		local typing = math.max(math.sin(ctx.elapsed * 13), 0) * ramp(t, 0.22, 0.28)
 		local onFloor = CFrame.lookAt(ground + up * 0.25, ground + up * 0.25 + flat(eye.LookVector))
-		props.bomb = { hand = "Right", offset = HELD, at = onFloor, alpha = ramp(t, 0.1, 0.22) }
+		props.defuser = { hand = "Right", offset = HELD, at = onFloor, alpha = ramp(t, 0.1, 0.22) }
 		return restL:Lerp(ground - side * 0.5 + up * 0.45, down), restR:Lerp(ground + side * 0.3 + up * (0.5 + 0.1 * typing), down), props
-	elseif kind == "Defuse" then
-		-- Steady the charge with the left hand, work on it with the tool in the right
-		local bomb = ctx.bomb or ctx.ground or cam(0, -4, -1.5)
+	elseif kind == "Disable" then
+		-- Steady the defuser with the left hand, work on it with the tool in the right
+		local defuser = ctx.defuser or ctx.ground or cam(0, -4, -1.5)
 		local down = ramp(t, 0, 0.1)
 		local probe = math.sin(ctx.elapsed * 9)
-		props.defuser = { hand = "Right", offset = CFrame.new(0, 0, -0.35) }
-		return restL:Lerp(bomb - side * 0.45 + up * 0.35, down), restR:Lerp(bomb + side * (0.25 + 0.1 * probe) + up * (0.45 + 0.08 * math.cos(ctx.elapsed * 11)), down), props
-	elseif kind == "Barricade" or kind == "Reinforce" then
-		local left, right = edgeHands(kind, ctx)
+		props.tool = { hand = "Right", offset = CFrame.new(0, 0, -0.35) }
+		return restL:Lerp(defuser - side * 0.45 + up * 0.35, down), restR:Lerp(defuser + side * (0.25 + 0.1 * probe) + up * (0.45 + 0.08 * math.cos(ctx.elapsed * 11)), down), props
+	elseif kind == "Barricade" or kind == "Reinforce" or kind == "Unbarricade" then
+		-- Taking boards down: the barricading moves played backwards (hands from chest height,
+		-- ripping them up and off the doorway)
+		local edgeCtx = ctx
+		if kind == "Unbarricade" then
+			edgeCtx = table.clone(ctx)
+			edgeCtx.t = 1 - ctx.t
+		end
+		local left, right = edgeHands(if kind == "Unbarricade" then "Barricade" else kind, edgeCtx)
 		local reach = ramp(t, 0, 0.12)
 		return if left then restL:Lerp(left, reach) else nil, if right then restR:Lerp(right, reach) else nil, props
+	elseif kind == "Controller" then
+		-- Driving a drone (DroneController): both hands on the tablet in front of you
+		local tablet = eye * CFrame.new(0, -0.75, -0.95) * CFrame.Angles(math.rad(40), 0, 0)
+		props.scanner = { at = tablet }
+		return (tablet * CFrame.new(-0.4, -0.15, 0)).Position, (tablet * CFrame.new(0.4, -0.15, 0)).Position, props
 	elseif kind == "Cover" then
 		-- Grab the shield's top edge and ride it up out of the ground (AbilityService's timing)
 		local target, size = ctx.target, ctx.size
@@ -264,16 +277,19 @@ function HandsAnimator.Current(who: Player, character: Model, root: BasePart, ey
 	if holdTime and typeof(endsAt) == "number" then
 		local elapsed = now - (endsAt - holdTime)
 		local ctx: Context = { eye = eye, t = elapsed / holdTime, elapsed = elapsed }
-		if interaction == "Barricade" or interaction == "Reinforce" then
+		if interaction == "Barricade" or interaction == "Reinforce" or interaction == "Unbarricade" then
 			ctx.slot = workSlot(endsAt)
 		elseif interaction == "Plant" then
 			ctx.ground = groundAhead(root, character)
 		else
-			local bomb = MatchState:GetAttribute("BombPosition")
-			ctx.bomb = if typeof(bomb) == "Vector3" then bomb else nil
+			local defuser = MatchState:GetAttribute("DefuserPosition")
+			ctx.defuser = if typeof(defuser) == "Vector3" then defuser else nil
 			ctx.ground = groundAhead(root, character)
 		end
 		return interaction, ctx
+	end
+	if who:GetAttribute("Droning") then
+		return "Controller", { eye = eye, t = 1, elapsed = 0 }
 	end
 	local gestureAt = character:GetAttribute("GestureAt")
 	local name = character:GetAttribute("Gesture")
@@ -360,12 +376,12 @@ local PROP_BUILDERS: { [string]: (Model) -> () } = {
 	band = function(m)
 		newPart(m, Vector3.new(0.36, 0.36, 0.1), Color3.fromRGB(150, 200, 255), Enum.Material.Neon)
 	end,
-	bomb = function(m)
+	defuser = function(m) -- the attackers' device (looks like the planted one, ObjectiveService)
 		newPart(m, Vector3.new(1.0, 0.4, 0.7), DARK, Enum.Material.Metal)
 		newPart(m, Vector3.new(0.35, 0.05, 0.25), Color3.fromRGB(190, 195, 200), Enum.Material.SmoothPlastic).CFrame = CFrame.new(0.2, 0.22, 0)
 		newPart(m, Vector3.new(0.1, 0.06, 0.1), Color3.fromRGB(255, 40, 40), Enum.Material.Neon).CFrame = CFrame.new(-0.3, 0.22, 0.15)
 	end,
-	defuser = function(m)
+	tool = function(m) -- what defenders pry the defuser apart with
 		newPart(m, Vector3.new(0.14, 0.14, 0.4), Color3.fromRGB(230, 190, 40), Enum.Material.Plastic)
 		newPart(m, Vector3.new(0.05, 0.05, 0.3), DARK, Enum.Material.Metal).CFrame = CFrame.new(0, 0, -0.33)
 	end,
@@ -424,7 +440,8 @@ local function update(dt: number)
 	local eye = camera.CFrame
 
 	local kind, ctx = nil, nil
-	if character and root and humanoid and humanoid.Health > 0 and not state.inLobby and not state.spectating then
+	-- (on the drone's camera your own arms aren't in view)
+	if character and root and humanoid and humanoid.Health > 0 and not state.inLobby and not state.spectating and not state.droning then
 		if cover and state.deploying then
 			local elapsed = os.clock() - cover.startedAt
 			kind, ctx = "Cover", { eye = eye, t = elapsed / cover.duration, elapsed = elapsed, target = cover.target, size = cover.size }
@@ -433,8 +450,8 @@ local function update(dt: number)
 		end
 	end
 
-	-- Eyes down on the charge while planting / defusing (the deploying cover owns this otherwise)
-	local wantLook = if kind == "Plant" or kind == "Defuse" then 1 else 0
+	-- Eyes down on the defuser while planting / disabling (the deploying cover owns this otherwise)
+	local wantLook = if kind == "Plant" or kind == "Disable" then 1 else 0
 	lookDown += (wantLook - lookDown) * (1 - math.exp(-8 * dt))
 	if not state.deploying then
 		state.deployPitch = -LOOK_DOWN * lookDown

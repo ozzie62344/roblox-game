@@ -19,11 +19,11 @@ local MatchHud = {}
 
 local PHASE_LABELS = {
 	Waiting = "WAITING FOR PLAYERS",
-	Starting = "MATCH STARTING",
+	Vote = "MAP VOTE",
 	PreRound = "PREPARE",
 	Prep = "DEFENDERS SETTING UP",
 	Action = "",
-	Planted = "CHARGE PLANTED",
+	Planted = "DEFUSER PLANTED",
 	PostRound = "ROUND OVER",
 	MatchOver = "MATCH OVER",
 }
@@ -214,7 +214,7 @@ local function update()
 	local endsAt = MatchState:GetAttribute("PhaseEndsAt") or 0
 	local remaining = endsAt - Workspace:GetServerTimeNow()
 
-	local inMatch = phase ~= "Waiting" and phase ~= "Starting"
+	local inMatch = phase ~= "Waiting" and phase ~= "Vote"
 	timerLabel.Text = if endsAt > 0 then formatTime(remaining) else ""
 	-- The fuse countdown shows in red
 	timerLabel.TextColor3 = if phase == "Planted" then Color3.fromRGB(255, 70, 70) else Color3.new(1, 1, 1)
@@ -224,9 +224,11 @@ local function update()
 	if inMatch and round > 0 then
 		phaseText = if phaseText == "" then `ROUND {round}` else `ROUND {round} · {phaseText}`
 	elseif phase == "Waiting" then
-		phaseText ..= ` ({#Players:GetPlayers()}/{MatchConfig.MinPlayers})`
-		if player:GetAttribute("IsDev") then
-			phaseText ..= "  ·  P → Start match"
+		-- Match server: waiting for everyone teleported in. Lobby: the menu says it all.
+		if MatchState:GetAttribute("ServerKind") == "Match" then
+			phaseText ..= ` ({#Players:GetPlayers()}/{MatchState:GetAttribute("Expected") or "?"})`
+		else
+			phaseText = if player:GetAttribute("IsDev") then "P → dev panel (start a match)" else ""
 		end
 	end
 	phaseLabel.Text = phaseText

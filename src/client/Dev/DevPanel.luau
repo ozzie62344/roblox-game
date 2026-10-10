@@ -1,11 +1,11 @@
--- Dev panel (press P). Only shows for players the server marks as devs
--- (anyone in Studio, plus the game owner / DEV_USER_IDS in DevService).
+-- Dev panel (press P). Shows for players the server marks as devs (everyone, for now: DevService).
 
 local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Abilities = require(ReplicatedStorage.Shared.Abilities)
+local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 local state = require(script.Parent.Parent.PlayerState)
 local WeaponController = require(script.Parent.Parent.Combat.WeaponController)
@@ -98,6 +98,53 @@ local function choiceGrid(
 	end
 	table.insert(refreshers, refresh)
 	refresh()
+end
+
+-- One row per player: name, then Blue / Random / Orange (their "TeamPick", used next match)
+local TEAM_CHOICES = { { value = "Blue", label = "Blue" }, { value = "Auto", label = "Random" }, { value = "Orange", label = "Orange" } }
+
+local function buildTeamRows(list: Frame, leaving: Player?)
+	for _, child in list:GetChildren() do
+		if child:IsA("Frame") then
+			child:Destroy()
+		end
+	end
+	for i, other in Players:GetPlayers() do
+		if other == leaving then
+			continue
+		end
+		local row = Instance.new("Frame")
+		row.Size = UDim2.new(1, 0, 0, 28)
+		row.LayoutOrder = i
+		row.BackgroundTransparency = 1
+		row.Parent = list
+		local name = Instance.new("TextLabel")
+		name.Size = UDim2.new(0.31, 0, 1, 0)
+		name.BackgroundTransparency = 1
+		name.Font = Enum.Font.GothamMedium
+		name.TextSize = 13
+		name.TextColor3 = Color3.new(1, 1, 1)
+		name.TextXAlignment = Enum.TextXAlignment.Left
+		name.TextTruncate = Enum.TextTruncate.AtEnd
+		name.Text = other.DisplayName
+		name.Parent = row
+		local pick = other:GetAttribute("TeamPick") or "Auto"
+		for j, choice in TEAM_CHOICES do
+			local b = Instance.new("TextButton")
+			b.Size = UDim2.new(0.23, -4, 1, 0)
+			b.Position = UDim2.new(0.31 + (j - 1) * 0.23, 4, 0, 0)
+			styleButton(b, choice.label)
+			b.TextSize = 12
+			if choice.value == pick then
+				local team = MatchConfig.Teams[choice.value]
+				b.BackgroundColor3 = if team then team.Color.Color else ACTIVE_COLOR
+			end
+			b.Activated:Connect(function()
+				DevAction:FireServer("SetTeam", { Player = other, Team = choice.value })
+			end)
+			b.Parent = row
+		end
+	end
 end
 
 local function refreshAll()
@@ -193,6 +240,17 @@ local function build()
 		DevAction:FireServer("SetAbility", ability)
 	end)
 
+	-- Your own setting (not sent to the server)
+	local leanButton = button(panel, "", 5)
+	local function showLean()
+		leanButton.Text = if state.leanToggle then "Lean (Q / E): tap to toggle" else "Lean (Q / E): hold"
+	end
+	showLean()
+	leanButton.Activated:Connect(function()
+		state.leanToggle = not state.leanToggle
+		showLean()
+	end)
+
 	heading(panel, "BETWEEN MATCHES", 6)
 	button(panel, "Go to map (first person, test guns)", 7).Activated:Connect(function()
 		DevAction:FireServer("GoToMap")
@@ -248,6 +306,33 @@ local function build()
 	end, function(mode)
 		DevAction:FireServer("SetLoadoutMode", mode)
 	end)
+	heading(panel, "TEAMS (applies next match)", 28)
+	local teamList = Instance.new("Frame")
+	teamList.Size = UDim2.new(1, 0, 0, 0)
+	teamList.AutomaticSize = Enum.AutomaticSize.Y
+	teamList.LayoutOrder = 29
+	teamList.BackgroundTransparency = 1
+	teamList.Parent = panel
+	local teamLayout = Instance.new("UIListLayout")
+	teamLayout.Padding = UDim.new(0, 4)
+	teamLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	teamLayout.Parent = teamList
+	local function rebuildTeams(leaving: Player?)
+		buildTeamRows(teamList, leaving)
+	end
+	local function watch(other: Player)
+		other:GetAttributeChangedSignal("TeamPick"):Connect(rebuildTeams)
+	end
+	for _, other in Players:GetPlayers() do
+		watch(other)
+	end
+	Players.PlayerAdded:Connect(function(other)
+		watch(other)
+		rebuildTeams()
+	end)
+	Players.PlayerRemoving:Connect(rebuildTeams)
+	rebuildTeams()
+
 	button(panel, "Start match now (works solo)", 23).Activated:Connect(function()
 		DevAction:FireServer("StartMatch")
 	end)

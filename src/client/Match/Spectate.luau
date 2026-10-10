@@ -1,7 +1,9 @@
 -- When you die: first a KILL CAM on whoever killed you (their name, weapon and health left),
 -- then, during a round, watch a living teammate in third person.
 -- Left click / → = next player, right click / ← = previous. Falls back to any living player
--- if you have no team (e.g. you joined mid-match).
+-- if you have no team. With nobody to watch and no body of your own (e.g. you joined mid-match:
+-- you spawn next round), the camera circles above the map instead of sitting at the world's
+-- origin, inside the floor.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -25,6 +27,7 @@ local killer: Player? = nil -- who killed us (for the kill cam)
 local target: Player? = nil
 local savedCamera = { mode = Enum.CameraMode.LockFirstPerson, minZoom = 0.5, maxZoom = 128 }
 local label: TextLabel
+local overviewOf: { map: Instance?, center: Vector3, radius: number } = { map = nil, center = Vector3.zero, radius = 80 }
 
 local function humanoidOf(p: Player): Humanoid?
 	local character = p.Character
@@ -63,7 +66,34 @@ local function spectateMode(): string?
 	if ROUND_PHASES[phase] == true and not inKillCam then
 		return "Team"
 	end
+	if not player.Character then
+		return "Overview" -- no body at all (joined while a match was running)
+	end
 	return nil
+end
+
+-- A slow circle above the map, looking down at the building (the middle of its bomb sites; the
+-- whole map's box takes in the street and yards, far too wide)
+local function overview()
+	local map = Workspace:FindFirstChild("Map") or Workspace:FindFirstChild("TestArena")
+	if map ~= overviewOf.map and map then
+		local objectives = map:FindFirstChild("Objectives")
+		local sites = if objectives then objectives:GetChildren() else {}
+		local sum, spread = Vector3.zero, 0
+		for _, site in sites do
+			sum += (site :: BasePart).Position
+		end
+		local center = if #sites > 0 then sum / #sites else Vector3.zero
+		for _, site in sites do
+			spread = math.max(spread, ((site :: BasePart).Position - center).Magnitude)
+		end
+		overviewOf = { map = map, center = center, radius = math.clamp(spread + 45, 60, 120) }
+	end
+	local camera = Workspace.CurrentCamera
+	local angle = os.clock() * 0.08
+	local radius = overviewOf.radius
+	camera.CameraType = Enum.CameraType.Scriptable
+	camera.CFrame = CFrame.lookAt(overviewOf.center + Vector3.new(math.cos(angle) * radius, radius * 0.55, math.sin(angle) * radius), overviewOf.center)
 end
 
 local function cycle(step: number)
@@ -95,6 +125,7 @@ local function stopSpectating()
 	player.CameraMode = savedCamera.mode
 	player.CameraMinZoomDistance = savedCamera.minZoom
 	player.CameraMaxZoomDistance = savedCamera.maxZoom
+	Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom -- (after the map overview)
 	local ownHumanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 	if ownHumanoid then
 		Workspace.CurrentCamera.CameraSubject = ownHumanoid
@@ -134,15 +165,17 @@ local function update()
 		return
 	end
 	label.TextColor3 = Color3.new(1, 1, 1)
-	if not target or not humanoidOf(target) then
+	if mode == "Team" and (not target or not humanoidOf(target)) then
 		cycle(1)
 	end
-	local humanoid = target and humanoidOf(target)
+	local humanoid = if mode == "Team" and target then humanoidOf(target) else nil
 	if humanoid and target then
+		Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
 		Workspace.CurrentCamera.CameraSubject = humanoid
 		label.Text = `SPECTATING  {string.upper(target.DisplayName)}   ·   click to switch`
 	else
-		label.Text = "NO ONE TO SPECTATE"
+		overview()
+		label.Text = if player.Character then "NO ONE TO SPECTATE" else "YOU'LL JOIN AT THE START OF THE NEXT ROUND"
 	end
 	label.Visible = true
 end

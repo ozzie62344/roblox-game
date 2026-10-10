@@ -1,7 +1,10 @@
 -- Crosshair (spreads with accuracy), hit markers, ammo and health.
 
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
+
+local state = require(script.Parent.Parent.PlayerState)
 
 local player = Players.LocalPlayer
 
@@ -56,6 +59,9 @@ function Hud.Start()
 	gui.IgnoreGuiInset = true
 	gui.ResetOnSpawn = false
 	gui.Parent = player:WaitForChild("PlayerGui")
+	RunService.RenderStepped:Connect(function()
+		gui.Enabled = not state.inLobby -- (gun put away there; the lobby menu has the screen)
+	end)
 
 	local center = UDim2.fromScale(0.5, 0.5)
 

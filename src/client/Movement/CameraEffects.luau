@@ -15,6 +15,7 @@ local CameraEffects = {}
 
 local fov = Config.BaseFov
 local roll = 0
+local proneDrop = 0
 local appliedRecoilPitch = 0
 local appliedRecoilYaw = 0
 
@@ -60,11 +61,13 @@ local function update(dt: number)
 	roll = smooth(roll, targetRoll, 16, dt)
 	camera.CFrame *= CFrame.Angles(0, 0, roll + state.recoilRoll)
 
-	-- Shift sideways while leaning (crouch/slide height comes from the body itself lowering)
+	-- Shift sideways while leaning (crouch/slide height comes from the body itself lowering).
+	-- Lying down: your body lies flat, so your eyes go further down than the body's drop.
+	proneDrop = smooth(proneDrop, if state.prone then Config.ProneCameraDrop else 0, 8, dt)
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if humanoid then
-		humanoid.CameraOffset = Vector3.new(state.leanOffset, 0, 0)
+		humanoid.CameraOffset = Vector3.new(state.leanOffset, -proneDrop, 0)
 	end
 end
 
