@@ -338,6 +338,10 @@ local function release(input: InputObject)
 	end
 	held[input] = nil
 	fireDrags[input] = nil
+	local scale = entry.button:FindFirstChildOfClass("UIScale")
+	if scale then
+		scale.Scale = 1 -- (pressed buttons shrink a little)
+	end
 	if entry.spec.release then
 		entry.spec.release(input)
 	end
@@ -373,7 +377,9 @@ local function makeButton(spec: Spec, index: number)
 	button.Parent = gui
 
 	button.InputBegan:Connect(function(input)
-		if input.UserInputType ~= Enum.UserInputType.Touch and input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+		local touch = input.UserInputType == Enum.UserInputType.Touch
+		local click = input.UserInputType == Enum.UserInputType.MouseButton1 and not UserInputService.TouchEnabled
+		if not (touch or click) or held[input] then
 			return
 		end
 		held[input] = { spec = spec, button = button }
@@ -387,6 +393,19 @@ local function makeButton(spec: Spec, index: number)
 end
 
 local function update()
+	-- A finger that's gone (lifted, or cancelled by the phone, e.g. slid off the screen) is let go
+	-- of even if its "ended" event never came, so nothing stays held: a missed release on FIRE
+	-- kept the gun shooting by itself
+	for input in held do
+		if input.UserInputState == Enum.UserInputState.End or input.UserInputState == Enum.UserInputState.Cancel then
+			release(input)
+		end
+	end
+	if fireHolds > 0 and next(fireDrags) == nil then
+		fireHolds = 1
+		fireRelease()
+	end
+
 	local mode = currentModeNow()
 	if mode ~= currentMode then
 		-- Leaving play (died, got in the drone, opened a menu): let go of everything
@@ -453,12 +472,8 @@ function MobileControls.Start()
 	end)
 
 	-- Letting go anywhere (the finger may slide off the button first)
-	UserInputService.InputEnded:Connect(function(input)
-		if held[input] then
-			held[input].button:FindFirstChildOfClass("UIScale").Scale = 1
-			release(input)
-		end
-	end)
+	UserInputService.InputEnded:Connect(release)
+	UserInputService.TouchEnded:Connect(release)
 
 	-- Roblox's jump button: wall jumps, getting up, pushing off while rappelling, drone hops. A
 	-- held button asks every frame, so only the first ask after a pause counts as a press.
@@ -479,8 +494,10 @@ function MobileControls.Start()
 	end)
 
 	player.CharacterAdded:Connect(function()
+		for input in held do
+			release(input)
+		end
 		aimOn, fireHolds = false, 0
-		table.clear(held)
 		table.clear(fireDrags)
 	end)
 	RunService.RenderStepped:Connect(update)
