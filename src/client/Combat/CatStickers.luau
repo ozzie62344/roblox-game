@@ -15,7 +15,8 @@ local INK = Color3.fromRGB(26, 22, 28)
 
 local SIZE = 0.045 -- a cat's width, as a share of the gun's length...
 local MIN_SIZE, MAX_SIZE = 0.07, 0.14 -- ...kept between these (studs)
-local SHRINK = 0.6 -- a face too small for a full-size cat gets one down to this share of it, or none
+local SHRINK = 0.5 -- a face too small for a full-size cat gets one down to this share of it, or none
+local BEND = 0.5 -- how far onto a rounded edge's curve a cat may reach (share of the way round)
 local MAX_CATS = 40 -- per gun (each cat is 11 parts)
 local GAP_X, GAP_Y = 1.75, 1.55 -- spacing between cats, in cat widths
 local MARGIN = 0.08 -- kept clear along a face's edges, in cat widths
@@ -144,12 +145,18 @@ local function facesOf(part: BasePart): { Face }
 					end
 				end
 			end
+			-- A rounded piece's flat faces stop where its edges start curving away; a sticker may reach
+			-- a little way onto the curve (BEND of the way round), like a wrap
+			local function span(along: Vector3): number
+				local flat = math.abs(size:Dot(along))
+				return if typeof(whole) == "Vector3" then flat + (math.abs(whole:Dot(along)) - flat) * BEND else flat
+			end
 			local upWorld = cf:VectorToWorldSpace(up)
 			table.insert(faces, {
 				part = part,
 				frame = CFrame.fromMatrix(cf:PointToWorldSpace(axis * sign * size:Dot(axis) / 2), upWorld:Cross(normal), upWorld, normal),
-				width = math.abs(size:Dot(axis:Cross(up))),
-				height = math.abs(size:Dot(up)),
+				width = span(axis:Cross(up)),
+				height = span(up),
 			})
 		end
 	end

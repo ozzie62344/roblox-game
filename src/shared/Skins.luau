@@ -112,7 +112,7 @@ developer.Rainbow = true
 table.insert(Skins.List, developer)
 
 -- Bubblegum pink covered in little cat heads, just for @kittenloveeeeeeeeeee (and devs)
-local kitty = skin("Kitty", "Kitty", "Exclusive", "Solid", { rgb(255, 140, 192), rgb(255, 212, 232) }, M.SmoothPlastic, rgb(255, 222, 236), M.SmoothPlastic)
+local kitty = skin("Kitty", "Kitty", "Exclusive", "Solid", { rgb(255, 118, 172), rgb(255, 205, 226) }, M.SmoothPlastic, rgb(255, 222, 236), M.SmoothPlastic)
 kitty.OnlyFor = { 406566030 } -- kittenloveeeeeeeeeee
 kitty.Note = "Made just for @kittenloveeeeeeeeeee"
 kitty.Stickers = "Cat"
