@@ -16,7 +16,6 @@ local Workspace = game:GetService("Workspace")
 local Abilities = require(ReplicatedStorage.Shared.Abilities)
 local Config = require(ReplicatedStorage.Shared.MovementConfig)
 local state = require(script.Parent.Parent.PlayerState)
-local MoveInput = require(script.Parent.Parent.Input.MoveInput)
 local TouchLook = require(script.Parent.Parent.Input.TouchLook)
 local Static = require(script.Parent.Static)
 local Actions = require(script.Parent.Parent.Input.Actions)
@@ -158,26 +157,13 @@ local function update()
 	end
 	local facing = CFrame.Angles(0, yaw, 0)
 
-	-- Drive where you look (WASD, thumbstick or gamepad stick); gravity and hops keep their own
-	-- vertical speed. Without MoveInput: the keys, or on a phone the way the thumbstick points the
-	-- body (it's rooted, but Roblox still sets where it wants to go, relative to this camera).
+	-- Drive where you look; gravity and hops keep their own vertical speed. WASD, the phone's
+	-- thumbstick and a gamepad stick all work the same way: your (rooted) body still gets told
+	-- which way to walk, relative to the camera, which is this drone's camera.
 	local move = Vector3.zero
-	if not uiOpen then
-		local input = MoveInput.Vector()
-		if input then
-			move = facing:VectorToWorldSpace(Vector3.new(input.X, 0, input.Z))
-		else
-			local keys = { W = facing.LookVector, S = -facing.LookVector, A = -facing.RightVector, D = facing.RightVector }
-			for key, direction in keys do
-				if UserInputService:IsKeyDown(Enum.KeyCode[key]) then
-					move += direction
-				end
-			end
-			local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-			if move.Magnitude == 0 and humanoid then
-				move = humanoid.MoveDirection * Vector3.new(1, 0, 1)
-			end
-		end
+	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	if not uiOpen and humanoid then
+		move = humanoid.MoveDirection * Vector3.new(1, 0, 1)
 	end
 	jam += (math.clamp(jamAt(body.Position), 0, 1) - jam) * 0.2
 	local strength = math.min(move.Magnitude, 1)
@@ -193,7 +179,6 @@ local function update()
 	static:Set(jam * 1.2, if jam > 0.05 then "SIGNAL JAMMED" else nil)
 	local left = player:GetAttribute("DronesLeft")
 	countLabel.Text = if typeof(left) == "number" then `{left} MORE DRONE{if left == 1 then "" else "S"} THIS ROUND` else ""
-	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 	local alive = humanoid ~= nil and humanoid.Health > 0
 	hintLabel.Text = if state.touchControls
 		then "STICK DRIVES  ·  DRAG TO LOOK  ·  JUMP HOPS  ·  SPOT AN ENEMY"

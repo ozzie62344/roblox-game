@@ -8,7 +8,7 @@ local Audio = script:WaitForChild("Audio")
 local Input = script:WaitForChild("Input")
 
 require(Audio.SoundCache).PreloadAll() -- first, so sounds are loaded before anyone shoots
-require(Input.MoveInput).Start() -- (finds Roblox's movement controls in the background)
+require(Input.MoveInput).Start() -- (how far the phone's thumbstick is pushed)
 require(Movement.MovementController).Start()
 require(Movement.CameraEffects).Start()
 require(Movement.RappelController).Start()

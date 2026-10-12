@@ -94,12 +94,11 @@ local function stickSpeed(): (boolean, number)
 	if not state.touchControls then
 		return false, 1
 	end
-	local stick = MoveInput.Vector()
-	if not stick then
-		return false, 1 -- (Roblox's controls not found: plain walking)
+	local push = MoveInput.Push()
+	if not push then
+		return false, 1
 	end
-	local push = math.min(stick.Magnitude, 1)
-	if push >= STICK_SPRINT and stick.Z < -0.6 then -- (mostly forward)
+	if push >= STICK_SPRINT then -- (sprinting also needs you to be going forward: wantsToSprint)
 		return true, 1
 	end
 	return false, math.clamp((push - 0.1) / (STICK_SPRINT - 0.1), 0.3, 1)

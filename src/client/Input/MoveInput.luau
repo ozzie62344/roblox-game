@@ -1,40 +1,44 @@
--- How far and which way the movement controls are pushed (keys, the phone's thumbstick or a
--- gamepad stick), from Roblox's ControlModule: X is right, Z is back (-1 = all the way forward),
--- length 0..1. It's looked up once, in the background and safely: until it's found, or if it
--- can't be, Vector() returns nil and callers fall back to something else. Never look it up
--- inside a per-frame function: a yield or error there stops movement / the drone every frame.
+-- How far the movement thumbstick is pushed on a touch screen, 0..1 (MovementController: a light
+-- push walks slowly, all the way out sprints). Measured straight from the finger driving it: the
+-- touch that started on the left half of the screen (every on-screen button is on the right half),
+-- from where it went down (Roblox's thumbstick centers itself there) to where it is now.
+-- Roblox's own control scripts aren't reachable from game scripts here (this place keeps them in
+-- StarterPlayer, not PlayerScripts), so nothing waits on them.
 
-local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
 
 local MoveInput = {}
 
-local controlModule: any = nil
+local finger: InputObject? = nil
+local origin = Vector3.zero
 
-function MoveInput.Vector(): Vector3?
-	if not controlModule then
+-- Roughly the thumbstick's radius in pixels (Roblox's is smaller on phones)
+local function radius(): number
+	local viewport = Workspace.CurrentCamera.ViewportSize
+	return if math.min(viewport.X, viewport.Y) <= 500 then 35 else 60
+end
+
+-- nil when no finger is on the thumbstick side
+function MoveInput.Push(): number?
+	if not finger then
 		return nil
 	end
-	local ok, vector = pcall(controlModule.GetMoveVector, controlModule)
-	return if ok and typeof(vector) == "Vector3" then vector else nil
+	local drag = finger.Position - origin
+	return math.clamp(Vector2.new(drag.X, drag.Y).Magnitude / radius(), 0, 1)
 end
 
 function MoveInput.Start()
-	task.spawn(function()
-		local scripts = Players.LocalPlayer:WaitForChild("PlayerScripts", 15)
-		local module = scripts and scripts:WaitForChild("PlayerModule", 15)
-		if not module then
-			warn("MoveInput: no PlayerModule; using fallbacks")
-			return
+	UserInputService.TouchStarted:Connect(function(touch)
+		if not finger and touch.Position.X < Workspace.CurrentCamera.ViewportSize.X / 2 then
+			finger = touch
+			origin = touch.Position
 		end
-		local ok, playerModule = pcall(require, module)
-		if ok and typeof(playerModule) == "table" and playerModule.GetControls then
-			local found, controls = pcall(playerModule.GetControls, playerModule)
-			if found and controls and controls.GetMoveVector then
-				controlModule = controls
-				return
-			end
+	end)
+	UserInputService.TouchEnded:Connect(function(touch)
+		if touch == finger then
+			finger = nil
 		end
-		warn("MoveInput: couldn't read Roblox's ControlModule; using fallbacks")
 	end)
 end
 
