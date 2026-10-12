@@ -76,9 +76,11 @@ local function fromStored(stored: any): Data
 	end
 	if typeof(stored.Equipped) == "table" then
 		for item, id in stored.Equipped do
-			-- (dev skins are only shown to devs: Skins.EquippedFor)
+			-- Dev and exclusive skins aren't bought, so they're kept as they are (they only show for
+			-- the players they're for: Skins.EquippedFor). Dropping them here took them off you
+			-- every time you joined a server, a match server included.
 			local skin = Skins.ById[id]
-			if table.find(Skins.Items, item) and skin and (data.Skins[id] or skin.DevOnly) then
+			if table.find(Skins.Items, item) and skin and (data.Skins[id] or skin.DevOnly or skin.OnlyFor) then
 				data.Equipped[item] = id
 			end
 		end
