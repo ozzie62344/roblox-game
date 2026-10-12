@@ -16,6 +16,7 @@ local Workspace = game:GetService("Workspace")
 local Abilities = require(ReplicatedStorage.Shared.Abilities)
 local Config = require(ReplicatedStorage.Shared.MovementConfig)
 local state = require(script.Parent.Parent.PlayerState)
+local MoveInput = require(script.Parent.Parent.Input.MoveInput)
 local TouchLook = require(script.Parent.Parent.Input.TouchLook)
 local Static = require(script.Parent.Static)
 local Actions = require(script.Parent.Parent.Input.Actions)
@@ -34,16 +35,6 @@ local FOV = 85 -- wide-angle lens
 local EYE = CFrame.new(0, 0.3, -0.45) -- matches DroneService.Eye
 local SPOT_RANGE = 70
 local JAM_RADIUS = Abilities.SignalJammer.Radius or 10
-
--- Roblox's movement controls (keyboard, thumbstick, gamepad), for driving
-local controlModule = nil
-local function controls()
-	if not controlModule then
-		local playerModule = require(player:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule") :: ModuleScript) :: any
-		controlModule = playerModule:GetControls()
-	end
-	return controlModule
-end
 
 local yaw, pitch = 0, 0
 local driving: Model? = nil -- the drone the camera is on
@@ -167,12 +158,26 @@ local function update()
 	end
 	local facing = CFrame.Angles(0, yaw, 0)
 
-	-- Drive where you look (WASD, thumbstick or gamepad stick, through Roblox's controls); gravity
-	-- and hops keep their own vertical speed
+	-- Drive where you look (WASD, thumbstick or gamepad stick); gravity and hops keep their own
+	-- vertical speed. Without MoveInput: the keys, or on a phone the way the thumbstick points the
+	-- body (it's rooted, but Roblox still sets where it wants to go, relative to this camera).
 	local move = Vector3.zero
 	if not uiOpen then
-		local input = controls():GetMoveVector()
-		move = facing:VectorToWorldSpace(Vector3.new(input.X, 0, input.Z))
+		local input = MoveInput.Vector()
+		if input then
+			move = facing:VectorToWorldSpace(Vector3.new(input.X, 0, input.Z))
+		else
+			local keys = { W = facing.LookVector, S = -facing.LookVector, A = -facing.RightVector, D = facing.RightVector }
+			for key, direction in keys do
+				if UserInputService:IsKeyDown(Enum.KeyCode[key]) then
+					move += direction
+				end
+			end
+			local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+			if move.Magnitude == 0 and humanoid then
+				move = humanoid.MoveDirection * Vector3.new(1, 0, 1)
+			end
+		end
 	end
 	jam += (math.clamp(jamAt(body.Position), 0, 1) - jam) * 0.2
 	local strength = math.min(move.Magnitude, 1)

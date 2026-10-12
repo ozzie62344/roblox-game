@@ -19,6 +19,7 @@ local MovementController = {}
 
 local state = require(script.Parent.Parent.PlayerState)
 local Actions = require(script.Parent.Parent.Input.Actions)
+local MoveInput = require(script.Parent.Parent.Input.MoveInput)
 
 local humanoid: Humanoid? = nil
 local root: BasePart? = nil
@@ -86,16 +87,6 @@ local function lookDirection(): Vector3
 	return look.Unit
 end
 
--- Roblox's movement controls (for how far the phone's thumbstick is pushed)
-local controlModule = nil
-local function controls()
-	if not controlModule then
-		local playerModule = require(player:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule") :: ModuleScript) :: any
-		controlModule = playerModule:GetControls()
-	end
-	return controlModule
-end
-
 -- Phones: the thumbstick is analog. Pushed all the way forward = sprint; pushed less = slower
 -- (down to 30% speed). Returns (sprint?, speed scale); keyboards and gamepads get (false, 1).
 local STICK_SPRINT = 0.92 -- how far out the stick has to be to sprint
@@ -103,7 +94,10 @@ local function stickSpeed(): (boolean, number)
 	if not state.touchControls then
 		return false, 1
 	end
-	local stick = controls():GetMoveVector()
+	local stick = MoveInput.Vector()
+	if not stick then
+		return false, 1 -- (Roblox's controls not found: plain walking)
+	end
 	local push = math.min(stick.Magnitude, 1)
 	if push >= STICK_SPRINT and stick.Z < -0.6 then -- (mostly forward)
 		return true, 1
