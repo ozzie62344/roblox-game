@@ -11,14 +11,14 @@
 local CatStickers = {}
 
 local WHITE = Color3.fromRGB(252, 250, 252)
-local PINK = Color3.fromRGB(255, 158, 196)
+local PINK = Color3.fromRGB(255, 192, 220) -- (lighter than the gun's pink, so the horns stand out)
 local INK = Color3.fromRGB(26, 22, 28)
 
 local SIZE = 0.045 -- a cat's width, as a share of the gun's length...
 local MIN_SIZE, MAX_SIZE = 0.07, 0.14 -- ...kept between these (studs)
 local SHRINK = 0.5 -- a face too small for a full-size cat gets one down to this share of it, or none
 local BEND = 0.5 -- how far onto a rounded edge's curve a cat may reach (share of the way round)
-local MAX_CATS = 44 -- per gun (each cat is 15 parts)
+local MAX_CATS = 36 -- per gun (each cat is 15 parts; phones move every one of them each frame)
 local MAX_LIFT = 0.12 -- a cat may sit up to this far off its face to clear small details (widths)
 local GAP_X, GAP_Y = 1.75, 1.55 -- spacing between cats, in cat widths
 local MARGIN = 0.08 -- kept clear along a face's edges, in cat widths
@@ -30,7 +30,7 @@ local HORN_X, HORN_Y = 0.25, 0.33
 local HORN_BASE, HORN_HEIGHT = 0.28, 0.52
 local HORN_LEAN = math.rad(18)
 -- The pink inside: starts this far up the horn, this wide and tall (a stripe, with white all round)
-local INNER_START, INNER_BASE, INNER_HEIGHT = 0.1, 0.1, 0.3
+local INNER_START, INNER_BASE, INNER_HEIGHT = 0.1, 0.08, 0.3
 
 local FACE_OUT = CFrame.Angles(0, math.rad(90), 0) -- turns a cylinder's round side out of the surface
 -- Lays a wedge flat: its triangle (square corner at the bottom left, point on top) in the sticker's
