@@ -1,11 +1,12 @@
 -- Cat-head stickers for skins with Stickers = "Cat" (shared/Skins): little white cat faces with
--- pink inside the ears, dot eyes and an ω mouth, in staggered rows over every big flat face of the
--- gun (or knife), all the way around it.
--- Each cat is built from flat parts stacked a hair apart (ears behind the head, the face in
+-- two pointed demon horns (pink inside), dot eyes and an ω mouth, in staggered rows over every big
+-- flat face of the gun (or knife), all the way around it.
+-- Each cat is built from flat parts stacked a hair apart (horns behind the head, the face in
 -- front), so it shows wherever the gun does: in your hands, in other players' hands, in the shop's
 -- preview. A sticker takes the name of the piece it's on, so it rides along when that piece moves
 -- (a magazine coming out, a slide racking: Viewmodel moves pieces by name).
--- Only whole cats: a spot where any bit of one would sink into another piece is skipped.
+-- Only whole cats: a cat sits up over little flush details (slots, pins), but a spot where any bit
+-- of one would sink into something bigger is skipped.
 
 local CatStickers = {}
 
@@ -17,21 +18,55 @@ local SIZE = 0.045 -- a cat's width, as a share of the gun's length...
 local MIN_SIZE, MAX_SIZE = 0.07, 0.14 -- ...kept between these (studs)
 local SHRINK = 0.5 -- a face too small for a full-size cat gets one down to this share of it, or none
 local BEND = 0.5 -- how far onto a rounded edge's curve a cat may reach (share of the way round)
-local MAX_CATS = 40 -- per gun (each cat is 11 parts)
+local MAX_CATS = 32 -- per gun (each cat is 15 parts)
+local MAX_LIFT = 0.12 -- a cat may sit up to this far off its face to clear small details (widths)
 local GAP_X, GAP_Y = 1.75, 1.55 -- spacing between cats, in cat widths
 local MARGIN = 0.08 -- kept clear along a face's edges, in cat widths
-local TOP, BOTTOM = 0.6, 0.5 -- how far a cat reaches above (ear tips) and below its center, in widths
+local TOP, BOTTOM = 0.78, 0.5 -- how far a cat reaches above (horn tips) and below its center, in widths
+
+-- The horns, in cat widths from the middle of the head: where the right one's base sits (mostly
+-- behind the head), how wide and tall it is, and how far it leans out. The left one is its mirror.
+local HORN_X, HORN_Y = 0.24, 0.34
+local HORN_BASE, HORN_HEIGHT = 0.24, 0.44
+local HORN_LEAN = math.rad(20)
+-- The pink inside: starts this far up the horn, this wide and tall
+local INNER_START, INNER_BASE, INNER_HEIGHT = 0.07, 0.11, 0.28
 
 local FACE_OUT = CFrame.Angles(0, math.rad(90), 0) -- turns a cylinder's round side out of the surface
+-- Lays a wedge flat: its triangle (square corner at the bottom left, point on top) in the sticker's
+-- plane, its thickness out of the surface
+local WEDGE_FLAT = CFrame.fromMatrix(Vector3.zero, Vector3.zAxis, Vector3.yAxis, -Vector3.xAxis)
 local AXES = { Vector3.xAxis, Vector3.yAxis, Vector3.zAxis }
+
+-- Where to check for room under a cat (cat widths): a grid over the head, and up each horn
+local SPOTS: { Vector2 } = {}
+for i = -2, 2 do
+	for j = -2, 2 do
+		local spot = Vector2.new(i, j) * 0.2
+		if spot.Magnitude <= 0.5 then
+			table.insert(SPOTS, spot)
+		end
+	end
+end
+for _, side in { -1, 1 } do
+	for _, up in { 0.25, 0.38 } do
+		table.insert(SPOTS, Vector2.new(side * (HORN_X + math.sin(HORN_LEAN) * up), HORN_Y + math.cos(HORN_LEAN) * up))
+	end
+end
 
 type Face = { part: BasePart, frame: CFrame, width: number, height: number }
 type Placed = { position: Vector3, normal: Vector3, width: number }
 
-local function makePart(parent: Instance, name: string, size: Vector3, cframe: CFrame, color: Color3, shape: Enum.PartType?)
-	local part = Instance.new("Part")
+local function makePart(parent: Instance, name: string, size: Vector3, cframe: CFrame, color: Color3, shape: Enum.PartType | "Wedge" | nil)
+	local part: BasePart
+	if shape == "Wedge" then
+		part = Instance.new("WedgePart")
+	else
+		local block = Instance.new("Part")
+		block.Shape = (shape or Enum.PartType.Block) :: Enum.PartType
+		part = block
+	end
 	part.Name = name
-	part.Shape = shape or Enum.PartType.Block
 	part.Size = size
 	part.CFrame = cframe
 	part.Color = color
@@ -59,18 +94,26 @@ local function drawCat(parent: Instance, name: string, frame: CFrame, width: num
 		local size = Vector3.new(thick, diameter * width, diameter * width)
 		makePart(parent, name, size, at(x, y, layer) * FACE_OUT, color, Enum.PartType.Cylinder)
 	end
-	-- A square turned so one corner points at `angle` (radians from +X), `reach` from its middle
-	local function corner(x: number, y: number, layer: number, reach: number, angle: number, color: Color3)
-		local side = reach * math.sqrt(2) * width
-		makePart(parent, name, Vector3.new(side, side, thick), at(x, y, layer) * CFrame.Angles(0, 0, angle - math.pi / 4), color)
+	-- A pointed triangle standing on its base (middle at x, y), leaning `lean` radians
+	-- (anticlockwise): two mirrored wedges back to back
+	local function spike(x: number, y: number, layer: number, base: number, height: number, lean: number, color: Color3)
+		local foot = at(x, y, layer) * CFrame.Angles(0, 0, lean)
+		local size = Vector3.new(thick, height * width, base / 2 * width)
+		for _, half in { 1, -1 } do
+			local cf = foot * CFrame.new(half * base / 4 * width, height / 2 * width, 0)
+			if half < 0 then
+				cf *= CFrame.Angles(0, math.pi, 0)
+			end
+			makePart(parent, name, size, cf * WEDGE_FLAT, color, "Wedge")
+		end
 	end
 
 	for _, side in { -1, 1 } do
-		-- Ear: mostly hidden behind the head, its tip leaning out a little; pink inside
-		local angle = math.rad(90 - side * 30)
-		local x, y = side * 0.15, 0.28
-		corner(x, y, 0, 0.36, angle, WHITE)
-		corner(x + math.cos(angle) * 0.12, y + math.sin(angle) * 0.12, 1, 0.18, angle, PINK)
+		-- Horn: its base hidden behind the head, leaning out a little; pink inside
+		local lean = -side * HORN_LEAN
+		spike(side * HORN_X, HORN_Y, 0, HORN_BASE, HORN_HEIGHT, lean, WHITE)
+		local inner = Vector2.new(side * HORN_X, HORN_Y) + Vector2.new(-math.sin(lean), math.cos(lean)) * INNER_START
+		spike(inner.X, inner.Y, 1, INNER_BASE, INNER_HEIGHT, lean, PINK)
 		disc(side * 0.19, 0.03, 3, 0.11, INK) -- eye
 		-- Half the ω: a black dot with a white one over its top half leaves a little curve
 		disc(side * 0.07, -0.13, 3, 0.14, INK)
@@ -90,34 +133,59 @@ function CatStickers.Icon(parent: GuiObject, size: number, position: UDim2)
 	holder.Size = UDim2.fromOffset(size, size)
 	holder.Parent = parent
 	-- (laid out like drawCat: cat widths from the middle of the head, but y runs down on screen)
-	local function shape(x: number, y: number, across: number, layer: number, color: Color3, round: boolean, turn: number?)
-		local frame = Instance.new("Frame")
-		frame.BorderSizePixel = 0
-		frame.BackgroundColor3 = color
-		frame.AnchorPoint = Vector2.new(0.5, 0.5)
-		frame.Position = UDim2.new(0.5, x * size, 0.5, -y * size)
-		frame.Size = UDim2.fromOffset(across * size, across * size)
-		frame.Rotation = turn or 0
-		frame.ZIndex = layer + 1
-		if round then
-			local corner = Instance.new("UICorner")
-			corner.CornerRadius = UDim.new(0.5, 0)
-			corner.Parent = frame
+	local function frame(at: Vector2, across: Vector2, layer: number, color: Color3, parentFrame: GuiObject?): Frame
+		local shape = Instance.new("Frame")
+		shape.BorderSizePixel = 0
+		shape.BackgroundColor3 = color
+		shape.AnchorPoint = Vector2.new(0.5, 0.5)
+		shape.Position = UDim2.new(0.5, at.X * size, 0.5, -at.Y * size)
+		shape.Size = UDim2.fromOffset(across.X * size, across.Y * size)
+		shape.ZIndex = layer + 1
+		shape.Parent = parentFrame or holder
+		return shape
+	end
+	local function dot(x: number, y: number, diameter: number, layer: number, color: Color3)
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0.5, 0)
+		corner.Parent = frame(Vector2.new(x, y), Vector2.one * diameter, layer, color)
+	end
+	-- A pointed triangle: a box standing on the base's middle, turned to lean (GUI rotation turns an
+	-- element around its middle, so the box is placed by its middle), filled by two halves each cut
+	-- corner to corner by a hard-edged gradient
+	local function spike(base: Vector2, across: number, height: number, lean: number, layer: number, color: Color3)
+		local middle = base + Vector2.new(-math.sin(lean), math.cos(lean)) * height / 2
+		local box = frame(middle, Vector2.new(across, height), layer, color)
+		box.BackgroundTransparency = 1
+		box.Rotation = -math.deg(lean)
+		for _, half in { 0, 1 } do
+			local piece = Instance.new("Frame")
+			piece.BorderSizePixel = 0
+			piece.BackgroundColor3 = color
+			piece.Position = UDim2.fromScale(half * 0.5, 0)
+			piece.Size = UDim2.fromScale(0.5, 1)
+			piece.ZIndex = layer + 1
+			local cut = Instance.new("UIGradient")
+			cut.Rotation = if half == 0 then 45 else 135 -- (keeps the half below the diagonal from the point)
+			cut.Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 1),
+				NumberSequenceKeypoint.new(0.499, 1),
+				NumberSequenceKeypoint.new(0.501, 0),
+				NumberSequenceKeypoint.new(1, 0),
+			})
+			cut.Parent = piece
+			piece.Parent = box
 		end
-		frame.Parent = holder
 	end
 	for _, side in { -1, 1 } do
-		local angle = 90 - side * 30
-		local x, y = side * 0.15, 0.28
-		local turn = 45 - angle -- (GUI rotation runs clockwise)
-		shape(x, y, 0.36 * math.sqrt(2), 0, WHITE, false, turn)
-		local tip = math.rad(angle)
-		shape(x + math.cos(tip) * 0.12, y + math.sin(tip) * 0.12, 0.18 * math.sqrt(2), 1, PINK, false, turn)
-		shape(side * 0.19, 0.03, 0.11, 3, INK, true)
-		shape(side * 0.07, -0.13, 0.14, 3, INK, true)
-		shape(side * 0.07, -0.09, 0.14, 4, WHITE, true)
+		local lean = -side * HORN_LEAN
+		local foot = Vector2.new(side * HORN_X, HORN_Y)
+		spike(foot, HORN_BASE, HORN_HEIGHT, lean, 0, WHITE)
+		spike(foot + Vector2.new(-math.sin(lean), math.cos(lean)) * INNER_START, INNER_BASE, INNER_HEIGHT, lean, 1, PINK)
+		dot(side * 0.19, 0.03, 0.11, 3, INK)
+		dot(side * 0.07, -0.13, 0.14, 3, INK)
+		dot(side * 0.07, -0.09, 0.14, 4, WHITE)
 	end
-	shape(0, 0, 1, 2, WHITE, true)
+	dot(0, 0, 1, 2, WHITE)
 end
 
 -- The flat faces of a block that are on the outside (a rounded piece's inner boxes only count
@@ -163,31 +231,46 @@ local function facesOf(part: BasePart): { Face }
 	return faces
 end
 
--- Room for a whole cat here: nothing else's box over any of its edges or its middle, and no other
--- cat already on (nearly) the same spot
-local function clear(frame: CFrame, width: number, solids: { BasePart }, placed: { Placed }): boolean
+-- How far off its face a cat here has to sit to clear whatever's on the face under it (0 for
+-- nothing); nil if something there sticks out too far, or another cat is already on that spot
+local function seat(frame: CFrame, width: number, nearby: { BasePart }, placed: { Placed }): number?
 	for _, other in placed do
 		local offset = frame.Position - other.position
 		if other.normal:Dot(frame.ZVector) > 0.9 and math.abs(offset:Dot(other.normal)) < 0.2 * width
 			and offset.Magnitude < 0.6 * (width + other.width) then
-			return false
+			return nil
 		end
 	end
-	local lift = 0.05 -- just above the stack
-	for _, spot in { { 0, 0 }, { -0.45, 0 }, { 0.45, 0 }, { 0, -0.45 }, { -0.33, 0.59 }, { 0.33, 0.59 } } do
-		local point = frame:PointToWorldSpace(Vector3.new(spot[1], spot[2], lift) * width)
-		for _, part in solids do
+	local normal = frame.ZVector
+	local base = 0.0005 -- (just off the face, clear of anything flush with it)
+	local lift = 0
+	for _, spot in SPOTS do
+		local point = frame:PointToWorldSpace(Vector3.new(spot.X * width, spot.Y * width, base))
+		for _, part in nearby do
 			local half = part.Size / 2
 			if (point - part.Position).Magnitude > half.Magnitude then
 				continue
 			end
 			local p = part.CFrame:PointToObjectSpace(point)
 			if math.abs(p.X) < half.X and math.abs(p.Y) < half.Y and math.abs(p.Z) < half.Z then
-				return false
+				-- Inside it: how much further out does it reach?
+				local n = part.CFrame:VectorToObjectSpace(normal)
+				local reach = math.huge
+				for _, axis in AXES do
+					local d = n:Dot(axis)
+					if math.abs(d) > 1e-6 then
+						local h = half:Dot(axis)
+						reach = math.min(reach, ((if d > 0 then h else -h) - p:Dot(axis)) / d)
+					end
+				end
+				if base + reach > MAX_LIFT * width then
+					return nil
+				end
+				lift = math.max(lift, base + reach)
 			end
 		end
 	end
-	return true
+	return lift
 end
 
 -- Puts cats on `pieces` (the gun's big painted pieces) of a model at its built size and spot.
@@ -220,6 +303,14 @@ function CatStickers.Cover(model: Model, pieces: { BasePart }, catWidth: number?
 		if width < full * SHRINK then
 			continue
 		end
+		-- Only what's near this face can be in the way
+		local reach = Vector2.new(face.width, face.height).Magnitude / 2 + width
+		local nearby: { BasePart } = {}
+		for _, part in solids do
+			if (part.Position - face.frame.Position).Magnitude < reach + (part.Size / 2).Magnitude then
+				table.insert(nearby, part)
+			end
+		end
 		local stepX, stepY = GAP_X * width, GAP_Y * width
 		local columns = math.floor((face.width - (1 + 2 * MARGIN) * width) / stepX) + 1
 		local rows = math.floor((face.height - (TOP + BOTTOM + 2 * MARGIN) * width) / stepY) + 1
@@ -232,8 +323,9 @@ function CatStickers.Cover(model: Model, pieces: { BasePart }, catWidth: number?
 					return
 				end
 				local frame = face.frame * CFrame.new((column - (inRow + 1) / 2) * stepX, y, 0)
-				if clear(frame, width, solids, placed) then
-					drawCat(face.part.Parent :: Instance, face.part.Name, frame, width)
+				local lift = seat(frame, width, nearby, placed)
+				if lift then
+					drawCat(face.part.Parent :: Instance, face.part.Name, frame * CFrame.new(0, 0, lift), width)
 					table.insert(placed, { position = frame.Position, normal = frame.ZVector, width = width })
 				end
 			end
