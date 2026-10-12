@@ -4,6 +4,8 @@
 --            camera turns is scaled by MouseSensitivity (and slower while aiming)
 --   free   → cursor visible, camera stops turning, shooting is blocked
 -- Left Alt toggles free mode. The dev panel also frees the mouse while it's open.
+-- Phones: a finger sliding while it holds FIRE turns the camera too (state.lookDrag, from
+-- MobileControls), at the same scaled speed.
 
 local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
@@ -23,6 +25,7 @@ local MouseUnlock = {}
 MouseUnlock.RenderPriority = Enum.RenderPriority.Camera.Value + 1
 
 local MAX_PITCH = math.rad(80)
+local TOUCH_AIM_SPEED = 0.008 -- radians per pixel the FIRE finger slides (before MouseSensitivity)
 -- A bigger jump than this in one frame was a script moving the camera (respawn, teleport), not
 -- the mouse — let it through unscaled
 local SNAP_ANGLE = math.rad(60)
@@ -45,6 +48,8 @@ local function wrapAngle(a: number): number
 end
 
 local function update()
+	local drag = state.lookDrag
+	state.lookDrag = Vector2.zero
 	local free = isFree()
 
 	-- Lobby: a normal Roblox cursor for the menus; right-drag turns the camera (Roblox's camera
@@ -85,6 +90,8 @@ local function update()
 	if math.abs(deltaYaw) > SNAP_ANGLE or math.abs(deltaPitch) > SNAP_ANGLE then
 		return
 	end
+	deltaYaw -= drag.X * TOUCH_AIM_SPEED
+	deltaPitch -= drag.Y * TOUCH_AIM_SPEED
 	local newYaw = lastYaw + deltaYaw * scale
 	local newPitch = math.clamp(lastPitch + deltaPitch * scale, -MAX_PITCH, MAX_PITCH)
 	camera.CFrame = CFrame.new(camera.CFrame.Position) * CFrame.fromOrientation(newPitch, newYaw, 0)

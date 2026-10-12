@@ -1,8 +1,9 @@
 -- On-screen buttons for phones and tablets. Each button does exactly what its key does: it runs
 -- the same action handler (Actions) or controller function, so every rule (no shooting while
 -- deploying, ability charges, cooldowns...) stays where it already is.
---   Playing:    FIRE (STAB in Knives Only), AIM (tap on / off), RELOAD, CROUCH (tap crouch,
---               double tap prone, hold while sprinting to slide), KNIFE, your ability (or DASH),
+--   Playing:    FIRE (STAB in Knives Only; slide the finger holding it to look around while
+--               you shoot), AIM (tap on / off), RELOAD, CROUCH (tap crouch, double tap prone,
+--               hold while sprinting to slide), KNIFE, your ability (or DASH),
 --               LEAN LEFT / RIGHT, DRONE / CAMS, RAPPEL, USE (hold: shows up when there's
 --               something to plant, disable, barricade or reinforce), LOADOUT while you can
 --               still change it
@@ -72,6 +73,7 @@ local FIRE = Color3.fromRGB(190, 45, 45)
 local gui: ScreenGui
 local buttons: { { spec: Spec, button: TextButton, label: TextLabel, stroke: UIStroke, scale: UIScale } } = {}
 local held: { [InputObject]: { spec: Spec, button: TextButton } } = {}
+local fireDrags: { [InputObject]: Vector3 } = {} -- fingers on a FIRE button → where they were last frame
 local aimOn = false
 local fireHolds = 0
 local lastJump = 0
@@ -335,6 +337,7 @@ local function release(input: InputObject)
 		return
 	end
 	held[input] = nil
+	fireDrags[input] = nil
 	if entry.spec.release then
 		entry.spec.release(input)
 	end
@@ -374,6 +377,9 @@ local function makeButton(spec: Spec, index: number)
 			return
 		end
 		held[input] = { spec = spec, button = button }
+		if spec.press == firePress then
+			fireDrags[input] = input.Position -- (sliding this finger aims while you shoot)
+		end
 		scale.Scale = 0.9
 		spec.press(input)
 	end)
@@ -436,6 +442,16 @@ function MobileControls.Start()
 		end
 	end)
 
+	-- A finger holding FIRE that slides turns the camera (MouseUnlock applies it like a mouse move)
+	UserInputService.TouchMoved:Connect(function(touch)
+		local last = fireDrags[touch]
+		if last then
+			local delta = touch.Position - last
+			fireDrags[touch] = touch.Position
+			state.lookDrag += Vector2.new(delta.X, delta.Y)
+		end
+	end)
+
 	-- Letting go anywhere (the finger may slide off the button first)
 	UserInputService.InputEnded:Connect(function(input)
 		if held[input] then
@@ -465,6 +481,7 @@ function MobileControls.Start()
 	player.CharacterAdded:Connect(function()
 		aimOn, fireHolds = false, 0
 		table.clear(held)
+		table.clear(fireDrags)
 	end)
 	RunService.RenderStepped:Connect(update)
 end
