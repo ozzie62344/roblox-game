@@ -3,7 +3,6 @@
 -- Also draws ability effects the server sends: reveals, pulse waves (scan / EMP), "scanned"
 -- warnings and gadget status messages ("JAMMED", "CHARGE SET"...).
 
-local ContextActionService = game:GetService("ContextActionService")
 local Debris = game:GetService("Debris")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -18,6 +17,7 @@ local state = require(script.Parent.Parent.PlayerState)
 local Hud = require(script.Parent.Parent.Combat.Hud)
 local Effects = require(script.Parent.Parent.Combat.Effects)
 local HandsAnimator = require(script.Parent.HandsAnimator)
+local Actions = require(script.Parent.Parent.Input.Actions)
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local UseAbility = Remotes:WaitForChild("UseAbility") :: RemoteEvent
@@ -140,7 +140,7 @@ end
 function AbilityController.Start()
 	player.CharacterAdded:Connect(endDeploy)
 
-	ContextActionService:BindAction("UseAbility", function(_, inputState)
+	Actions.Bind("UseAbility", function(_, inputState)
 		if inputState ~= Enum.UserInputState.Begin then
 			return Enum.ContextActionResult.Sink
 		end
@@ -159,7 +159,7 @@ function AbilityController.Start()
 		end
 		UseAbility:FireServer(Workspace.CurrentCamera.CFrame.LookVector)
 		return Enum.ContextActionResult.Sink
-	end, false, Enum.KeyCode.X, Enum.KeyCode.ButtonL1)
+	end, Enum.KeyCode.X, Enum.KeyCode.ButtonL1)
 
 	AbilityEffect.OnClientEvent:Connect(function(kind: string, ...)
 		if kind == "Reveal" then

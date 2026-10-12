@@ -36,7 +36,8 @@
         "SetRappel": { "$className": "RemoteEvent" },
         "Queue": { "$className": "RemoteEvent" },
         "VoteMap": { "$className": "RemoteEvent" },
-        "Cams": { "$className": "RemoteEvent" }
+        "Cams": { "$className": "RemoteEvent" },
+        "Shop": { "$className": "RemoteEvent" }
       }
     },
 
@@ -53,6 +54,21 @@
     "Workspace": {
       "$properties": {
         "StreamingEnabled": false
+      }
+    },
+
+    "MaterialService": {
+      "$className": "MaterialService",
+      "GunFinishMetal": {
+        "$className": "MaterialVariant",
+        "$properties": {
+          "BaseMaterial": "Metal",
+          "ColorMap": "rbxassetid://90484103006937",
+          "NormalMap": "rbxassetid://139166676751328",
+          "MetalnessMap": "rbxassetid://123285428708776",
+          "RoughnessMap": "rbxassetid://116931713188547",
+          "StudsPerTile": 0.6
+        }
       }
     },
 

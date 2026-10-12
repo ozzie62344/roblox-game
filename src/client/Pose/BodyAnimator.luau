@@ -27,6 +27,7 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage.Shared.MovementConfig)
+local Skins = require(ReplicatedStorage.Shared.Skins)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 local GunModels = require(script.Parent.Parent.Combat.GunModels)
 local HandsAnimator = require(script.Parent.Parent.Abilities.HandsAnimator)
@@ -60,7 +61,7 @@ type Side = {
 	upperArm: number, lowerArm: number, upperLeg: number, lowerLeg: number,
 	ankleHeight: number,
 }
-type Gun = { name: string, model: Model, parts: { BasePart }, offsets: { CFrame }, rightGrip: Vector3, leftGrip: Vector3, handgun: boolean }
+type Gun = { name: string, skin: Skins.Skin?, model: Model, parts: { BasePart }, offsets: { CFrame }, rightGrip: Vector3, leftGrip: Vector3, handgun: boolean }
 type Rig = {
 	character: Model,
 	humanoid: Humanoid,
@@ -188,21 +189,21 @@ local function destroyGun(rig: Rig)
 	end
 end
 
--- A world-sized copy of the gun this player holds. Its parts are moved every frame (anchored),
--- so they never collide; they cast shadows like real objects.
-local function ensureGun(rig: Rig, weaponName: string)
-	if rig.gun and rig.gun.name == weaponName then
+-- A world-sized copy of the gun this player holds, in their skin. Its parts are moved every frame
+-- (anchored), so they never collide; they cast shadows like real objects.
+local function ensureGun(rig: Rig, weaponName: string, skin: Skins.Skin?)
+	if rig.gun and rig.gun.name == weaponName and rig.gun.skin == skin then
 		return
 	end
 	destroyGun(rig)
 	local weapon = Weapons[weaponName]
-	local model = GunModels.Build(weaponName, weapon and weapon.Look.Color or nil)
+	local model = GunModels.Build(weaponName, weapon and weapon.Look.Color or nil, skin)
 	model:ScaleTo(GUN_SCALE)
 	local body = model.PrimaryPart :: BasePart
 	local parts, offsets = {}, {}
 	for _, part in model:GetDescendants() do
 		if part:IsA("BasePart") then
-			part.CastShadow = true
+			part.CastShadow = part.Material ~= Enum.Material.ForceField -- (see-through skins)
 			table.insert(parts, part)
 			table.insert(offsets, body.CFrame:ToObjectSpace(part.CFrame))
 		elseif part:IsA("Light") then
@@ -217,6 +218,7 @@ local function ensureGun(rig: Rig, weaponName: string)
 	local leftPos = if leftGrip then leftGrip.CFrame.Position else Vector3.new(0, -0.1, -0.9)
 	rig.gun = {
 		name = weaponName,
+		skin = skin,
 		model = model,
 		parts = parts,
 		offsets = offsets,
@@ -429,11 +431,11 @@ local function animate(rig: Rig, other: Player, dt: number)
 
 	-- ── Gun ── shouldered and aimed where they look; lowered while sprinting; tilted while reloading
 	local weaponName = other:GetAttribute("Weapon")
-	if typeof(weaponName) ~= "string" then
+	if typeof(weaponName) ~= "string" or not Weapons[weaponName] then -- (no gun: Knives Only)
 		destroyGun(rig)
 		return
 	end
-	ensureGun(rig, weaponName)
+	ensureGun(rig, weaponName, Skins.EquippedFor(other, weaponName))
 	local gun = rig.gun :: Gun
 
 	local now = os.clock()

@@ -1,19 +1,22 @@
 -- Knife (F): a quick stab that kills in one hit. The gun is lowered, a gloved hand with a knife
 -- thrusts forward, and anything right in front of you gets hit. The server double-checks the hit.
--- Then it recharges (MatchConfig.MeleeCooldown; a bar under the crosshair fills back up).
+-- Then it recharges (GameRules.MeleeCooldown: quicker in Knives Only; a bar under the crosshair
+-- fills back up).
 
-local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
-local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
+local GameRules = require(ReplicatedStorage.Shared.GameRules)
+local Skins = require(ReplicatedStorage.Shared.Skins)
 local Sounds = require(ReplicatedStorage.Shared.Sounds)
 local state = require(script.Parent.Parent.PlayerState)
 local Effects = require(script.Parent.Effects)
+local GunModels = require(script.Parent.GunModels)
 local Hud = require(script.Parent.Hud)
 local Viewmodel = require(script.Parent.Viewmodel)
+local Actions = require(script.Parent.Parent.Input.Actions)
 
 local MeleeRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Melee") :: RemoteEvent
 
@@ -25,10 +28,10 @@ local REACH = 6 -- studs in front of the camera
 local HIT_RADIUS = 1.3 -- how forgiving the aim is
 local SWING_TIME = 0.42 -- whole animation
 local HIT_TIME = 0.13 -- when in the swing the blade connects
-local COOLDOWN = MatchConfig.MeleeCooldown -- the server checks it too
 
 local lastSwing = -math.huge
 local knife: Model? = nil
+local knifeSkin: Skins.Skin? = nil -- what `knife` was built with
 
 local function makePart(model: Model, size: Vector3, offset: CFrame, color: Color3, material: Enum.Material): Part
 	local part = Instance.new("Part")
@@ -45,31 +48,13 @@ local function makePart(model: Model, size: Vector3, offset: CFrame, color: Colo
 	return part
 end
 
--- Gloved fist holding a knife, blade pointing forward (-Z), built around the hand at the origin
-local function buildKnife(): Model
-	local model = Instance.new("Model")
-	model.Name = "Knife"
-	local steel = Color3.fromRGB(170, 172, 178)
-	local dark = Color3.fromRGB(30, 30, 32)
-	-- Hand + sleeve
-	makePart(model, Vector3.new(0.34, 0.36, 0.42), CFrame.new(), Viewmodel.GloveColor, Enum.Material.Leather)
+-- Gloved fist holding the knife (GunModels, in your equipped skin), blade pointing forward (-Z),
+-- built around the hand at the origin
+local function buildKnife(skin: Skins.Skin?): Model
+	local model = GunModels.BuildKnife(skin)
+	local hand = makePart(model, Vector3.new(0.34, 0.36, 0.42), CFrame.new(), Viewmodel.GloveColor, Enum.Material.Leather)
 	makePart(model, Vector3.new(0.3, 0.3, 1.4), CFrame.new(0.05, -0.12, 0.85) * CFrame.Angles(math.rad(12), 0, 0), Viewmodel.SleeveColor, Enum.Material.Fabric)
-	-- Handle, guard, blade (slightly tapered with a wedge tip)
-	makePart(model, Vector3.new(0.12, 0.14, 0.5), CFrame.new(0, 0, -0.05), dark, Enum.Material.Plastic)
-	makePart(model, Vector3.new(0.3, 0.06, 0.05), CFrame.new(0, 0, -0.32), dark, Enum.Material.Metal)
-	makePart(model, Vector3.new(0.04, 0.16, 0.62), CFrame.new(0, 0.01, -0.66), steel, Enum.Material.Metal)
-	local tip = Instance.new("WedgePart")
-	tip.Size = Vector3.new(0.04, 0.16, 0.2)
-	tip.CFrame = CFrame.new(0, 0.01, -1.07) * CFrame.Angles(0, math.rad(180), 0)
-	tip.Color = steel
-	tip.Material = Enum.Material.Metal
-	tip.Anchored = true
-	tip.CanCollide = false
-	tip.CanQuery = false
-	tip.CanTouch = false
-	tip.CastShadow = false
-	tip.Parent = model
-	model.PrimaryPart = model:FindFirstChildOfClass("Part")
+	model.PrimaryPart = hand
 	return model
 end
 
@@ -125,15 +110,20 @@ local function swing()
 		return
 	end
 	local now = os.clock()
-	if now - lastSwing < COOLDOWN then
+	if now - lastSwing < GameRules.MeleeCooldown() then -- (the server checks it too)
 		return
 	end
 	lastSwing = now
 	state.meleeing = true
 	Effects.Sound(Sounds.Knife.Swing, nil, Sounds.Knife.Volume, 0.95 + math.random() * 0.1)
 
-	if not knife then
-		knife = buildKnife()
+	local skin = Skins.EquippedFor(player, "Knife")
+	if not knife or skin ~= knifeSkin then
+		if knife then
+			knife:Destroy()
+		end
+		knife = buildKnife(skin)
+		knifeSkin = skin
 	end
 	local model = knife :: Model
 	model.Parent = Workspace.CurrentCamera
@@ -161,15 +151,15 @@ local function swing()
 end
 
 function Melee.Start()
-	ContextActionService:BindAction("Melee", function(_, inputState)
+	Actions.Bind("Melee", function(_, inputState)
 		if inputState == Enum.UserInputState.Begin then
 			swing()
 		end
 		return Enum.ContextActionResult.Sink
-	end, false, Enum.KeyCode.F, Enum.KeyCode.ButtonR3)
+	end, Enum.KeyCode.F, Enum.KeyCode.ButtonR3)
 	-- Recharge bar under the crosshair
 	RunService.RenderStepped:Connect(function()
-		Hud.SetKnifeCooldown(math.clamp(1 - (os.clock() - lastSwing) / COOLDOWN, 0, 1))
+		Hud.SetKnifeCooldown(math.clamp(1 - (os.clock() - lastSwing) / GameRules.MeleeCooldown(), 0, 1))
 	end)
 end
 

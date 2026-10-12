@@ -3,6 +3,7 @@
 --   Random: each player gets a random loadout
 -- Abilities come from your side's pool: Side = "Attack" ones only go to attackers, "Defend" only to
 -- defenders, and the plain movement ones without a Side to either (Abilities.luau).
+-- Weapons come from the match's mode (GameRules): every gun, only snipers, only the knife...
 -- Clients are told through LoadoutOffer(options, deadline, isRandom) and pick with DraftPick(index).
 
 local Players = game:GetService("Players")
@@ -10,6 +11,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
 local Abilities = require(ReplicatedStorage.Shared.Abilities)
+local GameRules = require(ReplicatedStorage.Shared.GameRules)
 local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 local WeaponService = require(script.Parent.WeaponService)
@@ -58,12 +60,21 @@ local function sideOf(player: Player): string
 	return if player.Team and player.Team.Name == attackTeam then "Attack" else "Defend"
 end
 
--- Different weapons on every card so the choice actually matters
+-- The guns this match's mode allows, shuffled (Knives Only: just the knife)
+local function weaponPool(): { string }
+	local allowed = GameRules.Current().Weapons
+	if allowed and #allowed == 0 then
+		return { GameRules.NoGun }
+	end
+	return shuffle(if allowed then table.clone(allowed) else keysOf(Weapons))
+end
+
+-- Different weapons on every card (while the mode has enough) so the choice actually matters
 local function generateOptions(count: number, side: string): { Loadout }
-	local weaponNames = shuffle(keysOf(Weapons))
+	local pool = weaponPool()
 	local options = {}
-	for i = 1, math.min(count, #weaponNames) do
-		table.insert(options, { Weapon = weaponNames[i], Ability = randomAbility(side) })
+	for i = 1, count do
+		table.insert(options, { Weapon = pool[(i - 1) % #pool + 1], Ability = randomAbility(side) })
 	end
 	return options
 end
@@ -86,6 +97,11 @@ function LoadoutService.StartRound(players: { Player }, mode: string, duration: 
 		else
 			local options = generateOptions(MatchConfig.DraftOptions, side)
 			offers[player] = { options = options, picked = false }
+			-- Until they pick, nobody holds a gun this mode doesn't allow (no rifle in Knives Only)
+			local allowed = GameRules.Current().Weapons
+			if allowed and not table.find(allowed, player:GetAttribute("Weapon")) then
+				WeaponService.SetWeapon(player, options[1].Weapon)
+			end
 			LoadoutOffer:FireClient(player, options, deadline, false)
 		end
 	end

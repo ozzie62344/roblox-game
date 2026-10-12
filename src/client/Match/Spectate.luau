@@ -106,6 +106,11 @@ local function cycle(step: number)
 	target = list[(index - 1 + step) % #list + 1]
 end
 
+-- Next / previous player to watch (MobileControls' arrows)
+function Spectate.Cycle(step: number)
+	cycle(step)
+end
+
 local function startSpectating()
 	state.spectating = true
 	savedCamera = {

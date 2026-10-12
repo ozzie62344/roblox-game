@@ -1,5 +1,6 @@
 -- Crosshair (spreads with accuracy), hit markers, ammo and health.
 
+local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
@@ -16,6 +17,7 @@ local hitMarkerBars: { Frame } = {}
 local hitMarkerToken = 0
 local ammoLabel: TextLabel
 local healthFill: Frame
+local healthBack: Frame
 local healthLabel: TextLabel
 local loadoutLabel: TextLabel
 local statusLabel: TextLabel
@@ -126,7 +128,7 @@ function Hud.Start()
 	statusLabel.Size = UDim2.fromOffset(360, 24)
 	statusLabel.Visible = false
 
-	local healthBack = frame(gui, UDim2.fromOffset(240, 10), UDim2.new(0, 160, 1, -40), Color3.fromRGB(30, 30, 30))
+	healthBack = frame(gui, UDim2.fromOffset(240, 10), UDim2.new(0, 160, 1, -40), Color3.fromRGB(30, 30, 30))
 	healthBack.BackgroundTransparency = 0.3
 	healthFill = frame(healthBack, UDim2.fromScale(1, 1), UDim2.fromScale(0, 0.5), WHITE)
 	healthFill.AnchorPoint = Vector2.new(0, 0.5)
@@ -147,6 +149,25 @@ function Hud.Start()
 		task.spawn(watchHealth, player.Character)
 	end
 	player.CharacterAdded:Connect(watchHealth)
+end
+
+-- Touch screens: the ammo, loadout and status move to the bottom middle, out from under the
+-- fire and jump buttons (MobileControls)
+function Hud.SetTouchLayout(touch: boolean)
+	-- Health goes to the top left (next to the dev button), clear of the thumbstick and the
+	-- prompts in the middle
+	local top = GuiService:GetGuiInset().Y + 26
+	healthLabel.AnchorPoint = if touch then Vector2.new(0, 0.5) else Vector2.new(0, 1)
+	healthLabel.Position = if touch then UDim2.fromOffset(64, top) else UDim2.new(0, 40, 1, -48)
+	healthBack.Size = if touch then UDim2.fromOffset(110, 8) else UDim2.fromOffset(240, 10)
+	healthBack.Position = if touch then UDim2.fromOffset(165, top) else UDim2.new(0, 160, 1, -40)
+	local x, anchor = if touch then UDim.new(0.5, 0) else UDim.new(1, -40), if touch then Vector2.new(0.5, 1) else Vector2.new(1, 1)
+	local bottom = if touch then -10 else -40
+	for i, l in { ammoLabel, loadoutLabel, statusLabel } do
+		l.AnchorPoint = anchor
+		l.Position = UDim2.new(x, UDim.new(1, bottom - ({ 0, 38, 64 })[i]))
+		l.TextXAlignment = if touch then Enum.TextXAlignment.Center else Enum.TextXAlignment.Right
+	end
 end
 
 -- Short message above the loadout (e.g. "GHOST STEP — SILENT"), with a countdown if it lasts a while
@@ -221,6 +242,11 @@ function Hud.HitMarker(kind: string)
 			end
 		end
 	end)
+end
+
+function Hud.SetAmmoText(text: string)
+	ammoLabel.Text = text
+	ammoLabel.TextColor3 = WHITE
 end
 
 function Hud.SetAmmo(current: number, max: number, reloading: boolean)

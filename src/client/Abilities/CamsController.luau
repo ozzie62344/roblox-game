@@ -4,7 +4,6 @@
 -- back to your body. A camera that gets shot or EMP'd cuts to static and the next one comes up.
 -- Your body stays put meanwhile (state.droning: rooted, gun away).
 
-local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -13,7 +12,9 @@ local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage.Shared.MovementConfig)
 local state = require(script.Parent.Parent.PlayerState)
+local TouchLook = require(script.Parent.Parent.Input.TouchLook)
 local Static = require(script.Parent.Static)
+local Actions = require(script.Parent.Parent.Input.Actions)
 
 local MatchState = ReplicatedStorage:WaitForChild("MatchState")
 local CamsRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Cams") :: RemoteEvent
@@ -144,7 +145,7 @@ local function update()
 	end
 
 	if not (state.devPanelOpen or state.mouseUnlocked) then
-		local delta = UserInputService:GetMouseDelta()
+		local delta = UserInputService:GetMouseDelta() + TouchLook.Consume()
 		local speed = LOOK_SPEED * Config.MouseSensitivity
 		turn = math.clamp(turn - delta.X * speed, -MAX_TURN, MAX_TURN)
 		pitch = math.clamp(pitch - delta.Y * speed, MIN_PITCH, MAX_PITCH)
@@ -157,7 +158,9 @@ local function update()
 	clockLabel.Text = os.date("!%H:%M:%S", math.floor(Workspace:GetServerTimeNow())) :: string
 	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 	local alive = humanoid ~= nil and humanoid.Health > 0
-	hintLabel.Text = `A / D SWITCH CAMERA  ·  MOUSE LOOK  ·  CLICK SPOT AN ENEMY  ·  Z {if alive then "BACK TO YOUR BODY" else "BACK TO SPECTATING"}`
+	hintLabel.Text = if state.touchControls
+		then "< > SWITCH CAMERA  ·  DRAG TO LOOK  ·  SPOT AN ENEMY"
+		else `A / D SWITCH CAMERA  ·  MOUSE LOOK  ·  CLICK SPOT AN ENEMY  ·  Z {if alive then "BACK TO YOUR BODY" else "BACK TO SPECTATING"}`
 end
 
 -- Click: if there's an enemy under the crosshair, the server checks the camera can see them
@@ -231,10 +234,24 @@ local function buildOverlay()
 	static = Static.new(overlay)
 end
 
+-- For MobileControls
+function CamsController.IsWatching(): boolean
+	return watching
+end
+function CamsController.Allowed(): boolean
+	return allowed()
+end
+function CamsController.Cycle(step: number)
+	cycle(step)
+end
+function CamsController.Spot()
+	spot()
+end
+
 function CamsController.Start()
 	buildOverlay()
 	-- Z: before the drone's binding (DroneController), which gets it whenever this passes
-	ContextActionService:BindActionAtPriority("Cams", function(_, inputState)
+	Actions.BindAtPriority("Cams", function(_, inputState)
 		if watching then
 			if inputState == Enum.UserInputState.Begin then
 				stop()
@@ -248,7 +265,7 @@ function CamsController.Start()
 			start() -- (puts the loadout cards away)
 		end
 		return Enum.ContextActionResult.Sink
-	end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.Z, Enum.KeyCode.DPadUp)
+	end, Enum.ContextActionPriority.High.Value, Enum.KeyCode.Z, Enum.KeyCode.DPadUp)
 
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed or not watching then

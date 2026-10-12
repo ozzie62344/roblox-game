@@ -192,6 +192,13 @@ local Sounds = {
 		Volume = 0.7,
 	},
 
+	-- Shop: buying a skin, and credits coming in. Placeholders: Roblox's built-in ping.
+	Shop = {
+		Buy = "rbxasset://sounds/electronicpingshort.wav",
+		Credits = "rbxasset://sounds/electronicpingshort.wav",
+		Volume = 0.45,
+	},
+
 	GunshotRange = 450, -- how far other players' shots carry
 	Guns = {
 		OwnVolume = 0.8, -- your own shots (not positional)

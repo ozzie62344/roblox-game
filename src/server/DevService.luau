@@ -11,6 +11,7 @@ local AbilityService = require(script.Parent.AbilityService)
 local Dummies = require(script.Parent.Dummies)
 local MapService = require(script.Parent.MapService)
 local RoundService = require(script.Parent.RoundService)
+local ShopService = require(script.Parent.ShopService)
 local WeaponService = require(script.Parent.WeaponService)
 
 local DevAction = ReplicatedStorage.Remotes.DevAction :: RemoteEvent
@@ -50,6 +51,10 @@ local actions: { [string]: (player: Player, arg: any) -> () } = {
 		if humanoid and humanoid.Health > 0 then
 			humanoid.Health = humanoid.MaxHealth
 		end
+	end,
+
+	GiveCredits = function(player)
+		ShopService.Award(player, 1000, "DEV")
 	end,
 
 	RefillAmmo = function(player)

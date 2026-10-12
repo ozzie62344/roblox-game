@@ -8,6 +8,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
+local state = require(script.Parent.Parent.PlayerState)
+
 local MatchState = ReplicatedStorage:WaitForChild("MatchState")
 local PickSite = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("PickSite") :: RemoteEvent
 
@@ -116,7 +118,7 @@ local function build()
 	title.TextSize = 16
 	title.TextColor3 = Color3.fromRGB(120, 175, 255)
 	title.TextStrokeTransparency = 0.5
-	title.Text = "PICK A SITE TO DEFEND  ·  CLICK  (LEFT ALT FREES THE MOUSE)"
+	title.Text = if state.touchControls then "PICK A SITE TO DEFEND  ·  TAP ONE" else "PICK A SITE TO DEFEND  ·  CLICK  (LEFT ALT FREES THE MOUSE)"
 	title.Parent = bar
 
 	row = Instance.new("Frame")

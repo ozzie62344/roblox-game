@@ -30,6 +30,12 @@
 --                                    body for this gun (replaces Viewmodel's usual direction)
 --   Trigger    where the right index finger rests
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Skins = require(ReplicatedStorage.Shared.Skins)
+local GunMaterials = require(script.Parent.GunMaterials)
+local SkinPainter = require(script.Parent.SkinPainter)
+
 local GunModels = {}
 
 export type Finish = {
@@ -37,6 +43,7 @@ export type Finish = {
 	Material: Enum.Material,
 	Transparency: number?,
 	Reflectance: number?,
+	NoSkin: boolean?, -- skins leave it alone (bores, lenses, brass, sight dots)
 }
 type GripSettings = { [string]: number | boolean | Vector3 }
 type MagSegments = { { number } }
@@ -45,17 +52,23 @@ function GunModels.Finish(color: Color3, material: Enum.Material, transparency: 
 	return { Color = color, Material = material, Transparency = transparency, Reflectance = reflectance }
 end
 
+-- A finish skins don't paint over
+local function fixed(finish: Finish): Finish
+	finish.NoSkin = true
+	return finish
+end
+
 -- Shared finishes
 local STEEL = GunModels.Finish(Color3.fromRGB(36, 37, 40), Enum.Material.Metal) -- blued / parkerized steel
 local DARK_STEEL = GunModels.Finish(Color3.fromRGB(22, 22, 24), Enum.Material.Metal)
 local POLYMER = GunModels.Finish(Color3.fromRGB(31, 32, 34), Enum.Material.Plastic)
 local POLYMER_DARK = GunModels.Finish(Color3.fromRGB(22, 22, 24), Enum.Material.Plastic)
 local RUBBER = GunModels.Finish(Color3.fromRGB(19, 19, 20), Enum.Material.Rubber)
-local HOLE = GunModels.Finish(Color3.fromRGB(8, 8, 9), Enum.Material.SmoothPlastic) -- bores, ports, slots
-local BRASS = GunModels.Finish(Color3.fromRGB(196, 156, 74), Enum.Material.Metal, nil, 0.1)
-local LENS = GunModels.Finish(Color3.fromRGB(150, 190, 205), Enum.Material.Glass, 0.8, 0.05)
-local SCOPE_GLASS = GunModels.Finish(Color3.fromRGB(22, 38, 54), Enum.Material.Glass, 0.15, 0.3)
-local RED_DOT = GunModels.Finish(Color3.fromRGB(255, 40, 40), Enum.Material.Neon)
+local HOLE = fixed(GunModels.Finish(Color3.fromRGB(8, 8, 9), Enum.Material.SmoothPlastic)) -- bores, ports, slots
+local BRASS = fixed(GunModels.Finish(Color3.fromRGB(196, 156, 74), Enum.Material.Metal, nil, 0.1))
+local LENS = fixed(GunModels.Finish(Color3.fromRGB(150, 190, 205), Enum.Material.Glass, 0.8, 0.05))
+local SCOPE_GLASS = fixed(GunModels.Finish(Color3.fromRGB(22, 38, 54), Enum.Material.Glass, 0.15, 0.3))
+local RED_DOT = fixed(GunModels.Finish(Color3.fromRGB(255, 40, 40), Enum.Material.Neon))
 
 -- One viewmodel part. It only exists on your screen, so it never collides, blocks shots,
 -- touches anything or casts a shadow.
@@ -74,6 +87,7 @@ function GunModels.MakePart(
 	part.CFrame = cframe
 	part.Color = look.Color
 	part.Material = look.Material
+	part.MaterialVariant = GunMaterials.VariantFor(look.Material)
 	part.Transparency = look.Transparency or 0
 	part.Reflectance = look.Reflectance or 0
 	part.TopSurface = Enum.SurfaceType.Smooth
@@ -83,6 +97,9 @@ function GunModels.MakePart(
 	part.CanQuery = false
 	part.CanTouch = false
 	part.CastShadow = false
+	if look.NoSkin then
+		part:SetAttribute("NoSkin", true)
+	end
 	part.Parent = parent
 	return part
 end
@@ -93,6 +110,71 @@ local ALONG_Y = CFrame.Angles(0, 0, math.rad(90))
 
 local function box(parent: Instance, name: string, size: Vector3, cframe: CFrame, look: Finish): Part
 	return GunModels.MakePart(parent, name, size, cframe, look)
+end
+
+-- A box whose four edges running along `axis` (in the box's own space) are rounded off: two
+-- crossed boxes plus a cylinder down each edge. Real receivers, grips and stocks never have
+-- knife-sharp edges, and the rounded ones catch the light like machined / molded parts.
+-- Every piece is named `name` (the Viewmodel finds moving groups by name) and shares a "Piece"
+-- number and the whole box's "PieceSize" so skins paint them alike; the extra pieces are marked
+-- "Edge". Returns the main box.
+local pieceCount = 0
+local function rounded(parent: Instance, name: string, size: Vector3, cframe: CFrame, look: Finish, radius: number, axis: string): Part
+	pieceCount += 1
+	-- The two directions across the rounded edges
+	local a = if axis == "X" then Vector3.yAxis else Vector3.xAxis
+	local b = if axis == "Z" then Vector3.yAxis else Vector3.zAxis
+	local r = math.min(radius, size:Dot(a) / 2, size:Dot(b) / 2)
+	local main = box(parent, name, size - a * 2 * r, cframe, look)
+	local pieces = { main, box(parent, name, size - b * 2 * r, cframe, look) }
+	local length = if axis == "X" then size.X elseif axis == "Y" then size.Y else size.Z
+	local turn = if axis == "X" then CFrame.identity elseif axis == "Y" then ALONG_Y else ALONG_Z
+	for _, sa in { -1, 1 } do
+		for _, sb in { -1, 1 } do
+			local offset = a * sa * (size:Dot(a) / 2 - r) + b * sb * (size:Dot(b) / 2 - r)
+			local edge = Vector3.new(length, 2 * r, 2 * r)
+			table.insert(pieces, GunModels.MakePart(parent, name, edge, cframe * CFrame.new(offset) * turn, look, Enum.PartType.Cylinder))
+		end
+	end
+	for i, piece in pieces do
+		piece:SetAttribute("Piece", pieceCount)
+		piece:SetAttribute("PieceSize", size)
+		if i > 1 then
+			piece:SetAttribute("Edge", true)
+		end
+	end
+	return main
+end
+
+-- Rounds off the long edges of every sizeable box in a finished model (see `rounded`): the
+-- edges along its longest side, with a radius of a fifth of its thinner cross section. Thin
+-- plates, rails, pins, holes and glass stay sharp; pieces a builder already rounded are left.
+local function smoothEdges(model: Model)
+	local extents = model:GetExtentsSize()
+	local big = math.max(extents.X, extents.Y, extents.Z) * 0.07
+	for _, part in model:GetChildren() do
+		if not part:IsA("Part") or part.Shape ~= Enum.PartType.Block or part:GetAttribute("Piece") or part:GetAttribute("NoSkin") or part.Transparency > 0 then
+			continue
+		end
+		local size = part.Size
+		local longest = math.max(size.X, size.Y, size.Z)
+		local axis = if longest == size.Z then "Z" elseif longest == size.Y then "Y" else "X"
+		local across = if axis == "Z" then { size.X, size.Y } elseif axis == "Y" then { size.X, size.Z } else { size.Y, size.Z }
+		local thinnest = math.min(across[1], across[2])
+		if longest < big or thinnest < 0.05 then
+			continue
+		end
+		local look = GunModels.Finish(part.Color, part.Material, nil, part.Reflectance)
+		local main = rounded(model, part.Name, size, part.CFrame, look, math.min(thinnest * 0.2, 0.04), axis)
+		if model.PrimaryPart == part then
+			-- Keep the gun's attachments (grips, sight, muzzle) on the part the model is built around
+			for _, child in part:GetChildren() do
+				child.Parent = main
+			end
+			model.PrimaryPart = main
+		end
+		part:Destroy()
+	end
 end
 
 -- Round bar running front-to-back (barrels, tubes, scope bodies), centered at `center`
@@ -192,7 +274,7 @@ local function magazine(
 		angle = math.rad(segment[2])
 		local down = Vector3.new(0, -math.cos(angle), -math.sin(angle))
 		local cframe = CFrame.new(point + down * (length / 2)) * CFrame.Angles(angle, 0, 0)
-		box(parent, `Mag{index}`, Vector3.new(width, length + 0.012, depth), cframe, look)
+		rounded(parent, `Mag{index}`, Vector3.new(width, length + 0.012, depth), cframe, look, math.min(width, depth) * 0.2, "Y")
 		point += down * length
 	end
 	local down = Vector3.new(0, -math.cos(angle), -math.sin(angle))
@@ -252,7 +334,7 @@ end
 local function buildRifle(gun: Model, color: Color3): Part
 	local anodized = GunModels.Finish(color, Enum.Material.Metal)
 	local railLook = GunModels.Finish(color:Lerp(Color3.new(0, 0, 0), 0.2), Enum.Material.Metal)
-	local optic = GunModels.Finish(Color3.fromRGB(40, 41, 44), Enum.Material.SmoothPlastic)
+	local optic = fixed(GunModels.Finish(Color3.fromRGB(40, 41, 44), Enum.Material.SmoothPlastic)) -- (skins leave sights alone)
 	-- Flat dark earth polymer furniture (magazine, grip, stock), common on real rifles
 	local furniture = GunModels.Finish(Color3.fromRGB(138, 116, 86), Enum.Material.Plastic)
 	local furnitureDark = GunModels.Finish(Color3.fromRGB(112, 94, 70), Enum.Material.Plastic)
@@ -262,6 +344,9 @@ local function buildRifle(gun: Model, color: Color3): Part
 	rail(gun, "UpperRail", -0.36, -0.08, 0.065, railLook)
 	rail(gun, "UpperRailRear", 0.24, 0.36, 0.065, railLook)
 	box(gun, "EjectionPort", Vector3.new(0.006, 0.048, 0.2), CFrame.new(0.0475, 0.002, -0.03), HOLE)
+	-- Dust cover hinged open under the port, and the brass deflector bump behind it
+	box(gun, "DustCover", Vector3.new(0.008, 0.012, 0.19), CFrame.new(0.054, -0.03, -0.03) * CFrame.Angles(0, 0, math.rad(-35)), anodized)
+	box(gun, "BrassDeflector", Vector3.new(0.024, 0.05, 0.035), CFrame.new(0.053, 0.02, 0.1), anodized)
 	GunModels.Rod(gun, "ForwardAssist", Vector3.new(0.04, 0.02, 0.2), Vector3.new(0.085, 0.035, 0.3), 0.04, anodized)
 	box(gun, "ChargingHandle", Vector3.new(0.16, 0.022, 0.035), CFrame.new(0, 0.045, 0.378), anodized)
 	box(gun, "ChargingLatch", Vector3.new(0.035, 0.024, 0.05), CFrame.new(-0.085, 0.045, 0.372), anodized)
@@ -294,18 +379,21 @@ local function buildRifle(gun: Model, color: Color3): Part
 	beam(gun, "StockToe", Vector3.new(0, -0.023, 0.715), Vector3.new(0, -0.218, 1.115), 0.12, 0.16, furniture)
 	box(gun, "ButtPad", Vector3.new(0.135, 0.39, 0.035), CFrame.new(0, -0.11, 1.128), RUBBER)
 
-	-- Free-float handguard: round tube with a top rail and M-LOK slots on the sides
+	-- Free-float M-LOK handguard: a squared-off tube with rounded corners, a top rail, rows of
+	-- slots down the sides and bottom, and a cut-down front end
 	tube(gun, "BarrelNut", 0.03, 0.115, Vector3.new(0, -0.005, -0.37), STEEL)
-	tube(gun, "Handguard", 0.92, 0.15, Vector3.new(0, -0.01, -0.84), anodized)
-	tube(gun, "HandguardCap", 0.03, 0.156, Vector3.new(0, -0.01, -1.29), railLook)
-	box(gun, "HandguardSpine", Vector3.new(0.06, 0.02, 0.92), CFrame.new(0, 0.058, -0.84), anodized)
-	rail(gun, "HandguardRail", -1.3, -0.38, 0.065, railLook)
-	for _, side in { -1, 1 } do
-		for i = 0, 2 do
-			local slot = CFrame.new(side * 0.0735, -0.01, -0.6 - i * 0.25)
-			box(gun, "MLokSlot", Vector3.new(0.006, 0.028, 0.11), slot, HOLE)
+	rounded(gun, "Handguard", Vector3.new(0.14, 0.145, 0.92), CFrame.new(0, -0.01, -0.84), anodized, 0.04, "Z")
+	rounded(gun, "HandguardCap", Vector3.new(0.146, 0.151, 0.03), CFrame.new(0, -0.01, -1.29), railLook, 0.042, "Z")
+	rail(gun, "HandguardRail", -1.3, -0.38, 0.0625, railLook)
+	for i = 0, 3 do
+		local z = -0.52 - i * 0.2
+		for _, side in { -1, 1 } do
+			box(gun, "MLokSlot", Vector3.new(0.006, 0.026, 0.12), CFrame.new(side * 0.0705, -0.005, z), HOLE)
 		end
+		box(gun, "MLokSlot", Vector3.new(0.05, 0.006, 0.12), CFrame.new(0, -0.0825, z), HOLE)
 	end
+	-- Low-profile gas block peeking out past the handguard
+	rounded(gun, "GasBlock", Vector3.new(0.08, 0.075, 0.06), CFrame.new(0, -0.005, -1.335), STEEL, 0.015, "Z")
 	-- Folded-down backup iron sights
 	box(gun, "FrontSight", Vector3.new(0.05, 0.028, 0.075), CFrame.new(0, 0.105, -1.24), railLook)
 	box(gun, "RearSight", Vector3.new(0.06, 0.025, 0.07), CFrame.new(0, 0.1035, 0.3), railLook)
@@ -462,8 +550,8 @@ local function buildShotgun(gun: Model, color: Color3): Part
 	local wood = GunModels.Finish(color:Lerp(Color3.fromRGB(150, 98, 58), 0.4), Enum.Material.Wood)
 	local woodGroove = GunModels.Finish(color:Lerp(Color3.new(0, 0, 0), 0.3), Enum.Material.Wood)
 	local blued = GunModels.Finish(Color3.fromRGB(32, 33, 37), Enum.Material.Metal)
-	local bead = GunModels.Finish(Color3.fromRGB(235, 228, 205), Enum.Material.SmoothPlastic)
-	local shell = GunModels.Finish(Color3.fromRGB(150, 28, 26), Enum.Material.Plastic)
+	local bead = fixed(GunModels.Finish(Color3.fromRGB(235, 228, 205), Enum.Material.SmoothPlastic))
+	local shell = fixed(GunModels.Finish(Color3.fromRGB(150, 28, 26), Enum.Material.Plastic))
 
 	-- Receiver (the Body)
 	local body = box(gun, "Body", Vector3.new(0.12, 0.19, 0.62), CFrame.new(), blued)
@@ -548,8 +636,8 @@ local SCOPE_Y = 0.175 -- height of the scope's center line above the bore
 
 local function buildSniper(gun: Model, color: Color3): Part
 	local stock = GunModels.Finish(color:Lerp(Color3.fromRGB(110, 118, 92), 0.25), Enum.Material.Plastic)
-	local scope = GunModels.Finish(Color3.fromRGB(27, 28, 30), Enum.Material.SmoothPlastic)
-	local turretCap = GunModels.Finish(Color3.fromRGB(58, 60, 64), Enum.Material.Metal)
+	local scope = fixed(GunModels.Finish(Color3.fromRGB(27, 28, 30), Enum.Material.SmoothPlastic)) -- (skins leave sights alone)
+	local turretCap = fixed(GunModels.Finish(Color3.fromRGB(58, 60, 64), Enum.Material.Metal))
 
 	-- Round action (the Body is the core inside it) with a one-piece scope rail
 	local body = box(gun, "Body", Vector3.new(0.08, 0.07, 0.72), CFrame.new(), STEEL)
@@ -664,7 +752,7 @@ local function buildRevolver(gun: Model, color: Color3): Part
 	local flute = GunModels.Finish(color:Lerp(Color3.new(0, 0, 0), 0.35), Enum.Material.Metal)
 	local hardened = GunModels.Finish(Color3.fromRGB(70, 70, 74), Enum.Material.Metal) -- hammer, trigger, sight
 	local wood = GunModels.Finish(Color3.fromRGB(112, 68, 38), Enum.Material.Wood)
-	local insert = GunModels.Finish(Color3.fromRGB(230, 60, 40), Enum.Material.SmoothPlastic)
+	local insert = fixed(GunModels.Finish(Color3.fromRGB(230, 60, 40), Enum.Material.SmoothPlastic))
 	local bore = 0.0325 -- height of the barrel's center line
 	local axis = bore - 0.06 -- the cylinder turns around this line, its top chamber lines up with the barrel
 
@@ -749,7 +837,7 @@ end
 local function buildLmg(gun: Model, color: Color3): Part
 	local furniture = GunModels.Finish(color, Enum.Material.Plastic)
 	local furnitureDark = GunModels.Finish(color:Lerp(Color3.new(0, 0, 0), 0.25), Enum.Material.Plastic)
-	local optic = GunModels.Finish(Color3.fromRGB(40, 41, 44), Enum.Material.SmoothPlastic)
+	local optic = fixed(GunModels.Finish(Color3.fromRGB(40, 41, 44), Enum.Material.SmoothPlastic)) -- (skins leave sights alone)
 
 	-- Receiver (the Body): a tall stamped box, belt port on the left, ejection port underneath
 	local body = box(gun, "Body", Vector3.new(0.13, 0.17, 0.8), CFrame.new(), STEEL)
@@ -873,7 +961,7 @@ local function buildMarksman(gun: Model, color: Color3): Part
 	local anodized = GunModels.Finish(Color3.fromRGB(42, 43, 46), Enum.Material.Metal)
 	local furniture = GunModels.Finish(color, Enum.Material.Plastic)
 	local furnitureDark = GunModels.Finish(color:Lerp(Color3.new(0, 0, 0), 0.2), Enum.Material.Plastic)
-	local housing = GunModels.Finish(Color3.fromRGB(34, 35, 38), Enum.Material.SmoothPlastic)
+	local housing = fixed(GunModels.Finish(Color3.fromRGB(34, 35, 38), Enum.Material.SmoothPlastic)) -- (skins leave sights alone)
 	local fiber = GunModels.Finish(Color3.fromRGB(255, 70, 40), Enum.Material.Neon)
 
 	-- Upper receiver (the Body): full-length top rail, ejection port, forward assist, charging handle
@@ -994,7 +1082,7 @@ local function buildAutopistol(gun: Model, color: Color3): Part
 	local frame = GunModels.Finish(color, Enum.Material.Plastic)
 	local frameDark = GunModels.Finish(color:Lerp(Color3.new(0, 0, 0), 0.3), Enum.Material.Plastic)
 	local slide = GunModels.Finish(Color3.fromRGB(48, 49, 52), Enum.Material.Metal)
-	local dot = GunModels.Finish(Color3.fromRGB(235, 238, 225), Enum.Material.SmoothPlastic)
+	local dot = fixed(GunModels.Finish(Color3.fromRGB(235, 238, 225), Enum.Material.SmoothPlastic))
 	local bore = 0.075 -- height of the barrel's center line
 
 	-- Frame (the Body): the polymer dust cover under the slide, with an accessory rail slot
@@ -1078,12 +1166,53 @@ local BUILDERS: { [string]: (Model, Color3) -> Part } = {
 }
 
 -- Builds the named gun (unknown names get the rifle). `finishColor` is the main finish
--- (Weapons Look.Color): receiver, wood, stock or stainless depending on the gun.
-function GunModels.Build(weaponName: string, finishColor: Color3?): Model
+-- (Weapons Look.Color): receiver, wood, stock or stainless depending on the gun. A `skin`
+-- (shared/Skins) repaints it.
+function GunModels.Build(weaponName: string, finishColor: Color3?, skin: Skins.Skin?): Model
 	local model = Instance.new("Model")
 	model.Name = weaponName
+	pieceCount = 0 -- (same numbers every build, so a camo skin looks the same everywhere)
 	local builder = BUILDERS[weaponName] or buildRifle
 	model.PrimaryPart = builder(model, finishColor or Color3.fromRGB(45, 47, 52))
+	smoothEdges(model)
+	if skin then
+		SkinPainter.PaintGun(model, skin)
+	end
+	return model
+end
+
+-- The knife on its own (no hand): the handle is held at the origin, blade pointing forward
+-- (-Z), cutting edge down. PrimaryPart "Handle".
+function GunModels.BuildKnife(skin: Skins.Skin?): Model
+	local model = Instance.new("Model")
+	model.Name = "Knife"
+	pieceCount = 0
+	local handle = GunModels.MakePart(model, "Handle", Vector3.new(0.12, 0.14, 0.5), CFrame.new(0, 0, -0.05), POLYMER_DARK)
+	box(model, "Pommel", Vector3.new(0.14, 0.16, 0.05), CFrame.new(0, 0, 0.22), DARK_STEEL)
+	box(model, "Guard", Vector3.new(0.3, 0.06, 0.05), CFrame.new(0, 0, -0.32), DARK_STEEL)
+	local blade = GunModels.Finish(Color3.fromRGB(170, 172, 178), Enum.Material.Metal)
+	box(model, "Blade", Vector3.new(0.04, 0.16, 0.62), CFrame.new(0, 0.01, -0.66), blade)
+	-- The sharpened bevel along the bottom, a little brighter
+	box(model, "Edge", Vector3.new(0.044, 0.035, 0.62), CFrame.new(0, -0.0525, -0.66), GunModels.Finish(Color3.fromRGB(205, 208, 214), Enum.Material.Metal, nil, 0.1))
+	-- Wedge tip: a wedge is tall at its back (+Z) and slopes down to its front, so the spine
+	-- drops to the point at the edge
+	local tip = Instance.new("WedgePart")
+	tip.Name = "Tip"
+	tip.Size = Vector3.new(0.04, 0.16, 0.2)
+	tip.CFrame = CFrame.new(0, 0.01, -1.07)
+	tip.Color = blade.Color
+	tip.Material = blade.Material
+	tip.Anchored = true
+	tip.CanCollide = false
+	tip.CanQuery = false
+	tip.CanTouch = false
+	tip.CastShadow = false
+	tip.Parent = model
+	model.PrimaryPart = handle
+	smoothEdges(model)
+	if skin then
+		SkinPainter.PaintKnife(model, skin)
+	end
 	return model
 end
 

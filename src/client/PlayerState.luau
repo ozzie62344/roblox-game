@@ -49,6 +49,10 @@ return {
 	mouseUnlocked = false,
 	draftOpen = false, -- loadout cards on screen (cursor free)
 	voteOpen = false, -- map vote on screen (cursor free)
+	modesOpen = false, -- lobby: the PLAY → MODES screen is up
+	shopOpen = false, -- lobby: the SHOP is up (cursor free)
+	touchControls = false, -- playing on a touch screen: MobileControls' buttons are showing
+	interactAction = nil :: string?, -- what HOLD [G] would do right now (ObjectiveController)
 	loadoutWindow = false, -- you can still change your loadout (until the round starts)
 	spectating = false,
 }

@@ -12,6 +12,7 @@ local TeleportService = game:GetService("TeleportService")
 
 local LoadingScreen = require(ReplicatedFirst:WaitForChild("LoadingScreen"))
 local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
+local state = require(script.Parent.Parent.PlayerState)
 local MenuStyle = require(script.Parent.MenuStyle)
 
 local MatchState = ReplicatedStorage:WaitForChild("MatchState")
@@ -290,6 +291,7 @@ local function update()
 	if not inLobby then
 		modesOpen = false
 	end
+	state.modesOpen = modesOpen
 	playHolder.Visible = not modesOpen and not found
 	modesScreen.Visible = modesOpen
 

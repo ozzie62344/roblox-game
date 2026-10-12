@@ -1,3 +1,5 @@
+require(script.PlayerData).Start()
+require(script.ShopService).Start()
 require(script.LightingService).Start()
 require(script.WeaponService).Start()
 require(script.AbilityService).Start()

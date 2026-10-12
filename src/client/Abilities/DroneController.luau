@@ -1,12 +1,12 @@
 -- Driving your scout drone (DroneService): while your "Droning" attribute is set the camera rides
 -- the drone: WASD drives, Space hops, the mouse looks around, click spots an enemy for your team,
 -- Z goes back to your body (and back into the drone, or throws your second one, during the round).
+-- On a phone: the thumbstick drives, dragging looks, and MobileControls has the buttons.
 -- Near an enemy Signal Jammer the feed breaks up into static, the picture shakes and the drone
 -- crawls, worse the closer you get (and no spotting: the server agrees, GadgetService.Jammed).
 -- The drone's physics belong to this client, so its movement is set here every frame. Your body
 -- stays put meanwhile (state.droning roots it and puts the gun away).
 
-local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -16,7 +16,9 @@ local Workspace = game:GetService("Workspace")
 local Abilities = require(ReplicatedStorage.Shared.Abilities)
 local Config = require(ReplicatedStorage.Shared.MovementConfig)
 local state = require(script.Parent.Parent.PlayerState)
+local TouchLook = require(script.Parent.Parent.Input.TouchLook)
 local Static = require(script.Parent.Static)
+local Actions = require(script.Parent.Parent.Input.Actions)
 
 local DroneRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Drone") :: RemoteEvent
 
@@ -32,6 +34,16 @@ local FOV = 85 -- wide-angle lens
 local EYE = CFrame.new(0, 0.3, -0.45) -- matches DroneService.Eye
 local SPOT_RANGE = 70
 local JAM_RADIUS = Abilities.SignalJammer.Radius or 10
+
+-- Roblox's movement controls (keyboard, thumbstick, gamepad), for driving
+local controlModule = nil
+local function controls()
+	if not controlModule then
+		local playerModule = require(player:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule") :: ModuleScript) :: any
+		controlModule = playerModule:GetControls()
+	end
+	return controlModule
+end
 
 local yaw, pitch = 0, 0
 local driving: Model? = nil -- the drone the camera is on
@@ -148,25 +160,23 @@ local function update()
 
 	local uiOpen = state.devPanelOpen or state.mouseUnlocked
 	if not uiOpen then
-		local delta = UserInputService:GetMouseDelta()
+		local delta = UserInputService:GetMouseDelta() + TouchLook.Consume()
 		local speed = LOOK_SPEED * Config.MouseSensitivity
 		yaw -= delta.X * speed
 		pitch = math.clamp(pitch - delta.Y * speed, -MAX_PITCH, MAX_PITCH)
 	end
 	local facing = CFrame.Angles(0, yaw, 0)
 
-	-- Drive where you look; gravity and hops keep their own vertical speed
+	-- Drive where you look (WASD, thumbstick or gamepad stick, through Roblox's controls); gravity
+	-- and hops keep their own vertical speed
 	local move = Vector3.zero
 	if not uiOpen then
-		local keys = { W = facing.LookVector, S = -facing.LookVector, A = -facing.RightVector, D = facing.RightVector }
-		for key, direction in keys do
-			if UserInputService:IsKeyDown(Enum.KeyCode[key]) then
-				move += direction
-			end
-		end
+		local input = controls():GetMoveVector()
+		move = facing:VectorToWorldSpace(Vector3.new(input.X, 0, input.Z))
 	end
 	jam += (math.clamp(jamAt(body.Position), 0, 1) - jam) * 0.2
-	local horizontal = if move.Magnitude > 0 then move.Unit * SPEED * (1 - 0.85 * jam) else Vector3.zero
+	local strength = math.min(move.Magnitude, 1)
+	local horizontal = if strength > 0.05 then move.Unit * strength * SPEED * (1 - 0.85 * jam) else Vector3.zero
 	body.AssemblyLinearVelocity = Vector3.new(horizontal.X, body.AssemblyLinearVelocity.Y, horizontal.Z)
 	body.AssemblyAngularVelocity = Vector3.zero
 	body.CFrame = CFrame.new(body.Position) * facing -- upright, facing where you look
@@ -180,7 +190,9 @@ local function update()
 	countLabel.Text = if typeof(left) == "number" then `{left} MORE DRONE{if left == 1 then "" else "S"} THIS ROUND` else ""
 	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 	local alive = humanoid ~= nil and humanoid.Health > 0
-	hintLabel.Text = `WASD DRIVE  ·  SPACE HOP  ·  CLICK SPOT AN ENEMY  ·  Z {if alive then "BACK TO YOUR BODY" else "BACK TO SPECTATING"}`
+	hintLabel.Text = if state.touchControls
+		then "STICK DRIVES  ·  DRAG TO LOOK  ·  JUMP HOPS  ·  SPOT AN ENEMY"
+		else `WASD DRIVE  ·  SPACE HOP  ·  CLICK SPOT AN ENEMY  ·  Z {if alive then "BACK TO YOUR BODY" else "BACK TO SPECTATING"}`
 end
 
 local function hop()
@@ -210,14 +222,25 @@ local function spot()
 	end
 end
 
+-- For MobileControls
+function DroneController.IsDriving(): boolean
+	return driving ~= nil
+end
+function DroneController.Hop()
+	hop()
+end
+function DroneController.Spot()
+	spot()
+end
+
 function DroneController.Start()
 	buildOverlay()
-	ContextActionService:BindAction("Drone", function(_, inputState)
+	Actions.Bind("Drone", function(_, inputState)
 		if inputState == Enum.UserInputState.Begin and not (state.devPanelOpen or state.mouseUnlocked) then
 			DroneRemote:FireServer("Toggle") -- (getting in puts the loadout cards away)
 		end
 		return Enum.ContextActionResult.Sink
-	end, false, Enum.KeyCode.Z, Enum.KeyCode.DPadUp)
+	end, Enum.KeyCode.Z, Enum.KeyCode.DPadUp)
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed or not driving then
 			return

@@ -8,6 +8,7 @@ local Teams = game:GetService("Teams")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
+local GameRules = require(ReplicatedStorage.Shared.GameRules)
 local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 
 local MatchState = ReplicatedStorage:WaitForChild("MatchState")
@@ -222,7 +223,10 @@ local function update()
 	local phaseText = PHASE_LABELS[phase] or ""
 	local round = MatchState:GetAttribute("Round") or 0
 	if inMatch and round > 0 then
-		phaseText = if phaseText == "" then `ROUND {round}` else `ROUND {round} · {phaseText}`
+		-- (the mode too, unless it's Classic: "ROUND 2 · KNIVES ONLY · PREPARE")
+		local rules = GameRules.Current()
+		local prefix = if rules.Id == "Classic" then `ROUND {round}` else `ROUND {round} · {string.upper(rules.Name)}`
+		phaseText = if phaseText == "" then prefix else `{prefix} · {phaseText}`
 	elseif phase == "Waiting" then
 		-- Match server: waiting for everyone teleported in. Lobby: the menu says it all.
 		if MatchState:GetAttribute("ServerKind") == "Match" then

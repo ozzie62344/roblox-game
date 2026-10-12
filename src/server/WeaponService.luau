@@ -1,12 +1,14 @@
 -- Server side of shooting. Never trusts the client blindly: checks fire rate, ammo,
 -- where the shot came from, and that each hit is actually possible before dealing damage.
 -- Each player's current weapon is stored in their "Weapon" attribute (set by loadouts / dev panel).
+-- GameRules.NoGun ("Knife", Knives Only) means no gun: every shot and reload is refused.
+-- Headshots Only (GameRules): body shots do no damage.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
-local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
+local GameRules = require(ReplicatedStorage.Shared.GameRules)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 local DestructionService = require(script.Parent.DestructionService)
 
@@ -42,6 +44,10 @@ type PlayerData = {
 local playerData: { [Player]: PlayerData } = {}
 
 local function resetData(player: Player)
+	if player:GetAttribute("Weapon") == GameRules.NoGun then
+		playerData[player] = nil -- no gun: nothing to shoot or reload
+		return
+	end
 	local weapon = Weapons[player:GetAttribute("Weapon") or DEFAULT_WEAPON] or Weapons[DEFAULT_WEAPON]
 	playerData[player] = {
 		weapon = weapon,
@@ -186,6 +192,9 @@ local function checkShot(player: Player, character: Model, weapon: Weapons.Weapo
 	end
 
 	local headshot = hitPart.Name == "Head"
+	if GameRules.Current().HeadshotsOnly and not headshot then
+		return endPosition, nil
+	end
 	local damage = damageAtDistance(weapon, distance, headshot) * (if headshot then 1 else through)
 	return endPosition, { humanoid = targetHumanoid, damage = damage, headshot = headshot }
 end
@@ -269,7 +278,7 @@ end
 -- really close, in front of the attacker, alive, not a teammate, and not behind a wall.
 local MELEE_RANGE = 6.5 -- studs between root parts
 local MELEE_WALL_REACH = 7.5 -- studs from the head to where the knife hits a wall / barricade
-local MELEE_COOLDOWN = MatchConfig.MeleeCooldown - 0.15 -- a little slack for network jitter
+local MELEE_SLACK = 0.15 -- seconds of slack on the knife cooldown for network jitter
 local MELEE_DAMAGE = 200
 local lastMelee: { [Player]: number } = {}
 
@@ -292,7 +301,7 @@ end
 
 local function onMelee(player: Player, targetPart: any, hitPoint: any)
 	local now = os.clock()
-	if now - (lastMelee[player] or 0) < MELEE_COOLDOWN then
+	if now - (lastMelee[player] or 0) < GameRules.MeleeCooldown() - MELEE_SLACK then
 		return
 	end
 	lastMelee[player] = now
@@ -380,7 +389,7 @@ end
 
 -- Gives a player a weapon (full magazine). The client follows the "Weapon" attribute.
 function WeaponService.SetWeapon(player: Player, weaponName: string)
-	if not Weapons[weaponName] then
+	if not Weapons[weaponName] and weaponName ~= GameRules.NoGun then
 		return
 	end
 	player:SetAttribute("Weapon", weaponName)

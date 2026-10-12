@@ -12,9 +12,11 @@
 --   • the arms, worked out every frame from shoulder → elbow → wrist ("two-bone IK")
 -- Every part is anchored and repositioned each frame in one batch (Workspace:BulkMoveTo).
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
+local Skins = require(ReplicatedStorage.Shared.Skins)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 local GunModels = require(script.Parent.GunModels)
 local ReloadAnimations = require(script.Parent.ReloadAnimations)
@@ -33,6 +35,9 @@ local DEFAULT_EYE_RELIEF = 0.7 -- studs from your eye to the sight when aimed in
 local TUNED_NEAR_PLANE = 0.1
 -- Sprint: muzzle swung down and to the left
 local SPRINT_POSE = CFrame.new(0, -0.06, 0.05) * CFrame.Angles(math.rad(-25), math.rad(35), math.rad(10))
+-- Up against a wall: gun pulled back toward you and the muzzle tipped up, so it doesn't poke
+-- through. How far depends on how much of the gun would be inside the wall.
+local TUCK_POSE = CFrame.new(0.04, -0.06, 0.45) * CFrame.Angles(math.rad(55), math.rad(-12), math.rad(-8))
 -- Crawling: gun pulled in low and canted, rocking with each pull forward
 local CRAWL_POSE = CFrame.new(0.05, -0.14, 0.12) * CFrame.Angles(math.rad(-12), math.rad(18), math.rad(28))
 
@@ -349,9 +354,10 @@ local function buildArm(parent: Model, side: string): Arm
 	return arm
 end
 
--- Builds the gun for this weapon (GunModels), its moving pieces, the hands and the arms
-function Viewmodel.new(weapon: Weapons.Weapon)
-	local model = GunModels.Build(weapon.Name, weapon.Look.Color)
+-- Builds the gun for this weapon (GunModels, in the given skin), its moving pieces, the hands and
+-- the arms
+function Viewmodel.new(weapon: Weapons.Weapon, skin: Skins.Skin?)
+	local model = GunModels.Build(weapon.Name, weapon.Look.Color, skin)
 	model.Name = "Viewmodel"
 	local body = model.PrimaryPart :: Part
 
@@ -471,6 +477,8 @@ function Viewmodel.new(weapon: Weapons.Weapon)
 		flashId = 0,
 		aimOffset = aimOffset,
 		hipOffset = hipOffset,
+		-- How far in front of your eyes the muzzle reaches at the hip
+		reach = -(hipOffset * muzzle.CFrame).Position.Z,
 		gunParts = gunParts,
 		gunOffsets = gunOffsets,
 		groups = groups,
@@ -481,6 +489,7 @@ function Viewmodel.new(weapon: Weapons.Weapon)
 		bobTime = 0,
 		sprintAlpha = 0,
 		crawlAlpha = 0,
+		tuckAlpha = 0,
 		crawlTime = 0,
 		-- Animation playing (reload / draw)
 		clip = nil :: { any }?,
@@ -663,12 +672,26 @@ type Pose = {
 	grounded: boolean,
 }
 
+-- 0 = nothing in front of you, 1 = right up against a wall: how much of the gun's reach is blocked
+local tuckParams = RaycastParams.new()
+tuckParams.FilterType = Enum.RaycastFilterType.Exclude
+function Viewmodel:WallTuck(cameraCFrame: CFrame): number
+	local character = Players.LocalPlayer.Character
+	tuckParams.FilterDescendantsInstances = { Workspace.CurrentCamera, character :: Instance }
+	local hit = Workspace:Raycast(cameraCFrame.Position, cameraCFrame.LookVector * self.reach, tuckParams)
+	if not hit or not hit.Instance.CanCollide or hit.Instance.Transparency > 0.9 then
+		return 0 -- (invisible map boundaries don't count)
+	end
+	return math.clamp((self.reach - hit.Distance) / (self.reach * 0.7), 0, 1)
+end
+
 function Viewmodel:Update(dt: number, cameraCFrame: CFrame, pose: Pose)
 	local function approach(current: number, target: number, sharpness: number): number
 		return current + (target - current) * (1 - math.exp(-sharpness * dt))
 	end
 
 	self.sprintAlpha = approach(self.sprintAlpha, if pose.sprinting and not self.clip then 1 else 0, 10)
+	self.tuckAlpha = approach(self.tuckAlpha, self:WallTuck(cameraCFrame), 12)
 	self.crawlAlpha = approach(self.crawlAlpha, if pose.crawling and not self.clip then 1 - pose.aimAlpha else 0, 8)
 	self.crawlTime += dt * math.clamp(pose.speed, 0, 6) * 1.8
 	self.kick = approach(self.kick, 0, 25)
@@ -684,7 +707,9 @@ function Viewmodel:Update(dt: number, cameraCFrame: CFrame, pose: Pose)
 	local offset = self.hipOffset:Lerp(self.aimOffset, aim)
 	local rock = math.sin(self.crawlTime)
 	local crawlPose = CRAWL_POSE * CFrame.new(rock * 0.04, math.abs(math.cos(self.crawlTime)) * 0.05, 0) * CFrame.Angles(0, 0, rock * 0.1)
-	local action = CFrame.new():Lerp(SPRINT_POSE, self.sprintAlpha) * CFrame.new():Lerp(crawlPose, self.crawlAlpha)
+	local action = CFrame.new():Lerp(SPRINT_POSE, self.sprintAlpha)
+		* CFrame.new():Lerp(crawlPose, self.crawlAlpha)
+		* CFrame.new():Lerp(TUCK_POSE, self.tuckAlpha)
 	local kick = CFrame.new(0, 0, self.kick) * CFrame.Angles(self.kick * 0.15, 0, 0)
 	local base = cameraCFrame * offset * bob * action * kick
 

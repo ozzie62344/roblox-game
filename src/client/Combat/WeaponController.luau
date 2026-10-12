@@ -2,8 +2,8 @@
 -- Shots are raycast here for instant feedback, then sent to the server, which
 -- double-checks them and applies the damage.
 -- Your current weapon follows the "Weapon" attribute the server sets (loadouts / dev panel).
+-- Knives Only (GameRules.NoGun): no gun at all; the fire button stabs instead.
 
-local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -11,6 +11,8 @@ local Workspace = game:GetService("Workspace")
 
 local Abilities = require(ReplicatedStorage.Shared.Abilities)
 local Config = require(ReplicatedStorage.Shared.MovementConfig)
+local GameRules = require(ReplicatedStorage.Shared.GameRules)
+local Skins = require(ReplicatedStorage.Shared.Skins)
 local Sounds = require(ReplicatedStorage.Shared.Sounds)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 local Sound3D = require(script.Parent.Parent.Audio.Sound3D)
@@ -18,6 +20,7 @@ local state = require(script.Parent.Parent.PlayerState)
 local Effects = require(script.Parent.Effects)
 local Hud = require(script.Parent.Hud)
 local Viewmodel = require(script.Parent.Viewmodel)
+local Actions = require(script.Parent.Parent.Input.Actions)
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local FireRemote = Remotes:WaitForChild("Fire") :: RemoteEvent
@@ -42,6 +45,8 @@ local aimHeld = false
 local nextFireTime = 0
 local currentSpread = weapon.HipSpread
 local viewmodel = nil
+local viewmodelSkin: Skins.Skin? = nil -- the skin `viewmodel` was built in
+local unarmed = false -- Knives Only: no gun (`weapon` keeps the last one so nothing breaks)
 
 local function getAliveCharacter(): (Model?, Humanoid?)
 	local character = player.Character
@@ -91,7 +96,11 @@ local function randomPitch(): number
 end
 
 local function updateAmmoHud()
-	Hud.SetAmmo(ammo, weapon.MagazineSize, reloading)
+	if unarmed then
+		Hud.SetAmmoText("KNIFE")
+	else
+		Hud.SetAmmo(ammo, weapon.MagazineSize, reloading)
+	end
 end
 
 local function updateLoadoutHud()
@@ -106,35 +115,54 @@ local function updateLoadoutHud()
 			abilityText ..= "  " .. string.rep("●", charges) .. string.rep("○", (ability.Charges or charges) - charges)
 		end
 	end
-	Hud.SetLoadout(weapon.Name, abilityText)
+	Hud.SetLoadout(if unarmed then "Knife" else weapon.Name, abilityText)
+end
+
+-- The gun in your hands, in the skin you have on it (shop)
+local function buildViewmodel()
+	if viewmodel then
+		viewmodel:Destroy()
+	end
+	viewmodelSkin = Skins.EquippedFor(player, weapon.Name)
+	viewmodel = Viewmodel.new(weapon, viewmodelSkin)
+	-- Reload sounds play at the matching moments of the animation (mag out, mag in, bolt...)
+	viewmodel.OnAnimationEvent = function(_eventName: string)
+		Effects.Sound(Sounds.Pick(weapon.ReloadSound), nil, Sounds.Guns.ReloadVolume, 0.95 + random:NextNumber() * 0.15)
+	end
 end
 
 local function setWeapon(weaponName: string)
+	if weaponName == GameRules.NoGun then
+		unarmed = true
+		reloadToken += 1
+		reloading, triggerHeld, aimHeld = false, false, false
+		if viewmodel then
+			viewmodel:Destroy()
+			viewmodel = nil
+		end
+		updateAmmoHud()
+		updateLoadoutHud()
+		return
+	end
 	local newWeapon = Weapons[weaponName]
 	if not newWeapon then
 		return
 	end
+	unarmed = false
 	weapon = newWeapon
 	reloadToken += 1
 	reloading = false
 	ammo = weapon.MagazineSize
 	triggerHeld = false
 	state.recoilPitch, state.recoilYaw = 0, 0
-	if viewmodel then
-		viewmodel:Destroy()
-	end
-	viewmodel = Viewmodel.new(weapon)
-	-- Reload sounds play at the matching moments of the animation (mag out, mag in, bolt...)
-	viewmodel.OnAnimationEvent = function(_eventName: string)
-		Effects.Sound(Sounds.Pick(weapon.ReloadSound), nil, Sounds.Guns.ReloadVolume, 0.95 + random:NextNumber() * 0.15)
-	end
+	buildViewmodel()
 	viewmodel:PlayDraw()
 	updateAmmoHud()
 	updateLoadoutHud()
 end
 
 local function reload()
-	if reloading or ammo >= weapon.MagazineSize or not getAliveCharacter() then
+	if unarmed or reloading or ammo >= weapon.MagazineSize or not getAliveCharacter() then
 		return
 	end
 	reloading = true
@@ -240,15 +268,16 @@ end
 
 local function update(dt: number)
 	local character = getAliveCharacter()
-	-- In the lobby the gun is put away (you're in third person, holding it on your body instead)
-	if not character or state.inLobby then
+	-- In the lobby the gun is put away (you're in third person, holding it on your body instead);
+	-- Knives Only: there's no gun, just the crosshair for aiming your stabs
+	if not character or state.inLobby or unarmed then
 		if viewmodel then
 			viewmodel:SetVisible(false)
 		end
 		state.aiming = false
 		state.aimAlpha = 0
 		state.aimSensitivity = 1
-		Hud.SetCrosshair(0, false)
+		Hud.SetCrosshair(4, unarmed and character ~= nil and not state.inLobby)
 		Hud.SetScoped(false)
 		return
 	end
@@ -329,25 +358,39 @@ function WeaponController.Start()
 	player:GetAttributeChangedSignal("Weapon"):Connect(function()
 		setWeapon(player:GetAttribute("Weapon") or "Rifle")
 	end)
+	-- Equipped a different skin for the gun you're holding (shop): swap the model, keep the ammo
+	player:GetAttributeChangedSignal("EquippedSkins"):Connect(function()
+		if not unarmed and Skins.EquippedFor(player, weapon.Name) ~= viewmodelSkin then
+			buildViewmodel()
+			viewmodel:PlayDraw()
+		end
+	end)
 	player:GetAttributeChangedSignal("Ability"):Connect(updateLoadoutHud)
 	player:GetAttributeChangedSignal("AbilityCharges"):Connect(updateLoadoutHud)
 
-	ContextActionService:BindAction("Fire", function(_, inputState)
+	Actions.Bind("Fire", function(_, inputState)
+		if unarmed then
+			-- No gun: the fire button is the knife
+			if inputState == Enum.UserInputState.Begin then
+				Actions.Call("Melee", Enum.UserInputState.Begin)
+			end
+			return Enum.ContextActionResult.Sink
+		end
 		triggerHeld = inputState == Enum.UserInputState.Begin
 		return Enum.ContextActionResult.Pass
-	end, false, Enum.UserInputType.MouseButton1, Enum.KeyCode.ButtonR2)
+	end, Enum.UserInputType.MouseButton1, Enum.KeyCode.ButtonR2)
 
-	ContextActionService:BindAction("Aim", function(_, inputState)
+	Actions.Bind("Aim", function(_, inputState)
 		aimHeld = inputState == Enum.UserInputState.Begin
 		return Enum.ContextActionResult.Pass
-	end, false, Enum.UserInputType.MouseButton2, Enum.KeyCode.ButtonL2)
+	end, Enum.UserInputType.MouseButton2, Enum.KeyCode.ButtonL2)
 
-	ContextActionService:BindAction("Reload", function(_, inputState)
+	Actions.Bind("Reload", function(_, inputState)
 		if inputState == Enum.UserInputState.Begin then
 			reload()
 		end
 		return Enum.ContextActionResult.Sink
-	end, false, Enum.KeyCode.R, Enum.KeyCode.ButtonX)
+	end, Enum.KeyCode.R, Enum.KeyCode.ButtonX)
 
 	player.CharacterAdded:Connect(function()
 		WeaponController.Refill()

@@ -1,4 +1,5 @@
 -- Loads maps into Workspace as "Map" (the test arena builds itself as "TestArena").
+-- Every map (and the lobby) goes through MapCleanup first: no flickering where surfaces overlap.
 -- A map built in Studio (ServerStorage/Maps/<name>, saved in the place file, not in Rojo) wins
 -- over the code-built version. RoundService / ObjectiveService read spawns and sites from it.
 
@@ -15,6 +16,7 @@ local FortifyService = require(script.Parent.FortifyService)
 local TestArena = require(script.Parent.TestArena)
 local House = require(script.Parent.Maps.House)
 local Lobby = require(script.Parent.Maps.Lobby)
+local MapCleanup = require(script.Parent.Maps.MapCleanup)
 local Warehouse = require(script.Parent.Maps.Warehouse)
 
 local MatchState = ReplicatedStorage.MatchState
@@ -45,6 +47,10 @@ function MapService.Load(name: string): boolean
 
 	if name == "TestArena" then
 		TestArena.Build()
+		local arena = Workspace:FindFirstChild("TestArena")
+		if arena then
+			MapCleanup.Run(arena)
+		end
 	else
 		local studioMaps = ServerStorage:FindFirstChild("Maps")
 		local studioMap = studioMaps and studioMaps:FindFirstChild(name)
@@ -55,6 +61,7 @@ function MapService.Load(name: string): boolean
 				part.CollisionGroup = "Guards"
 			end
 		end
+		MapCleanup.Run(map)
 		FortifyService.Prepare(map)
 		CameraService.Build(name, map)
 		map.Parent = Workspace
@@ -89,6 +96,7 @@ function MapService.Start()
 
 	-- The lobby always exists, floating above whatever map is loaded
 	local lobby = Lobby.Build()
+	MapCleanup.Run(lobby)
 	lobby.Parent = Workspace
 	MapService.Load(MatchConfig.DefaultMap)
 end

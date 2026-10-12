@@ -3,7 +3,6 @@
 -- carries between moves. The Humanoid still handles jumping, gravity, stairs
 -- and animations.
 
-local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -19,6 +18,7 @@ local player = Players.LocalPlayer
 local MovementController = {}
 
 local state = require(script.Parent.Parent.PlayerState)
+local Actions = require(script.Parent.Parent.Input.Actions)
 
 local humanoid: Humanoid? = nil
 local root: BasePart? = nil
@@ -84,6 +84,31 @@ local function lookDirection(): Vector3
 		return Vector3.new(0, 0, -1)
 	end
 	return look.Unit
+end
+
+-- Roblox's movement controls (for how far the phone's thumbstick is pushed)
+local controlModule = nil
+local function controls()
+	if not controlModule then
+		local playerModule = require(player:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule") :: ModuleScript) :: any
+		controlModule = playerModule:GetControls()
+	end
+	return controlModule
+end
+
+-- Phones: the thumbstick is analog. Pushed all the way forward = sprint; pushed less = slower
+-- (down to 30% speed). Returns (sprint?, speed scale); keyboards and gamepads get (false, 1).
+local STICK_SPRINT = 0.92 -- how far out the stick has to be to sprint
+local function stickSpeed(): (boolean, number)
+	if not state.touchControls then
+		return false, 1
+	end
+	local stick = controls():GetMoveVector()
+	local push = math.min(stick.Magnitude, 1)
+	if push >= STICK_SPRINT and stick.Z < -0.6 then -- (mostly forward)
+		return true, 1
+	end
+	return false, math.clamp((push - 0.1) / (STICK_SPRINT - 0.1), 0.3, 1)
 end
 
 local function wishDirection(): Vector3
@@ -325,7 +350,8 @@ local function step(dt: number)
 	if rooted then
 		endSlide()
 	end
-	local wantsToSprint = sprintHeld and wish:Dot(lookDirection()) > 0.5
+	local stickSprint, stickScale = stickSpeed()
+	local wantsToSprint = (sprintHeld or stickSprint) and wish:Dot(lookDirection()) > 0.5
 	if state.prone and wantsToSprint then
 		getUp(false)
 	end
@@ -384,6 +410,7 @@ local function step(dt: number)
 			if state.prone then
 				targetSpeed = math.min(targetSpeed, Config.ProneSpeed)
 			end
+			targetSpeed *= stickScale
 		end
 		local speed = velocity.Magnitude
 
@@ -505,15 +532,25 @@ local function setupCharacter(character: Model)
 	table.insert(characterConnections, newHumanoid.Died:Connect(cleanupCharacter))
 end
 
+-- A fresh jump press: up from prone, or a wall jump in the air (keyboard / gamepad here, the
+-- phone's jump button through MobileControls)
+function MovementController.JumpPressed()
+	if state.prone then
+		getUp(false)
+	else
+		tryWallJump()
+	end
+end
+
 function MovementController.Start()
-	ContextActionService:BindAction("Sprint", function(_, inputState)
+	Actions.Bind("Sprint", function(_, inputState)
 		sprintHeld = inputState == Enum.UserInputState.Begin
 		return Enum.ContextActionResult.Pass
-	end, false, Enum.KeyCode.LeftShift, Enum.KeyCode.ButtonL3)
+	end, Enum.KeyCode.LeftShift, Enum.KeyCode.ButtonL3)
 
 	-- C / Ctrl: hold to slide while sprinting (letting go ends the slide), otherwise tap to toggle
 	-- crouch. Two quick taps: lie down (prone); tap again to come back up to a crouch.
-	ContextActionService:BindAction("CrouchSlide", function(_, inputState)
+	Actions.Bind("CrouchSlide", function(_, inputState)
 		slideHeld = inputState == Enum.UserInputState.Begin
 		if inputState ~= Enum.UserInputState.Begin or state.deploying or state.interacting then
 			return Enum.ContextActionResult.Sink
@@ -537,14 +574,14 @@ function MovementController.Start()
 			state.crouching = true
 		end
 		return Enum.ContextActionResult.Sink
-	end, false, Enum.KeyCode.C, Enum.KeyCode.LeftControl, Enum.KeyCode.ButtonB)
+	end, Enum.KeyCode.C, Enum.KeyCode.LeftControl, Enum.KeyCode.ButtonB)
 
-	ContextActionService:BindAction("Dash", function(_, inputState)
+	Actions.Bind("Dash", function(_, inputState)
 		if inputState == Enum.UserInputState.Begin then
 			startDash()
 		end
 		return Enum.ContextActionResult.Sink
-	end, false, Enum.KeyCode.X, Enum.KeyCode.ButtonL1)
+	end, Enum.KeyCode.X, Enum.KeyCode.ButtonL1)
 
 	-- Wall jump on a fresh jump press (the Humanoid ignores jumps while airborne, so no conflict)
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)
@@ -552,11 +589,7 @@ function MovementController.Start()
 			return
 		end
 		if input.KeyCode == Enum.KeyCode.Space or input.KeyCode == Enum.KeyCode.ButtonA then
-			if state.prone then
-				getUp(false)
-			else
-				tryWallJump()
-			end
+			MovementController.JumpPressed()
 		end
 	end)
 

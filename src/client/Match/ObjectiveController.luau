@@ -5,7 +5,6 @@
 --     marker on the planted defuser
 --   • The defuser blinks and beeps faster as it gets close to defusing the bomb
 
-local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -15,6 +14,7 @@ local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local Sounds = require(ReplicatedStorage.Shared.Sounds)
 local state = require(script.Parent.Parent.PlayerState)
 local Sound3D = require(script.Parent.Parent.Audio.Sound3D)
+local Actions = require(script.Parent.Parent.Input.Actions)
 
 local MatchState = ReplicatedStorage:WaitForChild("MatchState")
 local Interact = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Interact") :: RemoteEvent
@@ -407,14 +407,16 @@ local function update()
 		progressFill.BackgroundColor3 = info.color
 		prompt.Visible = true
 		prompt.Text = info.label
+		state.interactAction = interaction
 		return
 	end
 	progressBack.Visible = false
 
 	local action = availableAction()
+	state.interactAction = action -- (MobileControls shows its HOLD button)
 	prompt.Visible = action ~= nil
 	if action then
-		prompt.Text = `HOLD [G] TO {INTERACTIONS[action].prompt}`
+		prompt.Text = `HOLD [{if state.touchControls then "USE" else "G"}] TO {INTERACTIONS[action].prompt}`
 		if action == "Reinforce" and not player.Neutral then
 			prompt.Text ..= ` ({MatchState:GetAttribute("Reinforcements") or 0} LEFT)`
 		end
@@ -424,7 +426,7 @@ end
 function ObjectiveController.Start()
 	build()
 
-	ContextActionService:BindAction("Interact", function(_, inputState)
+	Actions.Bind("Interact", function(_, inputState)
 		if inputState == Enum.UserInputState.Begin then
 			local action, slot = availableAction()
 			if action and not (state.devPanelOpen or state.mouseUnlocked or state.deploying) then
@@ -434,7 +436,7 @@ function ObjectiveController.Start()
 			Interact:FireServer("End")
 		end
 		return Enum.ContextActionResult.Sink
-	end, false, Enum.KeyCode.G, Enum.KeyCode.ButtonY)
+	end, Enum.KeyCode.G, Enum.KeyCode.ButtonY)
 
 	RunService.RenderStepped:Connect(update)
 end

@@ -18,6 +18,7 @@ local Teams = game:GetService("Teams")
 local TeleportService = game:GetService("TeleportService")
 local Workspace = game:GetService("Workspace")
 
+local GameRules = require(ReplicatedStorage.Shared.GameRules)
 local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local AbilityService = require(script.Parent.AbilityService)
 local CameraService = require(script.Parent.CameraService)
@@ -25,6 +26,7 @@ local DroneService = require(script.Parent.DroneService)
 local LoadoutService = require(script.Parent.LoadoutService)
 local MapService = require(script.Parent.MapService)
 local ObjectiveService = require(script.Parent.ObjectiveService)
+local ShopService = require(script.Parent.ShopService)
 
 local KillFeed = ReplicatedStorage.Remotes.KillFeed :: RemoteEvent
 local PickSite = ReplicatedStorage.Remotes.PickSite :: RemoteEvent
@@ -408,6 +410,9 @@ local function runMatch()
 		if winner ~= "Draw" then
 			scores[winner] += 1
 			setScores(scores)
+			for _, player in teams[winner]:GetPlayers() do
+				ShopService.Award(player, MatchConfig.Credits.RoundWin, "ROUND WON")
+			end
 		end
 		if scores[winner] and scores[winner] >= MatchConfig.RoundsToWin then
 			matchWinner = winner
@@ -426,6 +431,14 @@ local function runMatch()
 	end
 
 	if matchWinner and not abortMatch then
+		for _, teamName in MatchConfig.TeamOrder do
+			for _, player in teams[teamName]:GetPlayers() do
+				ShopService.Award(player, MatchConfig.Credits.MatchPlayed, "MATCH COMPLETE")
+				if teamName == matchWinner then
+					ShopService.Award(player, MatchConfig.Credits.MatchWin, "MATCH WON")
+				end
+			end
+		end
 		setPhase("MatchOver", MatchConfig.MatchOverTime, `{string.upper(matchWinner)} WINS THE MATCH`)
 		task.wait(MatchConfig.MatchOverTime)
 	end
@@ -436,30 +449,23 @@ local function runMatch()
 	MatchState:SetAttribute("Round", 0)
 	MatchState:SetAttribute("AttackTeam", nil)
 	MatchState:SetAttribute("SitePair", nil)
+	MatchState:SetAttribute("Rules", nil) -- (free roam is always Classic)
 	setScores({ Blue = 0, Orange = 0 })
 	resetToFreeRoam()
 end
 
--- Everyone votes for a map (client MapVote): most votes wins, ties (and no votes) are settled at
--- random. The vote doubles as the countdown before the match.
-local function voteMap()
-	for _, player in Players:GetPlayers() do
-		player:SetAttribute("MapVote", nil)
-	end
-	MatchState:SetAttribute("VoteMaps", table.concat(MapService.MapNames, ","))
-	MatchState:SetAttribute("VoteWinner", nil)
-	setPhase("Vote", MatchConfig.MapVoteTime)
-	task.wait(MatchConfig.MapVoteTime)
-
+-- Most votes in `attribute` among `options`; ties are settled at random. With no votes at all:
+-- `fallback`, or a random option.
+local function countVotes(attribute: string, options: { string }, fallback: string?): string
 	local counts = {}
 	for _, player in Players:GetPlayers() do
-		local vote = player:GetAttribute("MapVote")
+		local vote = player:GetAttribute(attribute)
 		if vote then
 			counts[vote] = (counts[vote] or 0) + 1
 		end
 	end
 	local best, most = {}, -1
-	for _, name in MapService.MapNames do
+	for _, name in options do
 		local count = counts[name] or 0
 		if count > most then
 			best, most = { name }, count
@@ -467,10 +473,38 @@ local function voteMap()
 			table.insert(best, name)
 		end
 	end
-	local winner = best[math.random(#best)]
+	if most == 0 and fallback then
+		return fallback
+	end
+	return best[math.random(#best)]
+end
+
+-- Everyone votes for a map and a mode (GameRules: Classic, Snipers Only, Knives Only...) at the
+-- same time (client MapVote). Most votes wins; no votes means a random map and Classic. The vote
+-- doubles as the countdown before the match.
+local function voteMap()
+	for _, player in Players:GetPlayers() do
+		player:SetAttribute("MapVote", nil)
+		player:SetAttribute("RulesVote", nil)
+	end
+	local ruleIds = {}
+	for _, rules in GameRules.List do
+		table.insert(ruleIds, rules.Id)
+	end
+	MatchState:SetAttribute("VoteMaps", table.concat(MapService.MapNames, ","))
+	MatchState:SetAttribute("VoteRules", table.concat(ruleIds, ","))
+	MatchState:SetAttribute("VoteWinner", nil)
+	MatchState:SetAttribute("RulesWinner", nil)
+	setPhase("Vote", MatchConfig.MapVoteTime)
+	task.wait(MatchConfig.MapVoteTime)
+
+	local winner = countVotes("MapVote", MapService.MapNames)
+	local rules = countVotes("RulesVote", ruleIds, "Classic")
 	MapService.Load(winner)
+	MatchState:SetAttribute("Rules", rules)
 	MatchState:SetAttribute("VoteWinner", winner)
-	task.wait(2.5) -- (the winning card lights up)
+	MatchState:SetAttribute("RulesWinner", rules)
+	task.wait(2.5) -- (the winning cards light up)
 end
 
 -- Match server: start once everyone teleported in has arrived (or after a wait, with whoever made
@@ -550,7 +584,13 @@ local function onCharacterAdded(player: Player, character: Model)
 	humanoid.Died:Connect(function()
 		local killerId = humanoid:GetAttribute("LastDamagedBy")
 		local killer = if killerId then Players:GetPlayerByUserId(killerId) else nil
-		KillFeed:FireAllClients(killer, player, humanoid:GetAttribute("LastHitHeadshot") == true)
+		local headshot = humanoid:GetAttribute("LastHitHeadshot") == true
+		KillFeed:FireAllClients(killer, player, headshot)
+		-- Credits for killing an enemy in a match
+		if matchRunning and killer and killer ~= player and killer.Team and killer.Team ~= player.Team then
+			local credits = MatchConfig.Credits
+			ShopService.Award(killer, credits.Kill + (if headshot then credits.Headshot else 0), if headshot then "HEADSHOT" else "KILL")
+		end
 
 		if isFreeRoam() then
 			task.delay(MatchConfig.FreeRoamRespawnTime, function()
@@ -658,8 +698,16 @@ function RoundService.Start()
 		placeTeam(player.Team.Name, "Defend")
 	end)
 
-	VoteMap.OnServerEvent:Connect(function(player, name)
-		if MatchState:GetAttribute("Phase") == "Vote" and not MatchState:GetAttribute("VoteWinner") and table.find(MapService.MapNames, name) then
+	-- VoteMap(name) votes for a map, VoteMap(id, "Rules") for a mode
+	VoteMap.OnServerEvent:Connect(function(player, name, kind)
+		if MatchState:GetAttribute("Phase") ~= "Vote" or MatchState:GetAttribute("VoteWinner") or typeof(name) ~= "string" then
+			return
+		end
+		if kind == "Rules" then
+			if GameRules.ById[name] then
+				player:SetAttribute("RulesVote", name)
+			end
+		elseif table.find(MapService.MapNames, name) then
 			player:SetAttribute("MapVote", name)
 		end
 	end)

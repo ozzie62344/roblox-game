@@ -44,6 +44,19 @@ return {
 	MatchOverTime = 10,
 	FreeRoamRespawnTime = 3, -- respawn delay between matches
 
+	-- Credits: earned in matches (not in free roam), spent on skins in the lobby SHOP (Skins.luau).
+	-- A full match is worth roughly 300-600.
+	Credits = {
+		Starting = 500, -- new players can buy a Common skin right away
+		Kill = 20,
+		Headshot = 10, -- on top of the kill
+		Plant = 25, -- planting the defuser
+		Disable = 25, -- disabling it
+		RoundWin = 40, -- everyone on the team that won the round
+		MatchWin = 150,
+		MatchPlayed = 75, -- everyone who was there when the match finished
+	},
+
 	Teams = {
 		Blue = { Color = BrickColor.new("Bright blue") },
 		Orange = { Color = BrickColor.new("Neon orange") },

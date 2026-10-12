@@ -2,7 +2,6 @@
 -- in the dev panel). Shifts and tilts the camera (CameraEffects applies it) and tells the server
 -- so other players see your body lean.
 
-local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -10,6 +9,7 @@ local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage.Shared.MovementConfig)
 local state = require(script.Parent.Parent.PlayerState)
+local Actions = require(script.Parent.Parent.Input.Actions)
 
 local SetLean = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("SetLean") :: RemoteEvent
 
@@ -78,15 +78,15 @@ local function leanInput(side: number, inputState: Enum.UserInputState)
 end
 
 function LeanController.Start()
-	ContextActionService:BindAction("LeanLeft", function(_, inputState)
+	Actions.Bind("LeanLeft", function(_, inputState)
 		leanInput(-1, inputState)
 		return Enum.ContextActionResult.Sink
-	end, false, Enum.KeyCode.Q, Enum.KeyCode.DPadLeft)
+	end, Enum.KeyCode.Q, Enum.KeyCode.DPadLeft)
 
-	ContextActionService:BindAction("LeanRight", function(_, inputState)
+	Actions.Bind("LeanRight", function(_, inputState)
 		leanInput(1, inputState)
 		return Enum.ContextActionResult.Sink
-	end, false, Enum.KeyCode.E, Enum.KeyCode.DPadRight)
+	end, Enum.KeyCode.E, Enum.KeyCode.DPadRight)
 
 	player.CharacterAdded:Connect(function()
 		leftOn, rightOn = false, false

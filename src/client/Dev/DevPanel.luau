@@ -1,6 +1,5 @@
 -- Dev panel (press P). Shows for players the server marks as devs (everyone, for now: DevService).
 
-local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -9,6 +8,7 @@ local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 local state = require(script.Parent.Parent.PlayerState)
 local WeaponController = require(script.Parent.Parent.Combat.WeaponController)
+local Actions = require(script.Parent.Parent.Input.Actions)
 
 local DevAction = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("DevAction") :: RemoteEvent
 local MatchState = ReplicatedStorage:WaitForChild("MatchState")
@@ -276,6 +276,9 @@ local function build()
 		DevAction:FireServer("RefillAmmo")
 		WeaponController.Refill()
 	end)
+	button(panel, "+1000 credits (shop)", 16).Activated:Connect(function()
+		DevAction:FireServer("GiveCredits")
+	end)
 
 	heading(panel, "MAP (ends any match)", 26)
 	choiceGrid(panel, 27, {
@@ -360,12 +363,12 @@ end
 
 function DevPanel.Start()
 	build()
-	ContextActionService:BindAction("ToggleDevPanel", function(_, inputState)
+	Actions.Bind("ToggleDevPanel", function(_, inputState)
 		if inputState == Enum.UserInputState.Begin and player:GetAttribute("IsDev") then
 			setOpen(not panel.Visible)
 		end
 		return Enum.ContextActionResult.Sink
-	end, false, Enum.KeyCode.P)
+	end, Enum.KeyCode.P)
 end
 
 return DevPanel

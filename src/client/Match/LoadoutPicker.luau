@@ -112,10 +112,17 @@ local function makeCard(index: number, loadout: Loadout): TextButton
 	if isDraft then
 		textLabel(card, `[{index}]`, 13, grey, 0)
 	end
-	textLabel(card, string.upper(weapon.Name), 26, nil, 1)
-	textLabel(card, weapon.Description, 13, grey, 2)
-	textLabel(card, `{damageText(weapon)}  ·  {fireRateText(weapon)}`, 13, nil, 3)
-	textLabel(card, `{weapon.MagazineSize} round magazine`, 13, nil, 4)
+	if weapon then
+		textLabel(card, string.upper(weapon.Name), 26, nil, 1)
+		textLabel(card, weapon.Description, 13, grey, 2)
+		textLabel(card, `{damageText(weapon)}  ·  {fireRateText(weapon)}`, 13, nil, 3)
+		textLabel(card, `{weapon.MagazineSize} round magazine`, 13, nil, 4)
+	else
+		-- Knives Only
+		textLabel(card, "KNIFE", 26, nil, 1)
+		textLabel(card, "No guns this match.", 13, grey, 2)
+		textLabel(card, "One stab kills  ·  quick recharge", 13, nil, 3)
+	end
 	textLabel(card, " ", 8, nil, 5)
 	if ability then
 		textLabel(card, `{string.upper(ability.Name)}  [{ability.Key}]`, 18, Color3.fromRGB(120, 190, 255), 6)
@@ -141,7 +148,9 @@ local function onOffer(options: { Loadout }, newDeadline: number, isRandom: bool
 
 	-- Pick with a click or 1 / 2 / 3. Left Alt hides the cards so you can look around, and brings
 	-- them back — any time until the round starts.
-	title.Text = if isDraft then "PICK YOUR LOADOUT  ·  CLICK OR 1 / 2 / 3  ·  ALT TO HIDE" else "YOUR LOADOUT"
+	title.Text = if not isDraft then "YOUR LOADOUT"
+		elseif state.touchControls then "PICK YOUR LOADOUT  ·  TAP A CARD"
+		else "PICK YOUR LOADOUT  ·  CLICK OR 1 / 2 / 3  ·  ALT TO HIDE"
 	for i, loadout in options do
 		cards[i] = makeCard(i, loadout)
 	end
@@ -240,7 +249,7 @@ local function update()
 		-- Cards open or hidden (Left Alt toggles state.draftOpen in MouseUnlock)
 		root.Visible = state.draftOpen
 		hint.Visible = not state.draftOpen
-		hint.Text = `LEFT ALT  ·  CHANGE LOADOUT  ({math.ceil(remaining)}s)`
+		hint.Text = `{if state.touchControls then "TAP LOADOUT" else "LEFT ALT"}  ·  CHANGE LOADOUT  ({math.ceil(remaining)}s)`
 	else
 		-- Random: just show what you got for a few seconds
 		if not root.Visible then

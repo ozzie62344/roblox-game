@@ -17,6 +17,7 @@ local Workspace = game:GetService("Workspace")
 
 local state = require(script.Parent.Parent.PlayerState)
 local Effects = require(script.Parent.Parent.Combat.Effects)
+local Actions = require(script.Parent.Parent.Input.Actions)
 
 local MatchState = ReplicatedStorage:WaitForChild("MatchState")
 local SetRappel = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("SetRappel") :: RemoteEvent
@@ -271,8 +272,15 @@ local function drawRopes()
 	end
 end
 
+-- Push off the wall (the phone's jump button, through MobileControls)
+function RappelController.Jump()
+	if state.rappelling then
+		jump()
+	end
+end
+
 function RappelController.Start()
-	ContextActionService:BindAction("Rappel", function(_, inputState)
+	Actions.Bind("Rappel", function(_, inputState)
 		if inputState == Enum.UserInputState.Begin and not (state.devPanelOpen or state.mouseUnlocked) then
 			if state.rappelling then
 				stop((parts()))
@@ -281,7 +289,7 @@ function RappelController.Start()
 			end
 		end
 		return Enum.ContextActionResult.Sink
-	end, false, Enum.KeyCode.V, Enum.KeyCode.DPadDown)
+	end, Enum.KeyCode.V, Enum.KeyCode.DPadDown)
 	ContextActionService:BindActionAtPriority("RappelJump", function(_, inputState)
 		if not state.rappelling then
 			return Enum.ContextActionResult.Pass
