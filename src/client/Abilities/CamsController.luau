@@ -1,5 +1,5 @@
 -- Watching the defenders' cameras (server CameraService). On the defending team, during setup and
--- the round, Z opens the feeds (attackers' Z stays the drone): A / D (or ← / →) switches camera,
+-- the round (dead or alive), Z opens the feeds (attackers' Z stays the drone): A / D (or ← / →) switches camera,
 -- the mouse turns it (within its mount's reach), click spots an attacker for your team, Z goes
 -- back to your body. A camera that gets shot or EMP'd cuts to static and the next one comes up.
 -- Your body stays put meanwhile (state.droning: rooted, gun away).
@@ -40,6 +40,7 @@ local lostAt: number? = nil
 local overlay: ScreenGui
 local nameLabel: TextLabel
 local clockLabel: TextLabel
+local hintLabel: TextLabel
 local static: Static.Static
 
 local function cameras(): { Model }
@@ -57,12 +58,11 @@ local function cameras(): { Model }
 	return list
 end
 
--- Defending, alive, in a live round (the server checks the same: CameraService.canWatch)
+-- Defending in a live round, alive or dead: dead defenders keep watching and spotting, like in
+-- Siege (the server checks the same: CameraService.canWatch)
 local function allowed(): boolean
-	local character = player.Character
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	local attackTeam = MatchState:GetAttribute("AttackTeam")
-	return humanoid ~= nil and humanoid.Health > 0 and not state.inLobby
+	return player:GetAttribute("Location") == "Match"
 		and not player.Neutral and player.Team ~= nil and attackTeam ~= nil and player.Team.Name ~= attackTeam
 		and LIVE_PHASES[MatchState:GetAttribute("Phase")] == true
 end
@@ -155,6 +155,9 @@ local function update()
 	camera.FieldOfView = FOV
 	static:Set(1 - (now - switchedAt) / SWITCH_STATIC)
 	clockLabel.Text = os.date("!%H:%M:%S", math.floor(Workspace:GetServerTimeNow())) :: string
+	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	local alive = humanoid ~= nil and humanoid.Health > 0
+	hintLabel.Text = `A / D SWITCH CAMERA  ·  MOUSE LOOK  ·  CLICK SPOT AN ENEMY  ·  Z {if alive then "BACK TO YOUR BODY" else "BACK TO SPECTATING"}`
 end
 
 -- Click: if there's an enemy under the crosshair, the server checks the camera can see them
@@ -224,7 +227,7 @@ local function buildOverlay()
 	nameLabel = label("", 22, UDim2.fromOffset(52, 44), Vector2.new(0, 0))
 	nameLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
 	clockLabel = label("", 16, UDim2.new(1, -52, 0, 48), Vector2.new(1, 0))
-	label("A / D SWITCH CAMERA  ·  MOUSE LOOK  ·  CLICK SPOT AN ENEMY  ·  Z BACK TO YOUR BODY", 14, UDim2.new(0.5, 0, 1, -48), Vector2.new(0.5, 1))
+	hintLabel = label("", 14, UDim2.new(0.5, 0, 1, -48), Vector2.new(0.5, 1))
 	static = Static.new(overlay)
 end
 

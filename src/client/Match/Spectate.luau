@@ -132,7 +132,30 @@ local function stopSpectating()
 	end
 end
 
+-- Z on the spectate bar: dead defenders can watch the cameras, dead attackers drive the drone
+-- they left out (CamsController / DroneController)
+local function zHint(): string
+	local attackTeam = MatchState:GetAttribute("AttackTeam")
+	if player.Neutral or not player.Team or not attackTeam then
+		return ""
+	end
+	if player.Team.Name ~= attackTeam then
+		return "   ·   Z: cameras"
+	end
+	local folder = Workspace:FindFirstChild("Deployables")
+	for _, drone in if folder then folder:GetChildren() else {} do
+		if drone.Name == "Drone" and drone:GetAttribute("OwnerId") == player.UserId then
+			return "   ·   Z: your drone"
+		end
+	end
+	return ""
+end
+
 local function update()
+	if state.droning then
+		label.Visible = false -- on the cameras / in a drone: that's driving the view now
+		return
+	end
 	local mode = spectateMode()
 	local should = mode ~= nil
 	if should and not state.spectating then
@@ -172,10 +195,10 @@ local function update()
 	if humanoid and target then
 		Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
 		Workspace.CurrentCamera.CameraSubject = humanoid
-		label.Text = `SPECTATING  {string.upper(target.DisplayName)}   ·   click to switch`
+		label.Text = `SPECTATING  {string.upper(target.DisplayName)}   ·   click to switch{zHint()}`
 	else
 		overview()
-		label.Text = if player.Character then "NO ONE TO SPECTATE" else "YOU'LL JOIN AT THE START OF THE NEXT ROUND"
+		label.Text = if player.Character then "NO ONE TO SPECTATE" .. zHint() else "YOU'LL JOIN AT THE START OF THE NEXT ROUND"
 	end
 	label.Visible = true
 end

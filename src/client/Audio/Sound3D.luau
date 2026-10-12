@@ -9,6 +9,7 @@ local Workspace = game:GetService("Workspace")
 
 local Sounds = require(ReplicatedStorage.Shared.Sounds)
 local SoundCache = require(script.Parent.SoundCache)
+local state = require(script.Parent.Parent.PlayerState)
 
 local Sound3D = {}
 
@@ -117,6 +118,14 @@ function Sound3D.Play(soundId: string, position: Vector3, options: Options?)
 		local walls, throughFloor = Sound3D.Obstruction(position)
 		sound.Volume *= Sounds.MuffleVolumeScale ^ walls
 		Sound3D.Muffle(sound, walls, throughFloor)
+	end
+	-- Ears still ringing from a flashbang: everything comes through dull and quiet
+	local deaf = state.deafStrength * math.clamp((state.deafUntil - os.clock()) / 2, 0, 1)
+	if deaf > 0 then
+		sound.Volume *= 1 - 0.75 * deaf
+		local dull = Instance.new("EqualizerSoundEffect")
+		dull.HighGain, dull.MidGain = -30 * deaf, -12 * deaf
+		dull.Parent = sound
 	end
 
 	sound.Parent = attachment

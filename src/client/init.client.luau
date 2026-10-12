@@ -22,6 +22,7 @@ require(script:WaitForChild("Abilities").AbilityController).Start() -- after Mov
 require(script.Abilities.HandsAnimator).Start()
 require(script.Abilities.DroneController).Start()
 require(script.Abilities.CamsController).Start()
+require(script.Abilities.GrenadeEffects).Start()
 require(Match.MatchHud).Start()
 require(Match.TeamHighlights).Start()
 require(Match.Spectate).Start()

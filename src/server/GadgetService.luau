@@ -6,6 +6,8 @@
 --                          electrified section fries it)
 --           EMP Grenade    thrown; destroys enemy electronics in its radius, through walls (defender
 --                          cameras too)
+--           Smoke Grenade  thrown, bounces; pours out a cloud nobody can see through
+--           Flashbang      thrown, bounces; blinds and deafens whoever sees it go off
 --   Defend  Shock Wire     battery on a reinforced section: charges put on it get fried
 --           Signal Jammer  breach charges within its radius can't be set off, drones get static
 --           Armor Panel    bulletproof barricade on a doorway / window (10 knife hits or an explosive)
@@ -387,6 +389,89 @@ local function empGrenade(player: Player, character: Model, _root: BasePart, abi
 	return true
 end
 
+-- A thrown grenade (a model with a PrimaryPart) that bounces off walls and floors, losing most of
+-- its speed each time, until its fuse runs out; then `done(position)` (unless a new round swept
+-- it away first)
+local GRENADE_SPEED, GRENADE_LIFT = 55, 12
+local function throwGrenade(character: Model, look: Vector3, grenade: Model, fuse: number, done: (Vector3) -> ())
+	local head = character:FindFirstChild("Head") :: BasePart
+	local params = ignoreList(character)
+	local position = head.Position + look.Unit * 1.5
+	local velocity = look.Unit * GRENADE_SPEED + Vector3.new(0, GRENADE_LIFT, 0)
+	grenade:PivotTo(CFrame.new(position))
+	grenade.Parent = deployables()
+	task.spawn(function()
+		local thrownAt = os.clock()
+		local spin = 0
+		while grenade.Parent and os.clock() - thrownAt < fuse do
+			local dt = RunService.Heartbeat:Wait()
+			if velocity ~= Vector3.zero then
+				velocity += Vector3.new(0, -GRAVITY * dt, 0)
+				local step = velocity * dt
+				local hit = Workspace:Raycast(position, step, params)
+				if hit then
+					position = hit.Position + hit.Normal * 0.3
+					velocity = (velocity - 2 * velocity:Dot(hit.Normal) * hit.Normal) * 0.35
+					if hit.Normal.Y > 0.6 and velocity.Magnitude < 5 then
+						velocity = Vector3.zero -- came to rest on the floor
+						spin = 0
+					end
+				else
+					position += step
+					spin += dt * 10
+				end
+				grenade:PivotTo(CFrame.new(position) * CFrame.Angles(spin, 0, spin * 0.6))
+			end
+		end
+		if grenade.Parent then
+			done(position)
+		end
+	end)
+end
+
+local function grenadeModel(name: string, color: Color3, band: Color3): Model
+	local model = Instance.new("Model")
+	model.Name = name
+	local body = part("Body", Vector3.new(0.4, 0.7, 0.4), CFrame.new(), color, Enum.Material.Metal, model)
+	part("Band", Vector3.new(0.43, 0.12, 0.43), CFrame.new(0, 0.2, 0), band, Enum.Material.SmoothPlastic, model)
+	model.PrimaryPart = body
+	return model
+end
+
+-- Smoke: once the fuse is out the canister pours smoke where it lies; GrenadeEffects (client)
+-- draws the cloud from these attributes and fogs your screen when you're inside it
+local function smokeGrenade(_player: Player, character: Model, _root: BasePart, ability: Abilities.Ability, look: Vector3): boolean
+	if not character:FindFirstChild("Head") or look.Magnitude < 0.5 then
+		return false
+	end
+	GadgetService.Gesture(character, "SmokeGrenade")
+	local duration = ability.Duration or 14
+	local grenade = grenadeModel("SmokeGrenade", Color3.fromRGB(78, 92, 78), Color3.fromRGB(215, 215, 210))
+	throwGrenade(character, look, grenade, 1.2, function()
+		grenade:SetAttribute("SmokeRadius", ability.Radius or 11)
+		grenade:SetAttribute("SmokeEndsAt", Workspace:GetServerTimeNow() + duration)
+		task.delay(duration + 5, function() -- (after the cloud has drifted away)
+			grenade:Destroy()
+		end)
+	end)
+	return true
+end
+
+-- Flashbang: a bang everyone hears; each player's own client works out from their eyes whether
+-- they saw it and how badly they're blinded (GrenadeEffects)
+local function flashbang(_player: Player, character: Model, _root: BasePart, ability: Abilities.Ability, look: Vector3): boolean
+	if not character:FindFirstChild("Head") or look.Magnitude < 0.5 then
+		return false
+	end
+	GadgetService.Gesture(character, "Flashbang")
+	local grenade = grenadeModel("Flashbang", DARK, Color3.fromRGB(200, 200, 200))
+	throwGrenade(character, look, grenade, 1.5, function(position)
+		grenade:Destroy()
+		AbilityEffect:FireAllClients("Flashbang", position, ability.Radius or 20, ability.Duration or 4)
+	end)
+	return true
+end
+
 -- ─── Defend ────────────────────────────────────────────────────────────────────
 
 local function shockWire(player: Player, character: Model, _root: BasePart, _ability: Abilities.Ability, look: Vector3): boolean
@@ -519,6 +604,8 @@ GadgetService.Handlers = {
 	BreachCharge = breachCharge,
 	HardBreach = hardBreach,
 	EmpGrenade = empGrenade,
+	SmokeGrenade = smokeGrenade,
+	Flashbang = flashbang,
 	ShockWire = shockWire,
 	SignalJammer = signalJammer,
 	ArmorPanel = armorPanel,

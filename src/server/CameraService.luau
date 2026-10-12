@@ -109,14 +109,15 @@ function CameraService.SetOwner(teamName: string)
 	end
 end
 
+-- Defenders in a live round, dead ones included (like Siege, you keep spotting for your team
+-- after you're killed)
 local function canWatch(player: Player): boolean
-	local character = player.Character
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if not humanoid or humanoid.Health <= 0 or player:GetAttribute("Location") == "Lobby" then
+	if player:GetAttribute("Location") == "Lobby" then
 		return false
 	end
 	if player.Neutral then
-		return true -- free roam, to try them
+		local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+		return humanoid ~= nil and humanoid.Health > 0 -- free roam, to try them
 	end
 	local attackTeam = MatchState:GetAttribute("AttackTeam")
 	return player.Team ~= nil and attackTeam ~= nil and player.Team.Name ~= attackTeam and LIVE_PHASES[MatchState:GetAttribute("Phase")] == true

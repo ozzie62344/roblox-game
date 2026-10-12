@@ -28,6 +28,8 @@ return {
 	aimSensitivity = 1, -- mouse speed multiplier while aiming (set by the gun)
 	deployPitch = 0, -- radians, applied to the camera like recoil
 	gesturing = false, -- hands busy with a gadget / ability move (HandsAnimator): gun put away
+	deafUntil = 0, -- os.clock(): a flashbang left your ears ringing (Sound3D muffles everything)
+	deafStrength = 0, -- 0..1
 	droning = false, -- driving your scout drone (DroneController) or watching defender cameras (CamsController): body rooted, gun put away
 
 	-- Weapon

@@ -37,6 +37,7 @@ local yaw, pitch = 0, 0
 local driving: Model? = nil -- the drone the camera is on
 local overlay: ScreenGui
 local countLabel: TextLabel
+local hintLabel: TextLabel
 local static: Static.Static
 local jam = 0 -- 0 = clear signal .. 1 = right on top of a jammer (smoothed)
 
@@ -110,7 +111,7 @@ local function buildOverlay()
 	local title = label(overlay, "●  DRONE", 22, UDim2.fromOffset(52, 44), Vector2.new(0, 0))
 	title.TextColor3 = Color3.fromRGB(255, 80, 80)
 	countLabel = label(overlay, "", 14, UDim2.fromOffset(52, 72), Vector2.new(0, 0))
-	label(overlay, "WASD DRIVE  ·  SPACE HOP  ·  CLICK SPOT AN ENEMY  ·  Z BACK TO YOUR BODY", 14, UDim2.new(0.5, 0, 1, -48), Vector2.new(0.5, 1))
+	hintLabel = label(overlay, "", 14, UDim2.new(0.5, 0, 1, -48), Vector2.new(0.5, 1))
 	static = Static.new(overlay)
 end
 
@@ -177,6 +178,9 @@ local function update()
 	static:Set(jam * 1.2, if jam > 0.05 then "SIGNAL JAMMED" else nil)
 	local left = player:GetAttribute("DronesLeft")
 	countLabel.Text = if typeof(left) == "number" then `{left} MORE DRONE{if left == 1 then "" else "S"} THIS ROUND` else ""
+	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	local alive = humanoid ~= nil and humanoid.Health > 0
+	hintLabel.Text = `WASD DRIVE  ·  SPACE HOP  ·  CLICK SPOT AN ENEMY  ·  Z {if alive then "BACK TO YOUR BODY" else "BACK TO SPECTATING"}`
 end
 
 local function hop()

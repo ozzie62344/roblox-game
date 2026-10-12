@@ -1,6 +1,7 @@
 -- Siege-style scout drones for the attacking team. During the defenders' setup (Prep) every
 -- attacker drives one out from spawn; during the round Z jumps back into it, or throws your
--- second one if it's gone (2 per round). Drones drive and hop (client-owned physics, see
+-- second one if it's gone (2 per round); after you die Z still gets you back into a drone you left
+-- out. Drones drive and hop (client-owned physics, see
 -- DroneController), spot enemies for the whole team (click), and find the site: once a drone (or,
 -- during the round, an attacker's own eyes) gets a clear view of the defended site, it's revealed
 -- to the attackers (MatchState "SiteFound"). Any bullet or knife destroys a drone (Breakable =
@@ -149,6 +150,11 @@ local function toggle(player: Player)
 	end
 	local root = aliveRoot(player.Character)
 	if not root then
+		-- Dead attackers can still drive the drone they left out (like Siege), not throw a new one
+		local drone = drones[player]
+		if drone and drone.Parent and isAttacker(player) and LIVE_PHASES[MatchState:GetAttribute("Phase")] and player:GetAttribute("Location") == "Match" then
+			setDroning(player, true)
+		end
 		return
 	end
 	local freeRoam = player.Neutral

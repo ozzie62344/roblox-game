@@ -29,6 +29,23 @@ local Sounds = {
 		},
 	},
 
+	-- Grenades (GrenadeEffects)
+	SmokeHiss = { -- the canister pouring out smoke (Pro Sound Effects "Aerosol Spray 2", looped, pitched down)
+		Id = "rbxassetid://9113044265",
+		Range = 60,
+		Volume = 0.6,
+		Pitch = 0.55,
+	},
+	Flashbang = { -- the bang (an Explosion pitched up: sharper)
+		Range = 280,
+		Volume = 1.3,
+		Pitch = 1.6,
+	},
+	EarRing = { -- your ears ringing after a flash (a plain high tone)
+		Id = "rbxassetid://135972012837371",
+		Volume = 0.18,
+	},
+
 	-- Drones whine as they drive (DroneHum); louder the faster they go
 	DroneMotor = {
 		Id = "rbxassetid://9118377325", -- Robot Servo 4 (Pro Sound Effects)

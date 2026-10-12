@@ -1,8 +1,8 @@
 -- Hands out a weapon + ability to every player each round.
 --   Draft:  each player is offered 3 loadouts and picks one (can change until the timer ends)
 --   Random: each player gets a random loadout
--- Abilities come from your side's pool: Siege gadgets with Side = "Attack" only go to attackers,
--- "Defend" only to defenders, and abilities without a Side to either (Abilities.luau).
+-- Abilities come from your side's pool: Side = "Attack" ones only go to attackers, "Defend" only to
+-- defenders, and the plain movement ones without a Side to either (Abilities.luau).
 -- Clients are told through LoadoutOffer(options, deadline, isRandom) and pick with DraftPick(index).
 
 local Players = game:GetService("Players")

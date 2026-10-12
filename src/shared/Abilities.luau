@@ -2,8 +2,9 @@
 --   Movement abilities live in MovementController (Dash on X, Wall Jump on Space).
 --   Active abilities are used with X, run on the server (AbilityService / GadgetService), and
 --   have charges per round.
---   Side: Siege-style gadgets only show up for attackers ("Attack") or defenders ("Defend");
---   abilities without a Side can show up for either.
+--   Side: what an ability is for decides who can roll it: attacking tools ("Attack": breaching,
+--   grenades, finding enemies) only go to attackers, holding tools ("Defend": fortifying, roaming
+--   quietly, holding an angle) only to defenders. Only plain movement (no Side) goes to either.
 
 export type Ability = {
 	Name: string,
@@ -34,6 +35,7 @@ local Abilities: { [string]: Ability } = {
 		Name = "Recon Pulse",
 		Key = "X",
 		Kind = "Active",
+		Side = "Attack", -- finding the defenders
 		Charges = 2,
 		Duration = 3,
 		Radius = 60,
@@ -43,6 +45,7 @@ local Abilities: { [string]: Ability } = {
 		Name = "Ghost Step",
 		Key = "X",
 		Kind = "Active",
+		Side = "Defend", -- roaming without being heard
 		Charges = 2,
 		Duration = 8,
 		Description = "Your footsteps, jumps and landings are silent for 8 seconds.",
@@ -51,6 +54,7 @@ local Abilities: { [string]: Ability } = {
 		Name = "Deployable Cover",
 		Key = "X",
 		Kind = "Active",
+		Side = "Defend", -- holding an angle
 		Charges = 2,
 		Duration = 1.2, -- deploy time: you can't move or shoot while pulling it up
 		Description = "Pull a waist-high bulletproof shield out of the ground. Crouch behind it or shoot over it.",
@@ -85,6 +89,26 @@ local Abilities: { [string]: Ability } = {
 		Charges = 2,
 		Radius = 14,
 		Description = "Throw it to fry enemy electronics nearby, even through walls: shock wires, signal jammers and cameras.",
+	},
+	SmokeGrenade = {
+		Name = "Smoke Grenade",
+		Key = "X",
+		Kind = "Active",
+		Side = "Attack",
+		Charges = 2,
+		Duration = 14, -- how long it pours out smoke
+		Radius = 11, -- of the cloud
+		Description = "Throw it to fill the area with thick smoke for 14 seconds. Nobody can see through it: cover a plant or a push.",
+	},
+	Flashbang = {
+		Name = "Flashbang",
+		Key = "X",
+		Kind = "Active",
+		Side = "Attack",
+		Charges = 2,
+		Duration = 4, -- longest blinding (close by, looking right at it)
+		Radius = 20,
+		Description = "Bounces, then goes off after 1.5 seconds: anyone who can see it is blinded and deafened for up to 4 seconds. Teammates (and you) too.",
 	},
 	ShockWire = {
 		Name = "Shock Wire",

@@ -34,6 +34,8 @@ HandsAnimator.Gestures = {
 	SignalJammer = { move = "place", prop = "jammer", time = 0.55 },
 	ArmorPanel = { move = "push", time = 0.6 },
 	EmpGrenade = { move = "throw", prop = "grenade", time = 0.65 },
+	SmokeGrenade = { move = "throw", prop = "smoke", time = 0.65 },
+	Flashbang = { move = "throw", prop = "flash", time = 0.65 },
 	Detonate = { move = "detonate", prop = "detonator", time = 0.6 },
 	ReconPulse = { move = "scan", prop = "scanner", time = 0.8 },
 	GhostStep = { move = "wrist", prop = "band", time = 0.6 },
@@ -363,6 +365,14 @@ local PROP_BUILDERS: { [string]: (Model) -> () } = {
 	grenade = function(m)
 		newPart(m, Vector3.new(0.3, 0.46, 0.3), Color3.fromRGB(60, 110, 180), Enum.Material.Metal)
 		newPart(m, Vector3.new(0.33, 0.08, 0.33), Color3.fromRGB(90, 170, 255), Enum.Material.Neon)
+	end,
+	smoke = function(m)
+		newPart(m, Vector3.new(0.3, 0.5, 0.3), Color3.fromRGB(78, 92, 78), Enum.Material.Metal)
+		newPart(m, Vector3.new(0.33, 0.08, 0.33), Color3.fromRGB(215, 215, 210), Enum.Material.SmoothPlastic).CFrame = CFrame.new(0, 0.14, 0)
+	end,
+	flash = function(m)
+		newPart(m, Vector3.new(0.3, 0.5, 0.3), DARK, Enum.Material.Metal)
+		newPart(m, Vector3.new(0.33, 0.08, 0.33), Color3.fromRGB(200, 200, 200), Enum.Material.SmoothPlastic).CFrame = CFrame.new(0, 0.14, 0)
 	end,
 	detonator = function(m)
 		newPart(m, Vector3.new(0.22, 0.5, 0.18), DARK, Enum.Material.Plastic)
