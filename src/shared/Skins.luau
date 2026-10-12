@@ -14,8 +14,10 @@
 -- Neon trims are kept dim on purpose: right in front of the camera, bright neon blooms into a blob.
 --
 -- Dev-only skins (DevOnly) can't be bought: anyone with the server's "IsDev" attribute (the
--- game's owner, everyone in a Studio test) has them, nobody else can see or wear them. A Rainbow
--- skin's glowing trim slowly cycles through the colors (SkinPainter).
+-- game's owner, everyone in a Studio test) has them, nobody else can see or wear them. Exclusive
+-- skins (OnlyFor) work the same way for the players on their list (and devs). A Rainbow skin's
+-- glowing trim slowly cycles through the colors (SkinPainter); a Stickers skin is covered in
+-- little pictures on top of its paint (Stickers = "Cat": Combat/CatStickers).
 --
 -- The server keeps what you own and wear in player attributes:
 --   Credits        number
@@ -24,7 +26,7 @@
 
 local HttpService = game:GetService("HttpService")
 
-export type Rarity = "Common" | "Rare" | "Epic" | "Legendary" | "Dev"
+export type Rarity = "Common" | "Rare" | "Epic" | "Legendary" | "Exclusive" | "Dev"
 
 export type Skin = {
 	Id: string,
@@ -38,7 +40,10 @@ export type Skin = {
 	Trim: Color3,
 	TrimMaterial: Enum.Material,
 	DevOnly: boolean?,
+	OnlyFor: { number }?, -- UserIds of the only players (besides devs) who get it
+	Note: string?, -- shown in the shop under a dev / exclusive skin
 	Rainbow: boolean?, -- glowing trim cycles through the rainbow
+	Stickers: "Cat"?,
 }
 
 local Skins = {}
@@ -49,7 +54,8 @@ Skins.Rarities = {
 	Rare = { Order = 2, Price = 900, Color = Color3.fromRGB(60, 145, 255) },
 	Epic = { Order = 3, Price = 1800, Color = Color3.fromRGB(175, 85, 255) },
 	Legendary = { Order = 4, Price = 3500, Color = Color3.fromRGB(255, 190, 60) },
-	Dev = { Order = 5, Price = 0, Color = Color3.fromRGB(255, 70, 90) },
+	Exclusive = { Order = 5, Price = 0, Color = Color3.fromRGB(255, 120, 190) },
+	Dev = { Order = 6, Price = 0, Color = Color3.fromRGB(255, 70, 90) },
 }
 
 -- What can wear a skin, in the order the shop lists them
@@ -105,9 +111,31 @@ developer.DevOnly = true
 developer.Rainbow = true
 table.insert(Skins.List, developer)
 
+-- Bubblegum pink covered in little cat heads, just for @kittenloveeeeeeeeeee (and devs)
+local kitty = skin("Kitty", "Kitty", "Exclusive", "Solid", { rgb(255, 140, 192), rgb(255, 212, 232) }, M.SmoothPlastic, rgb(255, 222, 236), M.SmoothPlastic)
+kitty.OnlyFor = { 406566030 } -- kittenloveeeeeeeeeee
+kitty.Note = "Made just for @kittenloveeeeeeeeeee"
+kitty.Stickers = "Cat"
+table.insert(Skins.List, kitty)
+
 Skins.ById = {} :: { [string]: Skin }
 for _, s in Skins.List do
 	Skins.ById[s.Id] = s
+end
+
+-- A dev / exclusive skin this player gets for free (false for skins everyone can buy)
+function Skins.Granted(player: Player, skin: Skin): boolean
+	if skin.DevOnly then
+		return player:GetAttribute("IsDev") == true
+	elseif skin.OnlyFor then
+		return player:GetAttribute("IsDev") == true or table.find(skin.OnlyFor, player.UserId) ~= nil
+	end
+	return false
+end
+
+-- Shows up in the shop for this player (everything but other people's dev / exclusive skins)
+function Skins.Listed(player: Player, skin: Skin): boolean
+	return not (skin.DevOnly or skin.OnlyFor) or Skins.Granted(player, skin)
 end
 
 -- Decoded EquippedSkins, cached per attribute string (BodyAnimator asks every frame)
@@ -126,7 +154,7 @@ function Skins.EquippedFor(player: Player, item: string): Skin?
 		decoded[json] = equipped
 	end
 	local found = equipped[item] and Skins.ById[equipped[item]]
-	if not found or (found.DevOnly and not player:GetAttribute("IsDev")) then
+	if not found or not Skins.Listed(player, found) then
 		return nil
 	end
 	return found
@@ -134,8 +162,8 @@ end
 
 function Skins.Owns(player: Player, id: string): boolean
 	local found = Skins.ById[id]
-	if found and found.DevOnly then
-		return player:GetAttribute("IsDev") == true
+	if found and (found.DevOnly or found.OnlyFor) then
+		return Skins.Granted(player, found)
 	end
 	local owned = player:GetAttribute("OwnedSkins")
 	return typeof(owned) == "string" and table.find(string.split(owned, ","), id) ~= nil

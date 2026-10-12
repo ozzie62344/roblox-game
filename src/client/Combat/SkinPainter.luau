@@ -3,12 +3,15 @@
 -- "NoSkin" attribute (bores, lenses, brass, glowing sights) and glass / neon parts keep their look.
 -- Rainbow skins: their glowing pieces are tagged and Start() cycles their color every frame, the
 -- hue running along the gun so the colors flow from the stock to the muzzle.
+-- Sticker skins: once painted, the big pieces (blade and handle on a knife) get covered in
+-- stickers (CatStickers).
 
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Skins = require(ReplicatedStorage.Shared.Skins)
+local CatStickers = require(script.Parent.CatStickers)
 local GunMaterials = require(script.Parent.GunMaterials)
 
 local SkinPainter = {}
@@ -16,6 +19,7 @@ local SkinPainter = {}
 local RAINBOW_TAG = "SkinRainbow"
 local RAINBOW_SPEED = 0.12 -- trips around the color wheel per second
 local RAINBOW_VALUE = 0.62 -- kept dim like the other neon trims
+local KNIFE_CAT = 0.1 -- sticker size on a knife (studs; a gun's goes by its length)
 
 local KEEP = {
 	[Enum.Material.Glass] = true,
@@ -68,6 +72,7 @@ function SkinPainter.PaintGun(model: Model, skin: Skins.Skin)
 
 	-- Rounded pieces (GunModels) are painted as one: their edge pieces follow the main box
 	local mains: { [number]: BasePart } = {}
+	local body: { BasePart } = {} -- (painted in the skin's colors: where stickers go)
 	for _, part in model:GetDescendants() do
 		local piece = part:GetAttribute("Piece")
 		if piece and not part:GetAttribute("Edge") then
@@ -105,6 +110,10 @@ function SkinPainter.PaintGun(model: Model, skin: Skins.Skin)
 			color = colors[math.floor((ref.Position.Z - front) / band) % #colors + 1]
 		end
 		paint(p, shade(color, key), skin.Material, skin.Reflectance)
+		table.insert(body, p)
+	end
+	if skin.Stickers == "Cat" then
+		CatStickers.Cover(model, body)
 	end
 end
 
@@ -113,12 +122,14 @@ function SkinPainter.PaintKnife(model: Model, skin: Skins.Skin)
 	local colors = skin.Colors
 	local glowing = skin.TrimMaterial == Enum.Material.Neon
 	local handle = colors[2] or (if glowing then colors[1]:Lerp(Color3.new(), 0.3) else skin.Trim)
+	local body: { BasePart } = {}
 	for _, part in model:GetChildren() do
 		if not part:IsA("BasePart") then
 			continue
 		end
 		if part.Name == "Blade" or part.Name == "Tip" then
 			paint(part, colors[1], skin.Material, skin.Reflectance)
+			table.insert(body, part)
 		elseif part.Name == "Edge" then
 			-- Glowing skins light up the edge; the rest get a brighter bevel of the blade color
 			if glowing then
@@ -130,7 +141,11 @@ function SkinPainter.PaintKnife(model: Model, skin: Skins.Skin)
 			paint(part, skin.Trim, if glowing then Enum.Material.Metal else skin.TrimMaterial)
 		elseif part.Name == "Handle" then
 			paint(part, handle, if skin.Material == Enum.Material.ForceField then skin.Material else Enum.Material.Plastic)
+			table.insert(body, part)
 		end
+	end
+	if skin.Stickers == "Cat" then
+		CatStickers.Cover(model, body, KNIFE_CAT)
 	end
 end
 

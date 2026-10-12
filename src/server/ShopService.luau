@@ -37,7 +37,7 @@ end
 local function buy(player: Player, id: any, item: any)
 	local skin = typeof(id) == "string" and Skins.ById[id]
 	local data = PlayerData.Get(player)
-	if not skin or skin.DevOnly or not data or data.Skins[skin.Id] or data.Credits < skin.Price then
+	if not skin or skin.DevOnly or skin.OnlyFor or not data or data.Skins[skin.Id] or data.Credits < skin.Price then
 		return
 	end
 	PlayerData.Update(player, function(d)
@@ -50,10 +50,10 @@ local function buy(player: Player, id: any, item: any)
 	Shop:FireClient(player, "Bought", skin.Id)
 end
 
--- Owned, or a dev skin and they're a dev
+-- Owned, or a dev / exclusive skin that's theirs
 local function canWear(player: Player, data: PlayerData.Data, id: string): boolean
 	local skin = Skins.ById[id]
-	return data.Skins[id] == true or (skin ~= nil and skin.DevOnly == true and player:GetAttribute("IsDev") == true)
+	return data.Skins[id] == true or (skin ~= nil and Skins.Granted(player, skin))
 end
 
 -- `id` nil = back to the factory look

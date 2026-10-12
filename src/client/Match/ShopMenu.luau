@@ -17,6 +17,7 @@ local UserInputService = game:GetService("UserInputService")
 local Skins = require(ReplicatedStorage.Shared.Skins)
 local Sounds = require(ReplicatedStorage.Shared.Sounds)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
+local CatStickers = require(script.Parent.Parent.Combat.CatStickers)
 local Effects = require(script.Parent.Parent.Combat.Effects)
 local GunModels = require(script.Parent.Parent.Combat.GunModels)
 local state = require(script.Parent.Parent.PlayerState)
@@ -176,6 +177,12 @@ local function chip(parent: GuiObject, skin: Skins.Skin?)
 			blot.Parent = swatch
 		end
 	end
+	if skin and skin.Stickers == "Cat" then
+		-- A few of its cats, in two interlocking rows
+		for _, spot in { { 0.2, 22 }, { 0.5, 22 }, { 0.8, 22 }, { 0.35, 50 }, { 0.65, 50 } } do
+			CatStickers.Icon(swatch, 24, UDim2.new(spot[1], 0, 0, spot[2]))
+		end
+	end
 	if skin and skin.Material == Enum.Material.ForceField then
 		swatch.BackgroundTransparency = 0.35
 	end
@@ -289,12 +296,11 @@ local function refresh()
 	end
 
 	local wearing = equippedId(selectedItem)
-	local isDev = player:GetAttribute("IsDev") == true
 	for id, card in cards do
 		local skin = Skins.ById[id]
 		local status = card:FindFirstChild("Status") :: TextLabel
 		local price = card:FindFirstChild("Coin") :: Frame
-		card.Visible = not (skin and skin.DevOnly) or isDev
+		card.Visible = not skin or Skins.Listed(player, skin)
 		price.Visible = false
 		status.Position = UDim2.new(0, 10, 1, -9)
 		if id == wearing then
@@ -303,6 +309,9 @@ local function refresh()
 		elseif skin and skin.DevOnly then
 			status.Text = "DEV ONLY"
 			status.TextColor3 = Skins.Rarities.Dev.Color
+		elseif skin and skin.OnlyFor then
+			status.Text = "EXCLUSIVE"
+			status.TextColor3 = Skins.Rarities.Exclusive.Color
 		elseif owns(id) then
 			status.Text = "OWNED"
 			status.TextColor3 = Color3.fromRGB(200, 205, 215)
@@ -336,8 +345,8 @@ local function refresh()
 		setButtonText(actionButton, `Buy · {formatCredits(skin.Price)}`)
 		MenuStyle.SetButtonColor(actionButton, if affordable then MenuStyle.Green else MenuStyle.Grey)
 		hintLabel.Text = if affordable then "Once bought it works on every gun and the knife" else "Not enough credits · win matches to earn more"
-	elseif skin and skin.DevOnly and selectedSkin ~= wearing then
-		hintLabel.Text = "Only devs can see and wear this one"
+	elseif skin and (skin.DevOnly or skin.OnlyFor) and selectedSkin ~= wearing then
+		hintLabel.Text = skin.Note or "Only devs can see and wear this one"
 		setButtonText(actionButton, "Equip")
 		MenuStyle.SetButtonColor(actionButton, MenuStyle.Blue)
 	elseif selectedSkin == wearing then
