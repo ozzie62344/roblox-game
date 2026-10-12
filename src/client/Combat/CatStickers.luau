@@ -18,19 +18,19 @@ local SIZE = 0.045 -- a cat's width, as a share of the gun's length...
 local MIN_SIZE, MAX_SIZE = 0.07, 0.14 -- ...kept between these (studs)
 local SHRINK = 0.5 -- a face too small for a full-size cat gets one down to this share of it, or none
 local BEND = 0.5 -- how far onto a rounded edge's curve a cat may reach (share of the way round)
-local MAX_CATS = 32 -- per gun (each cat is 15 parts)
+local MAX_CATS = 44 -- per gun (each cat is 15 parts)
 local MAX_LIFT = 0.12 -- a cat may sit up to this far off its face to clear small details (widths)
 local GAP_X, GAP_Y = 1.75, 1.55 -- spacing between cats, in cat widths
 local MARGIN = 0.08 -- kept clear along a face's edges, in cat widths
-local TOP, BOTTOM = 0.78, 0.5 -- how far a cat reaches above (horn tips) and below its center, in widths
+local TOP, BOTTOM = 0.84, 0.5 -- how far a cat reaches above (horn tips) and below its center, in widths
 
 -- The horns, in cat widths from the middle of the head: where the right one's base sits (mostly
 -- behind the head), how wide and tall it is, and how far it leans out. The left one is its mirror.
-local HORN_X, HORN_Y = 0.24, 0.34
-local HORN_BASE, HORN_HEIGHT = 0.24, 0.44
-local HORN_LEAN = math.rad(20)
--- The pink inside: starts this far up the horn, this wide and tall
-local INNER_START, INNER_BASE, INNER_HEIGHT = 0.07, 0.11, 0.28
+local HORN_X, HORN_Y = 0.25, 0.33
+local HORN_BASE, HORN_HEIGHT = 0.28, 0.52
+local HORN_LEAN = math.rad(18)
+-- The pink inside: starts this far up the horn, this wide and tall (a stripe, with white all round)
+local INNER_START, INNER_BASE, INNER_HEIGHT = 0.1, 0.1, 0.3
 
 local FACE_OUT = CFrame.Angles(0, math.rad(90), 0) -- turns a cylinder's round side out of the surface
 -- Lays a wedge flat: its triangle (square corner at the bottom left, point on top) in the sticker's
@@ -292,8 +292,17 @@ function CatStickers.Cover(model: Model, pieces: { BasePart }, catWidth: number?
 			end
 		end
 	end
-	-- Biggest faces first (if the cats run out, it's on the little ones)
+	-- The sides first (what everyone sees), then the top, the ends, underneath; biggest first within
+	-- each (if the cats run out, it's on the little ones)
+	local function rank(face: Face): number
+		local normal = face.frame.ZVector
+		return if math.abs(normal.X) > 0.7 then 1 elseif normal.Y > 0.7 then 2 elseif normal.Y > -0.7 then 3 else 4
+	end
 	table.sort(faces, function(a, b)
+		local ra, rb = rank(a), rank(b)
+		if ra ~= rb then
+			return ra < rb
+		end
 		return a.width * a.height > b.width * b.height
 	end)
 
