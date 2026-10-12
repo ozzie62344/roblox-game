@@ -6,13 +6,13 @@
 --               LEAN LEFT / RIGHT, DRONE / CAMS, RAPPEL, USE (hold: shows up when there's
 --               something to plant, disable, barricade or reinforce), LOADOUT while you can
 --               still change it
---   Drone:      the thumbstick drives, dragging looks (TouchLook), Roblox's jump button hops,
---               SPOT, EXIT
+--   Drone:      the thumbstick drives, dragging looks (TouchLook), HOP, SPOT, EXIT (Roblox hides its
+--               jump button while you're in the drone: your body's jumping is switched off)
 --   Cameras:    < > switch camera, dragging looks, SPOT, EXIT
 --   Spectating: < > who to watch, plus DRONE / CAMS
 -- No sprint button: the thumbstick is analog (MovementController), all the way forward sprints.
 -- Roblox's own thumbstick and jump button stay; the jump button also wall-jumps, gets you up from
--- prone, pushes off the wall while rappelling and hops the drone. Every button is on the right
+-- prone and pushes off the wall while rappelling. Every button is on the right
 -- half of the screen: the left half is the thumbstick's (a thumb landing on a button there
 -- wouldn't move you).
 -- Showing on touch screens until a key or mouse button is used (a laptop with a touch screen
@@ -247,6 +247,12 @@ local SPECS: { Spec } = {
 		end,
 		side = "Right", x = 1.35, y = 6.5, size = 0.95, modes = { "Play", "Drone", "Cams", "Spectate" }, press = droneOrCams,
 		visible = inMatch,
+	},
+	{
+		label = "HOP", side = "Right", x = 1.35, y = 1.4, size = 1.3, modes = { "Drone" },
+		press = function()
+			DroneController.Hop()
+		end,
 	},
 	{
 		label = "SPOT", side = "Right", x = 3.3, y = 1.75, size = 1.6, modes = { "Drone", "Cams" },
