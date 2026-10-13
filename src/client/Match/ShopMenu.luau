@@ -2,7 +2,8 @@
 --   Left:   what you're dressing (each gun, the knife); the dot is the skin it wears now
 --   Middle: a 3D preview (drag it to turn it) with BUY / EQUIP / EQUIP ON ALL
 --   Right:  every skin as a paint chip, with its price, OWNED or EQUIPPED; or (MODS) the gun's
---           attachment slots: optic, muzzle, under barrel (shared/Attachments, free)
+--           attachment slots: optic, muzzle, under barrel (shared/Attachments). Tapping one you
+--           own puts it on; tapping one you don't tries it on in the preview, and BUY buys it
 -- A bought skin works on every gun and the knife; buying one puts it on the selected item.
 -- Dev-only skins (Skins.luau) only show up for devs, already unlocked.
 -- Also: your credits next to the SHOP button in the lobby, and a toast whenever you earn some
@@ -64,6 +65,7 @@ local viewButtons: { [string]: TextButton } = {}
 local selectedItem = "Rifle"
 local selectedSkin = "" -- "" = the factory look
 local view = "Skins" -- the right side: "Skins" or "Mods" (attachments)
+local trial: Attachments.Attachment? = nil -- MODS: an attachment you don't own, tried on in the preview
 local previewModel: Model? = nil
 local previewKey = ""
 local previewCenter = CFrame.identity -- moves the model's middle onto the origin
@@ -235,7 +237,10 @@ end
 
 -- Builds the selected item in the selected skin and frames the camera on it
 local function rebuildPreview()
-	local mods = if Weapons[selectedItem] then Attachments.For(player, selectedItem) else {}
+	local mods = if Weapons[selectedItem] then table.clone(Attachments.For(player, selectedItem)) else {}
+	if trial and view == "Mods" and Attachments.Fits(selectedItem, trial.Id) then
+		mods[trial.Slot] = trial.Id
+	end
 	local key = selectedItem .. ":" .. selectedSkin .. ":" .. Attachments.Key(mods)
 	if key == previewKey then
 		return
@@ -276,16 +281,27 @@ end
 
 -- ─── Mods ──────────────────────────────────────────────────────────────────────
 
+local refresh: () -> () -- (below: the MODS buttons refresh the shop)
+
 -- One choice in a slot: its name and what it does; gold-rimmed when it's on the gun
-local function modButton(parent: Instance, order: number, name: string, description: string, on: boolean, pick: () -> ())
+local function modButton(parent: Instance, order: number, name: string, description: string, on: boolean, trying: boolean, price: number?, pick: () -> ())
 	local button = Instance.new("TextButton")
 	button.LayoutOrder = order
 	button.AutoButtonColor = true
 	button.Text = ""
 	button.BackgroundColor3 = if on then Color3.fromRGB(58, 52, 36) else CARD
 	MenuStyle.Corner(button, UDim.new(0, 10))
-	MenuStyle.Rim(button, if on then GOLD else Color3.fromRGB(60, 64, 76), if on then 3 else 2)
-	local title = MenuStyle.Text(button, string.upper(name), UDim2.new(1, -16, 0, 24), UDim2.fromOffset(8, 6))
+	local rim = if on then GOLD elseif trying then MenuStyle.Blue else Color3.fromRGB(60, 64, 76)
+	MenuStyle.Rim(button, rim, if on or trying then 3 else 2)
+	-- Price (a coin and the number) if you don't own it yet
+	if price then
+		local amount = credits()
+		local tag = MenuStyle.Text(button, formatCredits(price), UDim2.fromOffset(70, 20), UDim2.new(1, -8, 0, 8), Vector2.new(1, 0))
+		tag.TextXAlignment = Enum.TextXAlignment.Right
+		tag.TextColor3 = if amount and amount >= price then Color3.fromRGB(255, 225, 120) else Color3.fromRGB(255, 120, 110)
+		coin(button, 18, UDim2.new(1, -76, 0, 18), Vector2.new(0.5, 0.5))
+	end
+	local title = MenuStyle.Text(button, string.upper(name), UDim2.new(1, if price then -96 else -16, 0, 24), UDim2.fromOffset(8, 6))
 	title.TextXAlignment = Enum.TextXAlignment.Left
 	title.TextColor3 = if on then GOLD else Color3.new(1, 1, 1)
 	local info = Instance.new("TextLabel")
@@ -343,25 +359,36 @@ local function fillMods()
 		rowGrid.SortOrder = Enum.SortOrder.LayoutOrder
 		rowGrid.Parent = row
 		local function put(id: string?)
+			trial = nil
 			Shop:FireServer("Attach", selectedItem, slot, id)
 			Effects.Sound(Sounds.Pick("GunFoley"), nil, 0.6, 1.1)
+			refresh()
 		end
-		modButton(row, 0, "Factory", "What the gun comes with.", chosen[slot] == nil, function()
+		modButton(row, 0, "Factory", "What the gun comes with.", chosen[slot] == nil and not (trial and trial.Slot == slot), false, nil, function()
 			put(nil)
 		end)
 		for i, attachment in Attachments.List do
-			if attachment.Slot == slot then
-				modButton(row, i, attachment.Name, attachment.Description, chosen[slot] == attachment.Id, function()
-					put(attachment.Id)
-				end)
+			if attachment.Slot ~= slot then
+				continue
 			end
+			local owned = Attachments.Owns(player, attachment.Id)
+			local trying = trial ~= nil and trial.Id == attachment.Id
+			modButton(row, i, attachment.Name, attachment.Description, chosen[slot] == attachment.Id, trying, if owned then nil else attachment.Price, function()
+				if owned then
+					put(attachment.Id)
+				else
+					-- Try it on first; BUY (the big button) buys it
+					trial = if trying then nil else attachment
+					refresh()
+				end
+			end)
 		end
 	end
 end
 
 -- ─── Refresh ───────────────────────────────────────────────────────────────────
 
-local function refresh()
+function refresh()
 	local amount = credits()
 	local creditsText = if amount then formatCredits(amount) else "..."
 	lobbyCredits.Text = creditsText
@@ -457,7 +484,18 @@ local function refresh()
 	actionButton.Visible = view == "Skins"
 	if view == "Mods" then
 		allButton.Visible = false
-		hintLabel.Text = if Attachments.SlotsFor[selectedItem] then "Attachments are free · tap one to put it on" else ""
+		if trial and not Attachments.Owns(player, trial.Id) then
+			local affordable = amount ~= nil and amount >= trial.Price
+			actionButton.Visible = true
+			actionButton.AnchorPoint = Vector2.new(0.5, 1)
+			actionButton.Position = UDim2.new(0.5, 0, 1, -16)
+			setButtonText(actionButton, `Buy · {formatCredits(trial.Price)}`)
+			MenuStyle.SetButtonColor(actionButton, if affordable then MenuStyle.Green else MenuStyle.Grey)
+			hintLabel.Text = if affordable then "Bought once, it works on every gun it fits" else "Not enough credits · win matches to earn more"
+		else
+			trial = nil
+			hintLabel.Text = if Attachments.SlotsFor[selectedItem] then "Tap one you own to put it on · tap another to try it on" else ""
+		end
 		fillMods()
 	end
 	if screen.Visible then
@@ -468,6 +506,7 @@ end
 local function selectItem(item: string)
 	selectedItem = item
 	selectedSkin = equippedId(item)
+	trial = nil
 	refresh()
 end
 
@@ -594,6 +633,13 @@ local function buildPreviewPanel(content: Frame)
 
 	actionButton = MenuStyle.Button(panel, "Buy", MenuStyle.Green, UDim2.fromOffset(240, 64), UDim2.new(0.5, 0, 1, -16), Vector2.new(0.5, 1))
 	actionButton.Activated:Connect(function()
+		if view == "Mods" then
+			local amount = credits()
+			if trial and amount and amount >= trial.Price then
+				Shop:FireServer("BuyAttachment", trial.Id, selectedItem)
+			end
+			return
+		end
 		local skin = Skins.ById[selectedSkin]
 		if skin and not owns(skin.Id) then
 			local amount = credits()
@@ -685,6 +731,7 @@ local function build()
 		local button = MenuStyle.Button(content, name, MenuStyle.Grey, UDim2.fromOffset(206, 38), UDim2.fromOffset(672 + (i - 1) * 216, 84))
 		button.Activated:Connect(function()
 			view = name
+			trial = nil
 			refresh()
 		end)
 		viewButtons[name] = button
@@ -806,7 +853,12 @@ end
 
 local function bought(id: string)
 	Effects.Sound(Sounds.Shop.Buy, nil, Sounds.Shop.Volume, 1.25)
-	if not screen.Visible or id ~= selectedSkin then
+	local boughtTrial = trial ~= nil and trial.Id == id
+	if boughtTrial then
+		trial = nil -- (the server put it on the gun)
+		refresh()
+	end
+	if not screen.Visible or (id ~= selectedSkin and not boughtTrial) then
 		return
 	end
 	local scale = unlockedLabel:FindFirstChildOfClass("UIScale") :: UIScale
@@ -846,7 +898,7 @@ end
 function ShopMenu.Start()
 	build()
 	refresh()
-	for _, attribute in { "Credits", "OwnedSkins", "EquippedSkins", "DataOffline", "IsDev", "Attachments" } do
+	for _, attribute in { "Credits", "OwnedSkins", "EquippedSkins", "DataOffline", "IsDev", "Attachments", "OwnedAttachments" } do
 		player:GetAttributeChangedSignal(attribute):Connect(refresh)
 	end
 	Shop.OnClientEvent:Connect(function(event, a, b)

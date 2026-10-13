@@ -4,10 +4,12 @@
 --   Shop:FireServer("Equip", item, skinId?)     wear an owned skin on "Rifle", "Knife"... (nil =
 --                                               the factory look)
 --   Shop:FireServer("EquipAll", skinId?)        the same on every gun and the knife
---   Shop:FireServer("Attach", gun, slot, id?)   put an attachment on a gun ("Rifle", "Optic",
---                                               "Scope"; nil id = take it off). Attachments are free
+--   Shop:FireServer("BuyAttachment", id, gun?)  buy an attachment with credits (works on every
+--                                               gun it fits), and put it on `gun` right away
+--   Shop:FireServer("Attach", gun, slot, id?)   put an owned attachment on a gun ("Rifle", "Optic",
+--                                               "Scope"; nil id = take it off)
 --   Shop:FireClient(player, "Reward", amount, reason)   credits earned (toast on screen)
---   Shop:FireClient(player, "Bought", skinId)           a purchase went through
+--   Shop:FireClient(player, "Bought", id)               a purchase went through (skin or attachment)
 -- Credits are earned in matches (RoundService, ObjectiveService call Award; amounts in
 -- MatchConfig.Credits). Ownership is checked here, never trusted from the client.
 
@@ -83,13 +85,14 @@ local function equip(player: Player, items: { string }, id: any)
 	end, true)
 end
 
--- Attachments: anything that fits, any time (they're free); nil takes the slot's one off
+-- Attachments: any owned one that fits; nil takes the slot's one off
 local function attach(player: Player, weaponName: any, slot: any, id: any)
 	local slots = typeof(weaponName) == "string" and Attachments.SlotsFor[weaponName]
-	if not slots or typeof(slot) ~= "string" or not slots[slot] then
+	local data = PlayerData.Get(player)
+	if not data or not slots or typeof(slot) ~= "string" or not slots[slot] then
 		return
 	end
-	if id ~= nil and (typeof(id) ~= "string" or not Attachments.Fits(weaponName, id) or Attachments.ById[id].Slot ~= slot) then
+	if id ~= nil and (typeof(id) ~= "string" or not data.OwnedAttachments[id] or not Attachments.Fits(weaponName, id) or Attachments.ById[id].Slot ~= slot) then
 		return
 	end
 	PlayerData.Update(player, function(d)
@@ -97,6 +100,24 @@ local function attach(player: Player, weaponName: any, slot: any, id: any)
 		onGun[slot] = id
 		d.Attachments[weaponName] = if next(onGun) then onGun else nil
 	end, true)
+end
+
+local function buyAttachment(player: Player, id: any, weaponName: any)
+	local attachment = typeof(id) == "string" and Attachments.ById[id]
+	local data = PlayerData.Get(player)
+	if not attachment or not data or data.OwnedAttachments[attachment.Id] or data.Credits < attachment.Price then
+		return
+	end
+	PlayerData.Update(player, function(d)
+		d.Credits -= attachment.Price
+		d.OwnedAttachments[attachment.Id] = true
+		if typeof(weaponName) == "string" and Attachments.Fits(weaponName, attachment.Id) then
+			local onGun = d.Attachments[weaponName] or {}
+			onGun[attachment.Slot] = attachment.Id
+			d.Attachments[weaponName] = onGun
+		end
+	end, true)
+	Shop:FireClient(player, "Bought", attachment.Id)
 end
 
 function ShopService.Start()
@@ -115,6 +136,8 @@ function ShopService.Start()
 			equip(player, Skins.Items, a)
 		elseif action == "Attach" then
 			attach(player, a, b, c)
+		elseif action == "BuyAttachment" then
+			buyAttachment(player, a, b)
 		end
 	end)
 	Players.PlayerRemoving:Connect(function(player)

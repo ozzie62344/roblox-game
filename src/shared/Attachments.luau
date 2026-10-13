@@ -1,12 +1,14 @@
--- Gun attachments, picked per gun in the shop's MODS view (free). Each gun has up to three slots:
+-- Gun attachments, bought with credits in the shop's MODS view: bought once, an attachment goes on
+-- every gun it fits (you pick which ones wear it). Each gun has up to three slots:
 --   Optic   Red Dot, Holo, 2.5x Scope: swaps the gun's own sight (GunModels); the scope zooms
 --           in further and is slower to aim. Guns with a sight that can't come off (the
 --           sniper's scope) or nowhere to put one (pistols) don't get this slot.
 --   Muzzle  Suppressor (much quieter, no echo), Compensator (less sideways kick)
 --   Under   Laser (tighter hip fire)
 -- No attachment in a slot = the gun as it comes (its "Factory" look).
--- What a player has on their guns is kept with their data (PlayerData) and shown to everyone as
--- the "Attachments" player attribute: JSON {"Rifle":{"Optic":"Scope","Muzzle":"Suppressor"}}.
+-- What a player owns and has on their guns is kept with their data (PlayerData) and shown as
+-- player attributes: OwnedAttachments "RedDot,Scope" and Attachments (JSON
+-- {"Rifle":{"Optic":"Scope","Muzzle":"Suppressor"}}, which everyone's client reads).
 
 local HttpService = game:GetService("HttpService")
 
@@ -18,6 +20,7 @@ export type Attachment = {
 	Slot: Slot,
 	Name: string,
 	Description: string,
+	Price: number,
 }
 export type Chosen = { [string]: string } -- slot → attachment id
 
@@ -25,12 +28,12 @@ Attachments.Slots = { "Optic", "Muzzle", "Under" } :: { Slot }
 Attachments.SlotNames = { Optic = "OPTIC", Muzzle = "MUZZLE", Under = "UNDER BARREL" }
 
 Attachments.List = {
-	{ Id = "RedDot", Slot = "Optic", Name = "Red Dot", Description = "Small tube sight with a clear view. Quick to aim." },
-	{ Id = "Holo", Slot = "Optic", Name = "Holo", Description = "Big window, ring-and-dot reticle." },
-	{ Id = "Scope", Slot = "Optic", Name = "2.5x Scope", Description = "Zooms in further. Slower to aim." },
-	{ Id = "Suppressor", Slot = "Muzzle", Name = "Suppressor", Description = "Much quieter shots, no echo." },
-	{ Id = "Compensator", Slot = "Muzzle", Name = "Compensator", Description = "Less sideways kick." },
-	{ Id = "Laser", Slot = "Under", Name = "Laser", Description = "Tighter hip fire." },
+	{ Id = "RedDot", Slot = "Optic", Name = "Red Dot", Description = "Small tube sight with a clear view. Quick to aim.", Price = 300 },
+	{ Id = "Holo", Slot = "Optic", Name = "Holo", Description = "Big window, ring-and-dot reticle.", Price = 450 },
+	{ Id = "Scope", Slot = "Optic", Name = "2.5x Scope", Description = "Zooms in further. Slower to aim.", Price = 800 },
+	{ Id = "Suppressor", Slot = "Muzzle", Name = "Suppressor", Description = "Much quieter shots, no echo.", Price = 600 },
+	{ Id = "Compensator", Slot = "Muzzle", Name = "Compensator", Description = "Less sideways kick.", Price = 400 },
+	{ Id = "Laser", Slot = "Under", Name = "Laser", Description = "Tighter hip fire.", Price = 350 },
 } :: { Attachment }
 
 Attachments.ById = {} :: { [string]: Attachment }
@@ -56,6 +59,11 @@ function Attachments.Fits(weaponName: string, id: string): boolean
 	local attachment = Attachments.ById[id]
 	local slots = Attachments.SlotsFor[weaponName]
 	return attachment ~= nil and slots ~= nil and slots[attachment.Slot] == true
+end
+
+function Attachments.Owns(player: Player, id: string): boolean
+	local owned = player:GetAttribute("OwnedAttachments")
+	return typeof(owned) == "string" and table.find(string.split(owned, ","), id) ~= nil
 end
 
 -- Decoded "Attachments" attributes, cached per string (other players' guns ask every frame)

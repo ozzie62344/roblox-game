@@ -30,6 +30,7 @@ export type Data = {
 	Equipped: { [string]: string }, -- item ("Rifle", "Knife") → skin id
 	TouchLayout: string, -- JSON: moved phone buttons (SettingsService checks it), "" = the defaults
 	Attachments: { [string]: { [string]: string } }, -- gun → slot → attachment id
+	OwnedAttachments: { [string]: boolean }, -- bought (attachment id)
 }
 
 local PlayerData = {}
@@ -60,7 +61,7 @@ do
 end
 
 local function newData(): Data
-	return { Credits = MatchConfig.Credits.Starting, Skins = {}, Equipped = {}, TouchLayout = "", Attachments = {} }
+	return { Credits = MatchConfig.Credits.Starting, Skins = {}, Equipped = {}, TouchLayout = "", Attachments = {}, OwnedAttachments = {} }
 end
 
 -- Whatever came out of the store, cleaned up (unknown skins dropped, missing fields filled)
@@ -93,13 +94,20 @@ local function fromStored(stored: any): Data
 	if typeof(stored.TouchLayout) == "string" and #stored.TouchLayout <= 4000 then
 		data.TouchLayout = stored.TouchLayout
 	end
+	if typeof(stored.OwnedAttachments) == "table" then
+		for id, owned in stored.OwnedAttachments do
+			if owned == true and Attachments.ById[id] then
+				data.OwnedAttachments[id] = true
+			end
+		end
+	end
 	if typeof(stored.Attachments) == "table" then
 		for weaponName, onGun in stored.Attachments do
 			if typeof(weaponName) ~= "string" or typeof(onGun) ~= "table" then
 				continue
 			end
 			for slot, id in onGun do
-				if typeof(id) == "string" and Attachments.Fits(weaponName, id) and Attachments.ById[id].Slot == slot then
+				if typeof(id) == "string" and data.OwnedAttachments[id] and Attachments.Fits(weaponName, id) and Attachments.ById[id].Slot == slot then
 					data.Attachments[weaponName] = data.Attachments[weaponName] or {}
 					data.Attachments[weaponName][slot] = id
 				end
@@ -126,6 +134,13 @@ local function publish(player: Player, data: Data)
 	player:SetAttribute("EquippedSkins", HttpService:JSONEncode(data.Equipped))
 	player:SetAttribute("TouchLayout", data.TouchLayout)
 	player:SetAttribute("Attachments", HttpService:JSONEncode(data.Attachments))
+	local ownedAttachments = {}
+	for _, attachment in Attachments.List do
+		if data.OwnedAttachments[attachment.Id] then
+			table.insert(ownedAttachments, attachment.Id)
+		end
+	end
+	player:SetAttribute("OwnedAttachments", table.concat(ownedAttachments, ","))
 end
 
 -- Claims the player's data. Returns it, or nil if the DataStore can't be reached.
@@ -192,6 +207,7 @@ local function save(player: Player, release: boolean)
 				Equipped = data.Equipped,
 				TouchLayout = data.TouchLayout,
 				Attachments = data.Attachments,
+				OwnedAttachments = data.OwnedAttachments,
 				Lock = if USE_LOCKS and not release then { Job = game.JobId, At = os.time() } else nil,
 			}
 		end)
