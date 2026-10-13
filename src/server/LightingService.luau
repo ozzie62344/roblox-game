@@ -191,14 +191,24 @@ local PROFILES: { [string]: { [string]: any } } = {
 		SunRays = 0,
 		Exposure = -0.35,
 	},
-	-- A clear city midday: the sun higher and whiter, less of the suburban gold
+	-- A city afternoon under broken cloud: softer, cooler light than the suburbs' gold, and less
+	-- of it (the pale stone and paving glared in full sun). Indoors keeps the default fill, so the
+	-- lobby and offices stay easy to read.
 	Bank = {
-		ClockTime = 13.5,
-		Brightness = 3,
-		HazeColor = Color3.fromRGB(200, 200, 205),
-		HazeDecay = Color3.fromRGB(120, 128, 145),
-		CloudCover = 0.35,
-		Tint = Color3.fromRGB(252, 252, 255),
+		ClockTime = 15,
+		Brightness = 1.7,
+		OutdoorAmbient = Color3.fromRGB(104, 106, 112),
+		HazeColor = Color3.fromRGB(172, 174, 182),
+		HazeDecay = Color3.fromRGB(108, 114, 130),
+		Glare = 0.05,
+		CloudCover = 0.65,
+		CloudDensity = 0.7,
+		CloudColor = Color3.fromRGB(205, 208, 214),
+		Contrast = 0.14,
+		Saturation = -0.02,
+		Tint = Color3.fromRGB(246, 248, 255),
+		SunRays = 0.03,
+		Exposure = -0.2,
 	},
 }
 
