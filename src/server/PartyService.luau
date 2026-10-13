@@ -17,12 +17,14 @@ local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
+
 local Party = ReplicatedStorage.Remotes.Party :: RemoteEvent
 local MatchState = ReplicatedStorage.MatchState
 
 local PartyService = {}
 
-local MAX_SIZE = 5
+local MAX_SIZE = MatchConfig.MaxTeamSize -- (a party has to fit on one team: the biggest mode is 4v4)
 local INVITE_TIME = 30 -- seconds an invite can be answered
 local SNOOZE_TIME = 30 -- after a NO, the same person can't ask again for this long
 local REJOIN_TIME = 60 -- after landing from a teleport, how long the rest of your party can still find you
