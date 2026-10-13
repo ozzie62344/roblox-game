@@ -13,6 +13,8 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
+local MatchStats = require(script.Parent.MatchStats)
+local ProgressService = require(script.Parent.ProgressService)
 local ShopService = require(script.Parent.ShopService)
 
 local Remotes = ReplicatedStorage.Remotes
@@ -155,6 +157,8 @@ local function plant(player: Player)
 	clearInteractors()
 	ObjectiveEvent:FireAllClients("Planted", siteName, position, player)
 	ShopService.Award(player, MatchConfig.Credits.Plant, "DEFUSER PLANTED")
+	ProgressService.Record(player, "Plant")
+	MatchStats.Objective(player)
 end
 
 local function disable(player: Player)
@@ -162,6 +166,8 @@ local function disable(player: Player)
 	clearInteractors()
 	ObjectiveEvent:FireAllClients("Disabled", player)
 	ShopService.Award(player, MatchConfig.Credits.Disable, "DEFUSER DISABLED")
+	ProgressService.Record(player, "Disable")
+	MatchStats.Objective(player)
 end
 
 -- The defuser ran out its timer: the bomb at that site is safe, its light goes green

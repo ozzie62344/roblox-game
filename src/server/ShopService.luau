@@ -1,6 +1,7 @@
 -- The skin shop (client Match/ShopMenu) and credits.
 --   Shop:FireServer("Buy", skinId, item?)       buy a skin with credits (works on everything),
---                                               and wear it on `item` right away
+--                                               and wear it on `item` right away (not level
+--                                               rewards: Skins TrackOnly)
 --   Shop:FireServer("Equip", item, skinId?)     wear an owned skin on "Rifle", "Knife"... (nil =
 --                                               the factory look)
 --   Shop:FireServer("EquipAll", skinId?)        the same on every gun and the knife
@@ -53,7 +54,8 @@ end
 local function buy(player: Player, id: any, item: any)
 	local skin = typeof(id) == "string" and Skins.ById[id]
 	local data = PlayerData.Get(player)
-	if not skin or skin.DevOnly or skin.OnlyFor or not data or data.Skins[skin.Id] or data.Credits < skin.Price then
+	-- (level-reward skins only come from the reward track: ProgressService)
+	if not skin or skin.DevOnly or skin.OnlyFor or skin.TrackOnly or not data or data.Skins[skin.Id] or data.Credits < skin.Price then
 		return
 	end
 	PlayerData.Update(player, function(d)

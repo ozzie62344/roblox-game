@@ -7,6 +7,7 @@
 --   │                     movement course: crates, low wall, ramp                  │
 --   │                                  spawn                                       │
 --   └──────────────────────────────────────────────────────────────────────────────┘
+--   (east wall: the leaderboard, top 10 for kills / wins / level: LeaderboardService)
 
 local MapBuilder = require(script.Parent.MapBuilder)
 
@@ -53,6 +54,74 @@ local function screen(map: MapBuilder.Builder, center: Vector3, width: number, t
 	end
 	label(title, 90, 0.4, Color3.new(1, 1, 1))
 	label(subtitle, 40, 0.72, ACCENT)
+end
+
+-- The leaderboard on the east wall: top 10 for kills, wins and level, side by side. Built empty;
+-- LeaderboardService fills it in (it looks for "Leaderboard" → "Board" → Kills / Wins / Level →
+-- Row1..Row10 → Face / Who / Value, and "Status").
+local BOARD_ROWS = 10
+local BOARD_COLUMNS = { { "Kills", "MOST KILLS" }, { "Wins", "MOST WINS" }, { "Level", "HIGHEST LEVEL" } }
+
+local function leaderboard(map: MapBuilder.Builder, center: Vector3, width: number, height: number)
+	-- Frame against the wall, glass just in front of it (west), facing into the room
+	map:Box("BoardFrame", center + Vector3.new(0, -height / 2 - 0.3, -width / 2 - 0.3), center + Vector3.new(0.5, height / 2 + 0.3, width / 2 + 0.3), TRIM, Enum.Material.Metal)
+	local panel = map:Box("Leaderboard", center + Vector3.new(-0.15, -height / 2, -width / 2), center + Vector3.new(0, height / 2, width / 2), SCREEN, Enum.Material.Glass)
+	local gui = Instance.new("SurfaceGui")
+	gui.Name = "Board"
+	gui.Face = Enum.NormalId.Left -- faces into the room (west, -X)
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 40
+	gui.LightInfluence = 0
+	gui.Parent = panel
+	local function label(parent: Instance, name: string, text: string, position: UDim2, size: UDim2, color: Color3, font: Enum.Font): TextLabel
+		local l = Instance.new("TextLabel")
+		l.Name = name
+		l.Position = position
+		l.Size = size
+		l.BackgroundTransparency = 1
+		l.Font = font
+		l.TextScaled = true
+		l.Text = text
+		l.TextColor3 = color
+		l.Parent = parent
+		return l
+	end
+	label(gui, "Title", "TOP OPERATORS", UDim2.fromScale(0.05, 0.02), UDim2.fromScale(0.9, 0.11), Color3.new(1, 1, 1), Enum.Font.Michroma)
+	label(gui, "Status", "LOADING...", UDim2.fromScale(0.05, 0.93), UDim2.fromScale(0.9, 0.05), Color3.fromRGB(150, 156, 170), Enum.Font.Michroma)
+	for i, info in BOARD_COLUMNS do
+		local column = Instance.new("Frame")
+		column.Name = info[1]
+		column.Position = UDim2.fromScale(0.02 + (i - 1) * 0.33, 0.15)
+		column.Size = UDim2.fromScale(0.3, 0.77)
+		column.BackgroundTransparency = 1
+		column.Parent = gui
+		label(column, "Heading", info[2], UDim2.new(), UDim2.fromScale(1, 0.09), ACCENT, Enum.Font.Michroma)
+		for r = 1, BOARD_ROWS do
+			local row = Instance.new("Frame")
+			row.Name = "Row" .. r
+			row.Position = UDim2.fromScale(0, 0.1 + (r - 1) * 0.09)
+			row.Size = UDim2.fromScale(1, 0.085)
+			row.BackgroundColor3 = Color3.new(1, 1, 1)
+			row.BackgroundTransparency = if r % 2 == 1 then 0.94 else 1
+			row.BorderSizePixel = 0
+			row.Visible = false
+			row.Parent = column
+			local rankColor = if r == 1 then ACCENT elseif r <= 3 then Color3.fromRGB(215, 220, 230) else Color3.fromRGB(150, 156, 170)
+			label(row, "Rank", tostring(r), UDim2.fromScale(0, 0.1), UDim2.fromScale(0.09, 0.8), rankColor, Enum.Font.GothamBold)
+			local face = Instance.new("ImageLabel")
+			face.Name = "Face"
+			face.Position = UDim2.fromScale(0.1, 0.05)
+			face.Size = UDim2.fromScale(0.1, 0.9)
+			face.BackgroundTransparency = 1
+			face.Parent = row
+			local aspect = Instance.new("UIAspectRatioConstraint")
+			aspect.Parent = face
+			local who = label(row, "Who", "", UDim2.fromScale(0.22, 0.12), UDim2.fromScale(0.56, 0.76), Color3.new(1, 1, 1), Enum.Font.GothamBold)
+			who.TextXAlignment = Enum.TextXAlignment.Left
+			local value = label(row, "Value", "", UDim2.fromScale(0.78, 0.12), UDim2.fromScale(0.21, 0.76), ACCENT, Enum.Font.GothamBold)
+			value.TextXAlignment = Enum.TextXAlignment.Right
+		end
+	end
 end
 
 local function couch(map: MapBuilder.Builder, center: Vector3, facingSouth: boolean)
@@ -106,6 +175,8 @@ function Lobby.Build(): Model
 	screen(map, at(0, 10, -HALF_Z + 0.6), 26, "BREACHPOINT", "PRESS PLAY TO FIND A MATCH")
 	screen(map, at(-28, 9, -HALF_Z + 0.6), 12, "MODES", "1v1 · 2v2 · 3v3 · 4v4")
 	screen(map, at(28, 9, -HALF_Z + 0.6), 12, "MAPS", "VOTED IN EVERY MATCH")
+	-- Leaderboard on the east wall (LeaderboardService fills it in)
+	leaderboard(map, at(HALF_X - 0.6, 10.5, 0), 34, 13)
 
 	-- Lounge corners
 	couch(map, at(-32, 0, -22), true)

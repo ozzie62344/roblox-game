@@ -57,6 +57,19 @@ return {
 		MatchPlayed = 75, -- everyone who was there when the match finished
 	},
 
+	-- XP: earned for the same things (not in free roam), raises your level and unlocks the reward
+	-- track (shared/Progression has the level curve). A won match is worth roughly 1,500, a lost
+	-- one 700-900; level 2 takes 500, so the first match is worth about two levels.
+	Xp = {
+		Kill = 100,
+		Headshot = 50, -- on top of the kill
+		Plant = 150,
+		Disable = 150,
+		RoundWin = 100,
+		MatchWin = 400,
+		MatchPlayed = 300,
+	},
+
 	Teams = {
 		Blue = { Color = BrickColor.new("Bright blue") },
 		Orange = { Color = BrickColor.new("Neon orange") },

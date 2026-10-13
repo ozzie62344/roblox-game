@@ -5,7 +5,8 @@
 --           attachment slots: optic, muzzle, under barrel (shared/Attachments). Tapping one you
 --           own puts it on; tapping one you don't tries it on in the preview, and BUY buys it
 -- A bought skin works on every gun and the knife; buying one puts it on the selected item.
--- Dev-only skins (Skins.luau) only show up for devs, already unlocked.
+-- Dev-only skins (Skins.luau) only show up for devs, already unlocked. Level rewards (TrackOnly)
+-- show "LEVEL n" instead of a price until the reward track unlocks them (Match/ProgressMenu).
 -- Also: your credits next to the SHOP button in the lobby, the gun you hold there (◀ ▶ under SHOP,
 -- SettingsService), and a toast whenever you earn some
 -- ("+20 KILL"), anywhere. The server (ShopService) checks every purchase; the skins are in
@@ -436,6 +437,10 @@ function refresh()
 		elseif owns(id) then
 			status.Text = "OWNED"
 			status.TextColor3 = Color3.fromRGB(200, 205, 215)
+		elseif skin and skin.TrackOnly then
+			-- (a level reward: no price, it unlocks on the reward track)
+			status.Text = `LEVEL {skin.TrackOnly}`
+			status.TextColor3 = Color3.fromRGB(150, 200, 255)
 		else
 			price.Visible = true
 			status.Position = UDim2.new(0, 32, 1, -9)
@@ -461,7 +466,11 @@ function refresh()
 	actionButton.AnchorPoint = if owned then Vector2.new(0, 1) else Vector2.new(0.5, 1)
 	actionButton.Position = if owned then UDim2.new(0, 20, 1, -16) else UDim2.new(0.5, 0, 1, -16)
 	hintLabel.Text = ""
-	if not owned then
+	if not owned and skin and skin.TrackOnly then
+		setButtonText(actionButton, `Level {skin.TrackOnly}`)
+		MenuStyle.SetButtonColor(actionButton, MenuStyle.Grey)
+		hintLabel.Text = `A level reward · reach level {skin.TrackOnly} to unlock it (PROGRESS)`
+	elseif not owned then
 		local affordable = amount ~= nil and amount >= skin.Price
 		setButtonText(actionButton, `Buy · {formatCredits(skin.Price)}`)
 		MenuStyle.SetButtonColor(actionButton, if affordable then MenuStyle.Green else MenuStyle.Grey)
@@ -645,7 +654,7 @@ local function buildPreviewPanel(content: Frame)
 		local skin = Skins.ById[selectedSkin]
 		if skin and not owns(skin.Id) then
 			local amount = credits()
-			if amount and amount >= skin.Price then
+			if amount and amount >= skin.Price and not skin.TrackOnly then
 				Shop:FireServer("Buy", skin.Id, selectedItem)
 			end
 		elseif selectedSkin ~= equippedId(selectedItem) then

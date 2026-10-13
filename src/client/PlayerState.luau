@@ -59,4 +59,6 @@ return {
 	interactAction = nil :: string?, -- what HOLD [G] would do right now (ObjectiveController)
 	loadoutWindow = false, -- you can still change your loadout (until the round starts)
 	spectating = false,
+	killCam = nil :: string?, -- just died (KillCam): "View" = it drives the camera, "Card" = only its card is up
+	resultsOpen = false, -- the end-of-match results / MVP screen is up (MatchResults; cursor free)
 }

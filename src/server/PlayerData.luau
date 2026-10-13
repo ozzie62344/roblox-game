@@ -13,7 +13,8 @@
 -- Clients see the data as player attributes (Skins.luau): Credits, OwnedSkins, EquippedSkins,
 -- plus TouchLayout (where they moved their phone buttons: SettingsService, MobileControls) and
 -- Attachments (what's on each gun: shared/Attachments, ShopService) and LobbyWeapon (the gun you
--- hold in the lobby: SettingsService).
+-- hold in the lobby: SettingsService), and progression (shared/Progression, ProgressService):
+-- Xp, Level, Stats, DailyDay, DailyStreak, Challenges.
 
 local DataStoreService = game:GetService("DataStoreService")
 local HttpService = game:GetService("HttpService")
@@ -23,6 +24,7 @@ local RunService = game:GetService("RunService")
 
 local Attachments = require(ReplicatedStorage.Shared.Attachments)
 local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
+local Progression = require(ReplicatedStorage.Shared.Progression)
 local Skins = require(ReplicatedStorage.Shared.Skins)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 
@@ -34,6 +36,16 @@ export type Data = {
 	Attachments: { [string]: { [string]: string } }, -- gun → slot → attachment id
 	OwnedAttachments: { [string]: boolean }, -- bought (attachment id)
 	LobbyWeapon: string, -- the gun you hold in the lobby, "" = the default
+	Xp: number, -- total XP ever earned (the level follows from it: Progression.LevelFor)
+	RewardedLevel: number, -- the highest level whose track reward has been given
+	Kills: number, -- career stats (leaderboards)
+	Headshots: number,
+	Wins: number, -- matches won
+	Matches: number, -- matches finished
+	DailyDay: number, -- UTC day (Progression.Day) the daily reward was last claimed, 0 = never
+	DailyStreak: number, -- days in a row it had been claimed, as of DailyDay
+	ChallengeDay: number, -- the UTC day the challenges are for (new ones when it changes)
+	Challenges: { Progression.ChallengeState },
 }
 
 local PlayerData = {}
@@ -64,7 +76,15 @@ do
 end
 
 local function newData(): Data
-	return { Credits = MatchConfig.Credits.Starting, Skins = {}, Equipped = {}, TouchLayout = "", Attachments = {}, OwnedAttachments = {}, LobbyWeapon = "" }
+	return {
+		Credits = MatchConfig.Credits.Starting, Skins = {}, Equipped = {}, TouchLayout = "", Attachments = {}, OwnedAttachments = {}, LobbyWeapon = "",
+		Xp = 0, RewardedLevel = 1, Kills = 0, Headshots = 0, Wins = 0, Matches = 0, DailyDay = 0, DailyStreak = 0, ChallengeDay = 0, Challenges = {},
+	}
+end
+
+-- A stored count: a whole number, never below 0 (anything else → `default`)
+local function count(value: any, default: number): number
+	return if typeof(value) == "number" and value == value then math.clamp(math.floor(value), 0, 1e12) else default
 end
 
 -- Whatever came out of the store, cleaned up (unknown skins dropped, missing fields filled)
@@ -120,6 +140,23 @@ local function fromStored(stored: any): Data
 			end
 		end
 	end
+	data.Xp = count(stored.Xp, 0)
+	data.RewardedLevel = math.max(1, count(stored.RewardedLevel, 1))
+	data.Kills = count(stored.Kills, 0)
+	data.Headshots = count(stored.Headshots, 0)
+	data.Wins = count(stored.Wins, 0)
+	data.Matches = count(stored.Matches, 0)
+	data.DailyDay = count(stored.DailyDay, 0)
+	data.DailyStreak = count(stored.DailyStreak, 0)
+	data.ChallengeDay = count(stored.ChallengeDay, 0)
+	if typeof(stored.Challenges) == "table" then
+		for _, entry in stored.Challenges do
+			local challenge = typeof(entry) == "table" and Progression.ChallengeById[entry.Id]
+			if challenge and #data.Challenges < Progression.ChallengesPerDay then
+				table.insert(data.Challenges, { Id = challenge.Id, Progress = math.min(count(entry.Progress, 0), challenge.Goal) })
+			end
+		end
+	end
 	return data
 end
 
@@ -148,6 +185,12 @@ local function publish(player: Player, data: Data)
 	end
 	player:SetAttribute("OwnedAttachments", table.concat(ownedAttachments, ","))
 	player:SetAttribute("LobbyWeapon", data.LobbyWeapon)
+	player:SetAttribute("Xp", data.Xp)
+	player:SetAttribute("Level", (Progression.LevelFor(data.Xp)))
+	player:SetAttribute("Stats", HttpService:JSONEncode({ Kills = data.Kills, Headshots = data.Headshots, Wins = data.Wins, Matches = data.Matches }))
+	player:SetAttribute("DailyDay", data.DailyDay)
+	player:SetAttribute("DailyStreak", data.DailyStreak)
+	player:SetAttribute("Challenges", HttpService:JSONEncode({ Day = data.ChallengeDay, List = data.Challenges }))
 end
 
 -- Claims the player's data. Returns it, or nil if the DataStore can't be reached.
@@ -216,7 +259,17 @@ local function save(player: Player, release: boolean)
 				Attachments = data.Attachments,
 				OwnedAttachments = data.OwnedAttachments,
 				LobbyWeapon = data.LobbyWeapon,
-				Lock = if USE_LOCKS and not release then { Job = game.JobId, At = os.time() } else nil,
+				Xp = data.Xp,
+				RewardedLevel = data.RewardedLevel,
+				Kills = data.Kills,
+				Headshots = data.Headshots,
+				Wins = data.Wins,
+				Matches = data.Matches,
+				DailyDay = data.DailyDay,
+				DailyStreak = data.DailyStreak,
+				ChallengeDay = data.ChallengeDay,
+				Challenges = data.Challenges,
+				Lock =if USE_LOCKS and not release then { Job = game.JobId, At = os.time() } else nil,
 			}
 		end)
 	end)

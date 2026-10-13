@@ -25,8 +25,10 @@ local CameraService = require(script.Parent.CameraService)
 local DroneService = require(script.Parent.DroneService)
 local LoadoutService = require(script.Parent.LoadoutService)
 local MapService = require(script.Parent.MapService)
+local MatchStats = require(script.Parent.MatchStats)
 local ObjectiveService = require(script.Parent.ObjectiveService)
 local PartyService = require(script.Parent.PartyService)
+local ProgressService = require(script.Parent.ProgressService)
 local ShopService = require(script.Parent.ShopService)
 
 local KillFeed = ReplicatedStorage.Remotes.KillFeed :: RemoteEvent
@@ -394,6 +396,7 @@ local function runMatch()
 	matchRunning = true
 	abortMatch = false
 	assignTeams()
+	MatchStats.Begin()
 	local scores = { Blue = 0, Orange = 0 }
 	setScores(scores)
 
@@ -415,8 +418,10 @@ local function runMatch()
 		if winner ~= "Draw" then
 			scores[winner] += 1
 			setScores(scores)
+			MatchStats.RoundWon(teams[winner])
 			for _, player in teams[winner]:GetPlayers() do
 				ShopService.Award(player, MatchConfig.Credits.RoundWin, "ROUND WON")
+				ProgressService.Record(player, "RoundWin")
 			end
 		end
 		if scores[winner] and scores[winner] >= MatchConfig.RoundsToWin then
@@ -439,16 +444,24 @@ local function runMatch()
 		for _, teamName in MatchConfig.TeamOrder do
 			for _, player in teams[teamName]:GetPlayers() do
 				ShopService.Award(player, MatchConfig.Credits.MatchPlayed, "MATCH COMPLETE")
+				ProgressService.Record(player, "MatchPlayed")
 				if teamName == matchWinner then
 					ShopService.Award(player, MatchConfig.Credits.MatchWin, "MATCH WON")
+					ProgressService.Record(player, "MatchWin")
 				end
 			end
 		end
-		setPhase("MatchOver", MatchConfig.MatchOverTime, `{string.upper(matchWinner)} WINS THE MATCH`)
-		task.wait(MatchConfig.MatchOverTime)
+		-- Long enough for the results screen too (MatchStats: the banner first, then the MVP screen)
+		local overTime = math.max(MatchConfig.MatchOverTime, MatchStats.ResultsDelay + MatchStats.ResultsTime)
+		setPhase("MatchOver", overTime, `{string.upper(matchWinner)} WINS THE MATCH`)
+		MatchStats.Finish(matchWinner, scores, function(player)
+			return bodies[player]
+		end)
+		task.wait(overTime)
 	end
 
 	matchRunning = false
+	MatchStats.Stop()
 	table.clear(presetTeams) -- (Matchmaker's teams were for this match only)
 	ObjectiveService.EndRound()
 	DroneService.Reset()
@@ -594,11 +607,18 @@ local function onCharacterAdded(player: Player, character: Model)
 		local killerId = humanoid:GetAttribute("LastDamagedBy")
 		local killer = if killerId then Players:GetPlayerByUserId(killerId) else nil
 		local headshot = humanoid:GetAttribute("LastHitHeadshot") == true
-		KillFeed:FireAllClients(killer, player, headshot)
+		-- (the 4th argument is for the victim's kill cam: what did it, from where...)
+		KillFeed:FireAllClients(killer, player, headshot, MatchStats.KillDetails(player, humanoid, killer))
+		MatchStats.Death(player, humanoid, killer, headshot)
 		-- Credits for killing an enemy in a match
 		if matchRunning and killer and killer ~= player and killer.Team and killer.Team ~= player.Team then
 			local credits = MatchConfig.Credits
 			ShopService.Award(killer, credits.Kill + (if headshot then credits.Headshot else 0), if headshot then "HEADSHOT" else "KILL")
+			-- XP, career stats, challenges (ProgressService)
+			ProgressService.Record(killer, "Kill")
+			if headshot then
+				ProgressService.Record(killer, "Headshot")
+			end
 		end
 
 		if isFreeRoam() then

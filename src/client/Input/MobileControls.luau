@@ -346,8 +346,9 @@ local function currentModeNow(): Mode?
 	if editing then
 		return "Edit"
 	end
-	if state.devPanelOpen or state.draftOpen or state.voteOpen or state.shopOpen or state.modsOpen or state.inLobby then
-		return "Other" -- menus are tapped directly
+	if state.devPanelOpen or state.draftOpen or state.voteOpen or state.shopOpen or state.modsOpen or state.inLobby
+		or state.resultsOpen or state.killCam ~= nil then
+		return "Other" -- menus are tapped directly (the kill cam and match results have their own buttons)
 	end
 	if state.droning then
 		return if CamsController.IsWatching() then "Cams" else "Drone"

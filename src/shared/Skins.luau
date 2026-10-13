@@ -18,6 +18,8 @@
 -- skins (OnlyFor) work the same way for the players on their list (and devs). A Rainbow skin's
 -- glowing trim slowly cycles through the colors (SkinPainter); a Stickers skin is covered in
 -- little pictures on top of its paint (Combat/Stickers: "Cat", "Cheeto", "Holds").
+-- Level-reward skins (TrackOnly) can't be bought either: reaching their level on the reward track
+-- unlocks them (shared/Progression, server ProgressService).
 --
 -- The server keeps what you own and wear in player attributes:
 --   Credits        number
@@ -44,6 +46,7 @@ export type Skin = {
 	Note: string?, -- shown in the shop under a dev / exclusive skin
 	Rainbow: boolean?, -- glowing trim cycles through the rainbow
 	Stickers: ("Cat" | "Cheeto" | "Holds")?,
+	TrackOnly: number?, -- a level reward (shared/Progression): can't be bought, unlocked at this level
 }
 
 local Skins = {}
@@ -113,6 +116,22 @@ Skins.List = {
 	skin("Chrome", "Chrome", "Legendary", "Solid", { rgb(215, 218, 224) }, M.Metal, rgb(40, 42, 46), M.Metal, 0.4),
 	skin("Diamond", "Diamond", "Legendary", "Camo", { rgb(185, 230, 245), rgb(150, 210, 235), rgb(225, 245, 252) }, M.Ice, rgb(240, 250, 255), M.Glass, 0.2),
 }
+
+-- Level rewards (shared/Progression): in the shop for everyone to see, locked until you reach
+-- the level ("LEVEL 10" instead of a price), then yours for free
+local function trackSkin(level: number, s: Skin)
+	s.TrackOnly = level
+	table.insert(Skins.List, s)
+end
+trackSkin(5, skin("Recruit", "Recruit", "Rare", "Stripes", { rgb(120, 112, 80), rgb(84, 90, 60) }, M.Fabric, rgb(36, 38, 32), M.Metal))
+trackSkin(10, skin("Veteran", "Veteran", "Rare", "Camo", { rgb(150, 120, 80), rgb(110, 88, 60), rgb(70, 60, 45), rgb(180, 160, 120) }, M.Plastic, rgb(170, 130, 60), M.Metal, 0.1))
+trackSkin(15, skin("Hazard", "Hazard", "Epic", "Stripes", { rgb(245, 200, 30), rgb(26, 26, 28) }, M.SmoothPlastic, rgb(26, 26, 28), M.Metal))
+trackSkin(20, skin("Elite", "Elite", "Epic", "Solid", { rgb(22, 22, 25) }, M.SmoothPlastic, rgb(170, 125, 30), M.Neon))
+trackSkin(30, skin("Breacher", "Breacher", "Legendary", "Camo", { rgb(90, 20, 20), rgb(30, 28, 30), rgb(60, 58, 62) }, M.Metal, rgb(170, 70, 20), M.Neon, 0.1))
+trackSkin(40, skin("Warlord", "Warlord", "Legendary", "Solid", { rgb(70, 74, 82) }, M.Metal, rgb(150, 25, 30), M.Neon, 0.3))
+local apex = skin("Apex", "Apex", "Legendary", "Solid", { rgb(240, 238, 232) }, M.SmoothPlastic, rgb(200, 200, 200), M.Neon, 0.2)
+apex.Rainbow = true
+trackSkin(50, apex)
 
 -- Black chrome with rainbow lines, for devs only
 local developer = skin("Developer", "Developer", "Dev", "Solid", { rgb(16, 16, 20) }, M.Metal, rgb(160, 40, 60), M.Neon, 0.3)

@@ -11,6 +11,7 @@ local Workspace = game:GetService("Workspace")
 local GameRules = require(ReplicatedStorage.Shared.GameRules)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 local DestructionService = require(script.Parent.DestructionService)
+local MatchStats = require(script.Parent.MatchStats)
 
 local Remotes = ReplicatedStorage.Remotes
 local FireRemote = Remotes.Fire :: RemoteEvent
@@ -85,10 +86,13 @@ local function isProtected(targetHumanoid: Humanoid): boolean
 end
 
 -- Deals damage and tells both sides: the attacker gets a hit confirm, the victim gets the
--- direction it came from (for the on-screen damage indicator)
-local function applyDamage(attacker: Player, targetHumanoid: Humanoid, damage: number, headshot: boolean, from: Vector3)
+-- direction it came from (for the on-screen damage indicator). `with` is what did it (a weapon
+-- name, "Knife" or "Blast"): the victim's kill cam says so (MatchStats.KillDetails).
+local function applyDamage(attacker: Player, targetHumanoid: Humanoid, damage: number, headshot: boolean, from: Vector3, with: string?)
 	targetHumanoid:SetAttribute("LastDamagedBy", attacker.UserId)
 	targetHumanoid:SetAttribute("LastHitHeadshot", headshot)
+	targetHumanoid:SetAttribute("LastHitWith", with)
+	MatchStats.Damage(attacker, targetHumanoid, damage) -- (before it lands: only the health they had counts)
 	targetHumanoid:TakeDamage(damage)
 	HitConfirmed:FireClient(attacker, damage, headshot, targetHumanoid.Health <= 0)
 	local victim = Players:GetPlayerFromCharacter(targetHumanoid.Parent)
@@ -270,7 +274,7 @@ local function onFire(player: Player, origin: any, shots: any)
 	end
 
 	for targetHumanoid, total in totals do
-		applyDamage(player, targetHumanoid, total.damage, total.headshot, origin)
+		applyDamage(player, targetHumanoid, total.damage, total.headshot, origin, weapon.Name)
 	end
 end
 
@@ -339,7 +343,7 @@ local function onMelee(player: Player, targetPart: any, hitPoint: any)
 	if isProtected(targetHumanoid) or isBlocked(root.Position, targetRoot.Position, character) then
 		return
 	end
-	applyDamage(player, targetHumanoid, MELEE_DAMAGE, false, root.Position)
+	applyDamage(player, targetHumanoid, MELEE_DAMAGE, false, root.Position, "Knife")
 end
 
 local function onReload(player: Player)
@@ -374,7 +378,7 @@ function WeaponService.Blast(attacker: Player, center: Vector3, radius: number, 
 		local target = Players:GetPlayerFromCharacter(humanoid.Parent)
 		local teammate = target ~= nil and target ~= attacker and not attacker.Neutral and target.Team == attacker.Team
 		if damage >= 1 and not teammate and not isProtected(humanoid) then
-			applyDamage(attacker, humanoid, damage, false, center)
+			applyDamage(attacker, humanoid, damage, false, center, "Blast")
 		end
 	end
 end

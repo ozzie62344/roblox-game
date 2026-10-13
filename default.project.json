@@ -12,6 +12,7 @@
       },
       "Remotes": {
         "KillFeed": { "$className": "RemoteEvent" },
+        "MatchResults": { "$className": "RemoteEvent" },
         "LoadoutOffer": { "$className": "RemoteEvent" },
         "DraftPick": { "$className": "RemoteEvent" },
         "UseAbility": { "$className": "RemoteEvent" },
@@ -39,6 +40,7 @@
         "Cams": { "$className": "RemoteEvent" },
         "Settings": { "$className": "RemoteEvent" },
         "Shop": { "$className": "RemoteEvent" },
+        "Progress": { "$className": "RemoteEvent" },
         "Party": { "$className": "RemoteEvent" }
       }
     },
