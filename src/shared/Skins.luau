@@ -47,6 +47,7 @@ export type Skin = {
 	Rainbow: boolean?, -- glowing trim cycles through the rainbow
 	Stickers: ("Cat" | "Cheeto" | "Holds")?,
 	TrackOnly: number?, -- a level reward (shared/Progression): can't be bought, unlocked at this level
+	DailyOnly: number?, -- a daily-reward streak skin: can't be bought, yours after claiming this many days in a row
 }
 
 local Skins = {}
@@ -132,6 +133,13 @@ trackSkin(40, skin("Warlord", "Warlord", "Legendary", "Solid", { rgb(70, 74, 82)
 local apex = skin("Apex", "Apex", "Legendary", "Solid", { rgb(240, 238, 232) }, M.SmoothPlastic, rgb(200, 200, 200), M.Neon, 0.2)
 apex.Rainbow = true
 trackSkin(50, apex)
+
+-- Daily reward: claim the login reward this many days in a row (ProgressService) and it's yours.
+-- Sunrise stripes with gold trim.
+Skins.DailyStreakDays = 7
+local daybreak = skin("Daybreak", "Daybreak", "Legendary", "Stripes", { rgb(255, 118, 70), rgb(255, 170, 80), rgb(255, 214, 120), rgb(236, 104, 140) }, M.SmoothPlastic, rgb(255, 214, 120), M.Metal, 0.12)
+daybreak.DailyOnly = Skins.DailyStreakDays
+table.insert(Skins.List, daybreak)
 
 -- Black chrome with rainbow lines, for devs only
 local developer = skin("Developer", "Developer", "Dev", "Solid", { rgb(16, 16, 20) }, M.Metal, rgb(160, 40, 60), M.Neon, 0.3)

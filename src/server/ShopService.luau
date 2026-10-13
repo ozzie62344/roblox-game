@@ -55,7 +55,7 @@ local function buy(player: Player, id: any, item: any)
 	local skin = typeof(id) == "string" and Skins.ById[id]
 	local data = PlayerData.Get(player)
 	-- (level-reward skins only come from the reward track: ProgressService)
-	if not skin or skin.DevOnly or skin.OnlyFor or skin.TrackOnly or not data or data.Skins[skin.Id] or data.Credits < skin.Price then
+	if not skin or skin.DevOnly or skin.OnlyFor or skin.TrackOnly or skin.DailyOnly or not data or data.Skins[skin.Id] or data.Credits < skin.Price then
 		return
 	end
 	PlayerData.Update(player, function(d)

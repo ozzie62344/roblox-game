@@ -18,6 +18,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local Progression = require(ReplicatedStorage.Shared.Progression)
+local Skins = require(ReplicatedStorage.Shared.Skins)
 local LeaderboardService = require(script.Parent.LeaderboardService)
 local PlayerData = require(script.Parent.PlayerData)
 local ShopService = require(script.Parent.ShopService)
@@ -146,6 +147,12 @@ local function claimDaily(player: Player)
 	PlayerData.Update(player, function(d)
 		d.DailyDay = day
 		d.DailyStreak = streak
+		-- Streak skins (Skins DailyOnly): yours once the streak gets there
+		for _, skin in Skins.List do
+			if skin.DailyOnly and streak >= skin.DailyOnly then
+				d.Skins[skin.Id] = true
+			end
+		end
 	end, true)
 	ShopService.Award(player, credits, `DAY {streak} BONUS`)
 	Progress:FireClient(player, "Daily", streak, credits)

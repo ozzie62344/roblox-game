@@ -110,6 +110,8 @@ local bannerCount = 0
 local lastTick = 0
 -- This match: XP when it started, and what it was earned for (reason → XP)
 local matchStartXp: number? = nil
+local matchStartCredits: number? = nil -- (the XP card also says how many coins the match paid)
+local summaryCoins: TextLabel
 local matchGains: { [string]: number } = {}
 local summaryOpen = false
 local summaryOpenedAt = 0
@@ -346,6 +348,9 @@ local function updateSummary(dt: number)
 	end
 	showLevel(summaryBar, shownXp)
 	summaryGain.Text = `+{formatNumber(math.max(0, target - start))} XP`
+	local credits = player:GetAttribute("Credits")
+	local coins = if typeof(credits) == "number" and matchStartCredits then math.max(0, credits - matchStartCredits) else 0
+	summaryCoins.Text = `+{formatNumber(coins)} COINS THIS GAME`
 	local parts = {}
 	for _, gain in GAIN_NAMES do
 		local amount = matchGains[gain[1]]
@@ -916,7 +921,7 @@ local function buildMatchBits()
 	summary.Name = "MatchXp"
 	summary.AnchorPoint = Vector2.new(0.5, 1)
 	summary.Position = UDim2.new(0.5, 0, 1, -16)
-	summary.Size = UDim2.fromOffset(540, 150)
+	summary.Size = UDim2.fromOffset(540, 176)
 	summary.BackgroundColor3 = MenuStyle.Panel
 	summary.BackgroundTransparency = 0.08
 	summary.Visible = false
@@ -931,16 +936,19 @@ local function buildMatchBits()
 	summaryBreakdown = leftText(summary, "", UDim2.new(1, -36, 0, 18), UDim2.fromOffset(18, 46))
 	summaryBreakdown.TextColor3 = SOFT_TEXT
 	thinOutline(summaryBreakdown, 1.5)
-	local levelNumber = badge(summary, 56, UDim2.fromOffset(18, 72))
-	local level = leftText(summary, "", UDim2.fromOffset(160, 22), UDim2.fromOffset(86, 74))
+	summaryCoins = leftText(summary, "", UDim2.new(1, -36, 0, 22), UDim2.fromOffset(18, 68))
+	summaryCoins.TextColor3 = GOLD_TEXT
+	thinOutline(summaryCoins, 2)
+	local levelNumber = badge(summary, 56, UDim2.fromOffset(18, 98))
+	local level = leftText(summary, "", UDim2.fromOffset(160, 22), UDim2.fromOffset(86, 100))
 	thinOutline(level, 2)
-	local xpLabel = MenuStyle.Text(summary, "", UDim2.fromOffset(200, 18), UDim2.new(1, -18, 0, 76), Vector2.new(1, 0))
+	local xpLabel = MenuStyle.Text(summary, "", UDim2.fromOffset(200, 18), UDim2.new(1, -18, 0, 102), Vector2.new(1, 0))
 	xpLabel.TextXAlignment = Enum.TextXAlignment.Right
 	xpLabel.TextColor3 = SOFT_TEXT
 	thinOutline(xpLabel, 1.5)
-	local fill = bar(summary, UDim2.new(1, -104, 0, 16), UDim2.fromOffset(86, 102), XP_BLUE)
+	local fill = bar(summary, UDim2.new(1, -104, 0, 16), UDim2.fromOffset(86, 128), XP_BLUE)
 	summaryBar = { badge = levelNumber, level = level, xp = xpLabel, fill = fill }
-	summaryUnlocked = leftText(summary, "", UDim2.new(1, -104, 0, 16), UDim2.fromOffset(86, 124))
+	summaryUnlocked = leftText(summary, "", UDim2.new(1, -104, 0, 16), UDim2.fromOffset(86, 150))
 	summaryUnlocked.TextColor3 = GOLD_TEXT
 	thinOutline(summaryUnlocked, 1.5)
 	summaryStamp = MenuStyle.Text(summary, "LEVEL UP!", UDim2.fromOffset(300, 60), UDim2.new(0.5, 0, 0, -8), Vector2.new(0.5, 1))
@@ -985,12 +993,15 @@ local function onPhase()
 	local phase = MatchState:GetAttribute("Phase")
 	if phase == "Waiting" or phase == nil then
 		matchStartXp = nil
+		matchStartCredits = nil
 		table.clear(matchGains)
 		closeSummary()
 		return
 	end
 	if matchStartXp == nil and loaded() then
 		matchStartXp = xp()
+		local credits = player:GetAttribute("Credits")
+		matchStartCredits = if typeof(credits) == "number" then credits else nil
 		table.clear(matchGains)
 	end
 	if phase == "MatchOver" then
@@ -1066,7 +1077,7 @@ function ProgressMenu.Start()
 		elseif event == "Daily" and typeof(a) == "number" and typeof(b) == "number" then
 			claiming = 0
 			popupBack.Visible = false
-			showBanner("DAILY REWARD", `DAY {a} · +{b} CREDITS`, GOLD_TEXT)
+			showBanner("DAILY REWARD", `DAY {a} · +{b} CREDITS` .. (if a == Skins.DailyStreakDays then " · DAYBREAK SKIN UNLOCKED!" else ""), GOLD_TEXT)
 			Effects.Sound(Sounds.Shop.Buy, nil, Sounds.Shop.Volume, 1.25)
 			refresh()
 		end

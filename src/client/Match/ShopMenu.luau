@@ -441,6 +441,10 @@ function refresh()
 			-- (a level reward: no price, it unlocks on the reward track)
 			status.Text = `LEVEL {skin.TrackOnly}`
 			status.TextColor3 = Color3.fromRGB(150, 200, 255)
+		elseif skin and skin.DailyOnly then
+			-- (a daily-reward streak skin)
+			status.Text = `{skin.DailyOnly}-DAY STREAK`
+			status.TextColor3 = Color3.fromRGB(255, 200, 120)
 		else
 			price.Visible = true
 			status.Position = UDim2.new(0, 32, 1, -9)
@@ -470,6 +474,10 @@ function refresh()
 		setButtonText(actionButton, `Level {skin.TrackOnly}`)
 		MenuStyle.SetButtonColor(actionButton, MenuStyle.Grey)
 		hintLabel.Text = `A level reward · reach level {skin.TrackOnly} to unlock it (PROGRESS)`
+	elseif not owned and skin and skin.DailyOnly then
+		setButtonText(actionButton, `{skin.DailyOnly}-day streak`)
+		MenuStyle.SetButtonColor(actionButton, MenuStyle.Grey)
+		hintLabel.Text = `A daily reward · claim the daily reward {skin.DailyOnly} days in a row (PROGRESS)`
 	elseif not owned then
 		local affordable = amount ~= nil and amount >= skin.Price
 		setButtonText(actionButton, `Buy · {formatCredits(skin.Price)}`)
@@ -654,7 +662,7 @@ local function buildPreviewPanel(content: Frame)
 		local skin = Skins.ById[selectedSkin]
 		if skin and not owns(skin.Id) then
 			local amount = credits()
-			if amount and amount >= skin.Price and not skin.TrackOnly then
+			if amount and amount >= skin.Price and not skin.TrackOnly and not skin.DailyOnly then
 				Shop:FireServer("Buy", skin.Id, selectedItem)
 			end
 		elseif selectedSkin ~= equippedId(selectedItem) then
