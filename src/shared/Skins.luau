@@ -137,7 +137,7 @@ trackSkin(50, apex)
 -- Daily reward: claim the login reward this many days in a row (ProgressService) and it's yours.
 -- Sunrise stripes with gold trim.
 Skins.DailyStreakDays = 7
-local daybreak = skin("Daybreak", "Daybreak", "Legendary", "Stripes", { rgb(255, 118, 70), rgb(255, 170, 80), rgb(255, 214, 120), rgb(236, 104, 140) }, M.SmoothPlastic, rgb(255, 214, 120), M.Metal, 0.12)
+local daybreak = skin("Daybreak", "Daybreak", "Legendary", "Stripes", { rgb(250, 84, 40), rgb(255, 140, 20), rgb(255, 196, 40), rgb(220, 60, 110) }, M.SmoothPlastic, rgb(255, 200, 60), M.Metal, 0.2)
 daybreak.DailyOnly = Skins.DailyStreakDays
 table.insert(Skins.List, daybreak)
 
