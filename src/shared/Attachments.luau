@@ -28,12 +28,12 @@ Attachments.Slots = { "Optic", "Muzzle", "Under" } :: { Slot }
 Attachments.SlotNames = { Optic = "OPTIC", Muzzle = "MUZZLE", Under = "UNDER BARREL" }
 
 Attachments.List = {
-	{ Id = "RedDot", Slot = "Optic", Name = "Red Dot", Description = "Small tube sight with a clear view. Quick to aim.", Price = 300 },
-	{ Id = "Holo", Slot = "Optic", Name = "Holo", Description = "Big window, ring-and-dot reticle.", Price = 450 },
-	{ Id = "Scope", Slot = "Optic", Name = "2.5x Scope", Description = "Zooms in further. Slower to aim.", Price = 800 },
-	{ Id = "Suppressor", Slot = "Muzzle", Name = "Suppressor", Description = "Much quieter shots, no echo.", Price = 600 },
-	{ Id = "Compensator", Slot = "Muzzle", Name = "Compensator", Description = "Less sideways kick.", Price = 400 },
-	{ Id = "Laser", Slot = "Under", Name = "Laser", Description = "Tighter hip fire.", Price = 350 },
+	{ Id = "RedDot", Slot = "Optic", Name = "Red Dot", Description = "Small tube sight with a clear view. Quick to aim.", Price = 400 },
+	{ Id = "Holo", Slot = "Optic", Name = "Holo", Description = "Big window, ring-and-dot reticle.", Price = 600 },
+	{ Id = "Scope", Slot = "Optic", Name = "2.5x Scope", Description = "Zooms in further. Slower to aim.", Price = 1100 },
+	{ Id = "Suppressor", Slot = "Muzzle", Name = "Suppressor", Description = "Much quieter shots, no echo.", Price = 800 },
+	{ Id = "Compensator", Slot = "Muzzle", Name = "Compensator", Description = "Less sideways kick.", Price = 550 },
+	{ Id = "Laser", Slot = "Under", Name = "Laser", Description = "Tighter hip fire.", Price = 450 },
 } :: { Attachment }
 
 Attachments.ById = {} :: { [string]: Attachment }
