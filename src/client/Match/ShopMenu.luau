@@ -6,7 +6,8 @@
 --           own puts it on; tapping one you don't tries it on in the preview, and BUY buys it
 -- A bought skin works on every gun and the knife; buying one puts it on the selected item.
 -- Dev-only skins (Skins.luau) only show up for devs, already unlocked.
--- Also: your credits next to the SHOP button in the lobby, and a toast whenever you earn some
+-- Also: your credits next to the SHOP button in the lobby, the gun you hold there (◀ ▶ under SHOP,
+-- SettingsService), and a toast whenever you earn some
 -- ("+20 KILL"), anywhere. The server (ShopService) checks every purchase; the skins are in
 -- shared/Skins and painted by Combat/SkinPainter.
 
@@ -28,6 +29,7 @@ local MenuStyle = require(script.Parent.MenuStyle)
 
 local MatchState = ReplicatedStorage:WaitForChild("MatchState")
 local Shop = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Shop") :: RemoteEvent
+local SettingsRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Settings") :: RemoteEvent
 
 local player = Players.LocalPlayer
 
@@ -675,14 +677,38 @@ local function build()
 	lobbyWidget.Name = "LobbyButtons"
 	lobbyWidget.AnchorPoint = Vector2.new(0, 0.5)
 	lobbyWidget.Position = UDim2.new(0, 20, 0.5, 0)
-	lobbyWidget.Size = UDim2.fromOffset(200, 150)
+	lobbyWidget.Size = UDim2.fromOffset(200, 214)
 	lobbyWidget.BackgroundTransparency = 1
 	lobbyWidget.Visible = false
 	lobbyWidget.Parent = gui
 	MenuStyle.FitToScreen(lobbyWidget, Vector2.new(900, 520))
 	lobbyCredits = creditsPill(lobbyWidget, Vector2.new(200, 50), UDim2.new(), Vector2.zero)
-	local shopButton = MenuStyle.Button(lobbyWidget, "Shop", MenuStyle.Gold, UDim2.fromOffset(200, 80), UDim2.new(0, 0, 1, 0), Vector2.new(0, 1))
+	local shopButton = MenuStyle.Button(lobbyWidget, "Shop", MenuStyle.Gold, UDim2.fromOffset(200, 80), UDim2.fromOffset(0, 58))
 	shopButton.Activated:Connect(ShopMenu.Open)
+
+	-- The gun you hold in the lobby: ◀ RIFLE ▶ steps through every gun
+	local guns = {}
+	for _, item in Skins.Items do
+		if Weapons[item] then
+			table.insert(guns, item)
+		end
+	end
+	local heldLabel = MenuStyle.Text(lobbyWidget, "", UDim2.fromOffset(120, 28), UDim2.new(0.5, 0, 0, 176), Vector2.new(0.5, 0.5))
+	local holding = MenuStyle.Text(lobbyWidget, "HOLDING", UDim2.fromOffset(120, 16), UDim2.new(0.5, 0, 0, 152), Vector2.new(0.5, 0.5))
+	holding.TextColor3 = Color3.fromRGB(170, 176, 190)
+	local function showHeld()
+		local name = player:GetAttribute("Weapon")
+		heldLabel.Text = string.upper(if typeof(name) == "string" then name else "?")
+	end
+	for _, step in { -1, 1 } do
+		local arrow = MenuStyle.Button(lobbyWidget, if step < 0 then "<" else ">", MenuStyle.Blue, UDim2.fromOffset(44, 44), UDim2.new(if step < 0 then 0 else 1, 0, 0, 176), Vector2.new(if step < 0 then 0 else 1, 0.5))
+		arrow.Activated:Connect(function()
+			local current = table.find(guns, player:GetAttribute("Weapon")) or 1
+			SettingsRemote:FireServer("LobbyWeapon", guns[(current - 1 + step) % #guns + 1])
+		end)
+	end
+	player:GetAttributeChangedSignal("Weapon"):Connect(showHeld)
+	showHeld()
 
 	-- The shop screen
 	screen = Instance.new("Frame")

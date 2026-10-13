@@ -117,9 +117,10 @@ function LoadoutService.FinishRound()
 	table.clear(offers)
 end
 
--- Back to the free-roam default between matches
+-- Back to the gun they picked for the lobby (or the default) between matches
 function LoadoutService.Reset(player: Player)
-	WeaponService.SetWeapon(player, WeaponService.DefaultWeapon)
+	local picked = player:GetAttribute("LobbyWeapon")
+	WeaponService.SetWeapon(player, if typeof(picked) == "string" and Weapons[picked] then picked else WeaponService.DefaultWeapon)
 	player:SetAttribute("Ability", nil)
 end
 

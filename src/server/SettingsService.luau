@@ -1,13 +1,18 @@
 -- A player's own settings, kept with their data (PlayerData) so they follow them to every server.
 --   Settings:FireServer("TouchLayout", json)   where they moved their phone buttons (client
 --                                               MobileControls' EDIT BUTTONS); "" = the defaults
+--   Settings:FireServer("LobbyWeapon", name)    the gun they hold in the lobby (ShopMenu's picker
+--                                               under SHOP); it's handed to them whenever they're
+--                                               out of a match
 -- Everything is checked and rebuilt here, never stored as the client sent it.
 
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Weapons = require(ReplicatedStorage.Shared.Weapons)
 local PlayerData = require(script.Parent.PlayerData)
+local WeaponService = require(script.Parent.WeaponService)
 
 local SettingsRemote = ReplicatedStorage.Remotes.Settings :: RemoteEvent
 
@@ -53,11 +58,17 @@ end
 function SettingsService.Start()
 	SettingsRemote.OnServerEvent:Connect(function(player, kind, value)
 		local now = os.clock()
-		if now - (lastRequest[player] or 0) < 0.5 then
+		if now - (lastRequest[player] or 0) < 0.2 then
 			return
 		end
 		lastRequest[player] = now
-		if kind == "TouchLayout" then
+		if kind == "LobbyWeapon" then
+			if typeof(value) == "string" and Weapons[value] then
+				PlayerData.Update(player, function(data)
+					data.LobbyWeapon = value
+				end, true)
+			end
+		elseif kind == "TouchLayout" then
 			local layout = cleanLayout(value)
 			if layout then
 				PlayerData.Update(player, function(data)
@@ -66,6 +77,20 @@ function SettingsService.Start()
 			end
 		end
 	end)
+	-- The lobby gun: in their hands as soon as it's loaded or changed, unless they're in a match
+	-- (LoadoutService hands it back after one)
+	local function watch(player: Player)
+		player:GetAttributeChangedSignal("LobbyWeapon"):Connect(function()
+			local name = player:GetAttribute("LobbyWeapon")
+			if typeof(name) == "string" and Weapons[name] and player:GetAttribute("Location") ~= "Match" then
+				WeaponService.SetWeapon(player, name)
+			end
+		end)
+	end
+	for _, player in Players:GetPlayers() do
+		watch(player)
+	end
+	Players.PlayerAdded:Connect(watch)
 	Players.PlayerRemoving:Connect(function(player)
 		lastRequest[player] = nil
 	end)
