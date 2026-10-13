@@ -1,10 +1,11 @@
--- Abilities that can show up in loadouts (every ability here is in the draft/random pool).
+-- Abilities (gadgets). Each operator (Operators.luau) brings one of these as their gadget; the dev
+-- panel can hand out any of them.
 --   Movement abilities live in MovementController (Dash on X, Wall Jump on Space).
 --   Active abilities are used with X, run on the server (AbilityService / GadgetService), and
 --   have charges per round.
---   Side: what an ability is for decides who can roll it: attacking tools ("Attack": breaching,
---   grenades, finding enemies) only go to attackers, holding tools ("Defend": fortifying, roaming
---   quietly, holding an angle) only to defenders. Only plain movement (no Side) goes to either.
+--   Side: what an ability is for: attacking tools ("Attack": breaching, grenades, finding
+--   enemies) belong to attackers, holding tools ("Defend": fortifying, roaming quietly, holding an
+--   angle) to defenders. Plain movement (no Side) fits either.
 
 export type Ability = {
 	Name: string,
@@ -134,6 +135,36 @@ local Abilities: { [string]: Ability } = {
 		Side = "Defend",
 		Charges = 2,
 		Description = "Bulletproof barricade for a doorway or window. Takes 10 knife hits or an explosive to break.",
+	},
+
+	-- Operator gadgets (GadgetService)
+	HeartbeatSensor = {
+		Name = "Heartbeat Sensor",
+		Key = "X",
+		Kind = "Active",
+		Side = "Attack", -- finding the defenders, but only for yourself
+		Charges = 2,
+		Detonates = true, -- X again puts the sensor away early (free)
+		Duration = 7, -- seconds of scanning: gun put away the whole time
+		Radius = 32,
+		Description = "Put your gun away and scan for 7 seconds: heartbeats within 32 studs pulse through walls and floors, for you only. They feel it.",
+	},
+	BarbedWire = {
+		Name = "Barbed Wire",
+		Key = "X",
+		Kind = "Active",
+		Side = "Defend",
+		Charges = 2,
+		Description = "Roll out a coil of wire on the floor. Anyone crossing it slows to a crawl and rattles it. Shoot or knife a stake to clear it.",
+	},
+	ImpactGrenade = {
+		Name = "Impact Grenade",
+		Key = "X",
+		Kind = "Active",
+		Side = "Defend",
+		Charges = 3,
+		Radius = 6, -- blast
+		Description = "Goes off the moment it hits something: punches a hole in a soft wall or floor (murder holes, rotations) and hurts anyone close.",
 	},
 }
 

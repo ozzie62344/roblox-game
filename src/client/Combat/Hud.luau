@@ -2,9 +2,11 @@
 
 local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
+local Operators = require(ReplicatedStorage.Shared.Operators)
 local state = require(script.Parent.Parent.PlayerState)
 
 local player = Players.LocalPlayer
@@ -123,7 +125,7 @@ function Hud.Start()
 	ammoLabel = label(gui, UDim2.new(1, -40, 1, -40), Vector2.new(1, 1), 32)
 	loadoutLabel = label(gui, UDim2.new(1, -40, 1, -78), Vector2.new(1, 1), 16)
 	loadoutLabel.TextColor3 = Color3.fromRGB(200, 205, 215)
-	loadoutLabel.Size = UDim2.fromOffset(320, 24)
+	loadoutLabel.Size = UDim2.fromOffset(440, 24) -- (room for the operator's name too)
 	statusLabel = label(gui, UDim2.new(1, -40, 1, -104), Vector2.new(1, 1), 16)
 	statusLabel.Size = UDim2.fromOffset(360, 24)
 	statusLabel.Visible = false
@@ -199,9 +201,15 @@ function Hud.SetScoped(scoped: boolean)
 	scope.Visible = scoped
 end
 
--- e.g. "SMG" and "[F] Dash" → "SMG  ·  [F] Dash"
+-- e.g. "SMG" and "[F] Dash" → "SMG  ·  [F] Dash", led by your operator's name when you have one
+-- ("VOLTA  ·  SMG  ·  [X] Shock Wire  ●●")
 function Hud.SetLoadout(weaponName: string, abilityText: string?)
-	loadoutLabel.Text = if abilityText then `{string.upper(weaponName)}  ·  {abilityText}` else string.upper(weaponName)
+	local text = if abilityText then `{string.upper(weaponName)}  ·  {abilityText}` else string.upper(weaponName)
+	local operator = Operators.ById[player:GetAttribute("Operator") or ""]
+	if operator and operator.Gadget == player:GetAttribute("Ability") then -- (the dev panel can swap the gadget alone)
+		text = `{string.upper(operator.Name)}  ·  {text}`
+	end
+	loadoutLabel.Text = text
 end
 
 -- gap = distance in pixels from the center to each bar

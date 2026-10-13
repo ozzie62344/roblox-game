@@ -1,5 +1,5 @@
 -- Weapon stats. Shared so the client (feel/effects) and server (validation/damage) agree.
--- The loadout system picks from every weapon in this list.
+-- Operators (shared/Operators) pick their guns from this list.
 --
 -- Balance (100 health, Siege rule: a headshot kills with anything but shotgun pellets). Body
 -- shots to kill up close / time to kill: SMG 5 / 0.27 s, Rifle 4 / 0.28 s, LMG 4 / 0.30 s,

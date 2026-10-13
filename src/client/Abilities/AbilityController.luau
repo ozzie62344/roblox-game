@@ -1,4 +1,5 @@
--- X uses your active ability (Recon Pulse, Ghost Step, Deployable Cover and the Siege gadgets).
+-- X uses your active ability: your operator's gadget (Recon Pulse, Ghost Step, Deployable Cover
+-- and the Siege gadgets; the heartbeat sensor and barbed wire draw in GadgetEffects).
 -- Dash also lives on X, so for Dash this passes the key through to MovementController.
 -- Also draws ability effects the server sends: reveals, pulse waves (scan / EMP), "scanned"
 -- warnings and gadget status messages ("JAMMED", "CHARGE SET"...).

@@ -1,6 +1,6 @@
 -- First-person hands for everything that isn't shooting: sticking gadgets on walls and floors,
--- throwing the EMP, the detonator, the recon scanner, the ghost step wrist tap, pushing an armor
--- panel into a doorway, planting / disabling the defuser, barricading, reinforcing and pulling up
+-- throwing the EMP, the detonator, the recon scanner, the heartbeat sensor held up while it scans,
+-- rolling out barbed wire, the ghost step wrist tap, pushing an armor panel into a doorway, planting / disabling the defuser, barricading, reinforcing and pulling up
 -- deployable cover. Two gloved arms come from your shoulders and reach (two-bone IK) for points
 -- in the world or in front of your eyes, holding small props; the gun is put away meanwhile
 -- (WeaponController hides it while state.gesturing / interacting / deploying).
@@ -16,6 +16,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
+local Abilities = require(ReplicatedStorage.Shared.Abilities)
 local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local state = require(script.Parent.Parent.PlayerState)
 local Viewmodel = require(script.Parent.Parent.Combat.Viewmodel)
@@ -32,13 +33,17 @@ HandsAnimator.Gestures = {
 	HardBreach = { move = "place", prop = "thermite", time = 0.6 },
 	ShockWire = { move = "place", prop = "battery", time = 0.6 },
 	SignalJammer = { move = "place", prop = "jammer", time = 0.55 },
+	BarbedWire = { move = "place", prop = "wire", time = 0.6 },
 	ArmorPanel = { move = "push", time = 0.6 },
 	EmpGrenade = { move = "throw", prop = "grenade", time = 0.65 },
 	SmokeGrenade = { move = "throw", prop = "smoke", time = 0.65 },
 	Flashbang = { move = "throw", prop = "flash", time = 0.65 },
+	ImpactGrenade = { move = "throw", prop = "impact", time = 0.6 },
 	Detonate = { move = "detonate", prop = "detonator", time = 0.6 },
 	ReconPulse = { move = "scan", prop = "scanner", time = 0.8 },
 	GhostStep = { move = "wrist", prop = "band", time = 0.6 },
+	-- Held up for the whole scan (the server clears the gesture if it's put away early)
+	HeartbeatSensor = { move = "sensor", prop = "sensor", time = Abilities.HeartbeatSensor.Duration or 7 },
 } :: { [string]: { move: string, prop: string?, time: number } }
 -- Holds last as long as the server's timers
 local HOLD_TIME = {
@@ -190,6 +195,16 @@ function HandsAnimator.Sample(kind: string, ctx: Context): (Vector3?, Vector3?, 
 		local grip = (tablet * CFrame.new(0, -0.4, -0.08)).Position -- holding it from below
 		local press = (tablet * CFrame.new(0.34, -0.05, 0.28 - 0.2 * tap)).Position -- a finger on the screen's edge
 		return grip, restR:Lerp(press, raise * 0.9), props
+	elseif move == "sensor" then
+		-- Heartbeat sensor up in both hands, swept slowly side to side; down again at the end
+		local total = if gesture then gesture.time else 1
+		local raise = ramp(ctx.elapsed, 0, 0.35) * (1 - ramp(ctx.elapsed, total - 0.35, total))
+		local sweep = math.sin(ctx.elapsed * 1.7) * 0.1
+		local device = eye * CFrame.new(sweep, -0.38 - 0.7 * (1 - raise), -1.05) * CFrame.Angles(math.rad(30), sweep * 0.8, 0)
+		props.sensor = { at = device }
+		local gripL = (device * CFrame.new(-0.3, -0.12, 0.06)).Position
+		local gripR = (device * CFrame.new(0.3, -0.12, 0.06)).Position
+		return restL:Lerp(gripL, raise), restR:Lerp(gripR, raise), props
 	elseif move == "wrist" then
 		-- Left wrist up, the right hand taps the band on it
 		local raise = ramp(t, 0, 0.25) * (1 - ramp(t, 0.7, 1))
@@ -373,6 +388,23 @@ local PROP_BUILDERS: { [string]: (Model) -> () } = {
 	flash = function(m)
 		newPart(m, Vector3.new(0.3, 0.5, 0.3), DARK, Enum.Material.Metal)
 		newPart(m, Vector3.new(0.33, 0.08, 0.33), Color3.fromRGB(200, 200, 200), Enum.Material.SmoothPlastic).CFrame = CFrame.new(0, 0.14, 0)
+	end,
+	wire = function(m) -- a rolled-up coil
+		for _, x in { -0.18, 0, 0.18 } do
+			local ring = newPart(m, Vector3.new(0.12, 0.55, 0.55), Color3.fromRGB(120, 122, 118), Enum.Material.Metal)
+			ring.Shape = Enum.PartType.Cylinder
+			ring.CFrame = CFrame.new(x, 0, 0)
+		end
+	end,
+	impact = function(m)
+		newPart(m, Vector3.new(0.28, 0.4, 0.28), DARK, Enum.Material.Metal)
+		newPart(m, Vector3.new(0.31, 0.1, 0.31), Color3.fromRGB(255, 120, 40), Enum.Material.Neon)
+	end,
+	sensor = function(m)
+		newPart(m, Vector3.new(0.7, 0.45, 0.08), DARK, Enum.Material.Plastic)
+		newPart(m, Vector3.new(0.58, 0.35, 0.01), Color3.fromRGB(40, 70, 50), Enum.Material.Neon).CFrame = CFrame.new(0, 0, 0.045)
+		newPart(m, Vector3.new(0.06, 0.06, 0.02), Color3.fromRGB(255, 70, 80), Enum.Material.Neon).CFrame = CFrame.new(0.05, 0.04, 0.055)
+		newPart(m, Vector3.new(0.05, 0.35, 0.05), DARK, Enum.Material.Metal).CFrame = CFrame.new(0.28, 0.38, -0.02)
 	end,
 	detonator = function(m)
 		newPart(m, Vector3.new(0.22, 0.5, 0.18), DARK, Enum.Material.Plastic)

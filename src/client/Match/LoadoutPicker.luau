@@ -1,6 +1,10 @@
--- Loadout cards shown during the pre-round freeze.
---   Draft:  3 cards — click one or press 1 / 2 / 3. You can change your pick until the timer ends.
---   Random: one card showing what you rolled.
+-- Operator cards shown during the pre-round freeze (LoadoutService sends them).
+--   Draft:  a card for every operator on your side: name, one-line bio, gadget and the guns they
+--           can take in this mode. Click a card (or press 1-6) to play them with the highlighted
+--           gun, or click a gun on a card to take that one. You can change until the timer ends.
+--           A teammate's operator is greyed out with their name on it; once you've used your
+--           gadget (defenders during setup) you're locked in, but can still change guns.
+--   Random: one card showing who you got.
 
 local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
@@ -9,7 +13,9 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local Abilities = require(ReplicatedStorage.Shared.Abilities)
+local GameRules = require(ReplicatedStorage.Shared.GameRules)
 local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
+local Operators = require(ReplicatedStorage.Shared.Operators)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 local state = require(script.Parent.Parent.PlayerState)
 
@@ -23,20 +29,37 @@ local LoadoutPicker = {}
 
 local CARD_COLOR = Color3.fromRGB(28, 30, 36)
 local SELECTED_COLOR = Color3.fromRGB(50, 110, 220)
-local PICK_KEYS = { Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three }
+local CHIP_COLOR = Color3.fromRGB(44, 47, 56)
+local GREY = Color3.fromRGB(165, 170, 180)
+local DIM = Color3.fromRGB(95, 98, 106)
+local GADGET_COLOR = Color3.fromRGB(120, 190, 255)
+local TAKEN_COLOR = Color3.fromRGB(255, 170, 70)
+local CARD_WIDTH, CARD_HEIGHT, CARD_GAP = 178, 360, 12
+local PICK_KEYS = { Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four, Enum.KeyCode.Five, Enum.KeyCode.Six }
+
+type OfferEntry = { Id: string, Weapons: { string }, TakenBy: string? }
+type Offer = {
+	Side: string,
+	Random: boolean,
+	Deadline: number,
+	Operators: { OfferEntry },
+	Pick: { Operator: string, Weapon: string }?,
+	Locked: boolean,
+}
 
 local root: Frame
+local scale: UIScale
 local title: TextLabel
 local timerBar: Frame
 local cardRow: Frame
 local hint: TextLabel
-local cards: { TextButton } = {}
+local cards: { GuiObject } = {}
+local offer: Offer? = nil
 local deadline = 0
 local offeredAt = 0
 local isDraft = false
-local selected: number? = nil
-
-type Loadout = { Weapon: string, Ability: string }
+local selected: string? = nil -- operator you're playing (or just clicked, until the server answers)
+local chosenGun: { [string]: string } = {} -- the highlighted gun on each card
 
 local function textLabel(parent: Instance, text: string, size: number, color: Color3?, order: number): TextLabel
 	local l = Instance.new("TextLabel")
@@ -47,33 +70,66 @@ local function textLabel(parent: Instance, text: string, size: number, color: Co
 	l.TextSize = size
 	l.TextColor3 = color or Color3.new(1, 1, 1)
 	l.TextXAlignment = Enum.TextXAlignment.Left
+	l.TextYAlignment = Enum.TextYAlignment.Top
 	l.TextWrapped = true
 	l.Text = text
 	l.Parent = parent
 	return l
 end
 
-local function fireRateText(weapon: Weapons.Weapon): string
-	return if weapon.Automatic then `{weapon.RPM} RPM auto` else `{weapon.RPM} RPM semi`
+local function gunName(name: string): string
+	local weapon = Weapons[name]
+	return string.upper(if weapon then weapon.Name elseif name == GameRules.NoGun then "Knife" else name)
 end
 
-local function damageText(weapon: Weapons.Weapon): string
-	return if weapon.Pellets > 1 then `{weapon.Damage} × {weapon.Pellets} pellets` else `{weapon.Damage} dmg`
-end
-
-local function refreshSelection()
-	for i, card in cards do
-		card.BackgroundColor3 = if i == selected then SELECTED_COLOR else CARD_COLOR
+local function gunInfo(name: string): string
+	local weapon = Weapons[name]
+	if not weapon then
+		return "No guns this match. One stab kills."
 	end
+	return weapon.Description
 end
 
-local function pick(index: number)
-	if not isDraft or not cards[index] then
+-- Used a charge of your gadget this round? Then you can't change operator (LoadoutService)
+local function locked(): boolean
+	if offer and offer.Locked then
+		return true
+	end
+	local ability = Abilities[player:GetAttribute("Ability") or ""]
+	local charges = player:GetAttribute("AbilityCharges")
+	return ability ~= nil and ability.Charges ~= nil and typeof(charges) == "number" and charges < ability.Charges
+end
+
+-- The gun a card has highlighted: the one you clicked, the one you're playing them with, the one
+-- in your hands if they can take it, or their first
+local function gunFor(entry: OfferEntry): string
+	local chosen = chosenGun[entry.Id]
+	if chosen and table.find(entry.Weapons, chosen) then
+		return chosen
+	end
+	local holding = player:GetAttribute("Weapon")
+	if typeof(holding) == "string" and table.find(entry.Weapons, holding) then
+		return holding
+	end
+	return entry.Weapons[1] or GameRules.NoGun
+end
+
+local render: () -> ()
+
+local function pick(index: number, gun: string?)
+	local entry = offer and offer.Operators[index]
+	if not isDraft or not entry or entry.TakenBy then
 		return
 	end
-	selected = index
-	DraftPick:FireServer(index)
-	refreshSelection()
+	if locked() and entry.Id ~= player:GetAttribute("Operator") then
+		return -- (the card says why)
+	end
+	if gun then
+		chosenGun[entry.Id] = gun
+	end
+	selected = entry.Id
+	DraftPick:FireServer(entry.Id, gunFor(entry))
+	render()
 end
 
 -- The pick window is over (the round started): close everything
@@ -85,48 +141,81 @@ local function close()
 	ContextActionService:UnbindAction("DraftPick")
 end
 
-local function makeCard(index: number, loadout: Loadout): TextButton
-	local weapon = Weapons[loadout.Weapon]
-	local ability = Abilities[loadout.Ability]
+local function makeCard(index: number, entry: OfferEntry): TextButton?
+	local operator = Operators.ById[entry.Id]
+	if not operator then
+		return nil
+	end
+	local gadget = Abilities[operator.Gadget]
+	local mine = entry.Id == selected
+	local blockedBy = if entry.TakenBy then `TAKEN  ·  {string.upper(entry.TakenBy)}`
+		elseif isDraft and not mine and locked() then "LOCKED IN: GADGET USED"
+		else nil
+	local active = isDraft and not blockedBy
 
 	local card = Instance.new("TextButton")
-	card.Size = UDim2.fromOffset(220, 250)
+	card.Size = UDim2.fromOffset(CARD_WIDTH, CARD_HEIGHT)
 	card.LayoutOrder = index
-	card.BackgroundColor3 = CARD_COLOR
-	card.AutoButtonColor = isDraft
+	card.BackgroundColor3 = if mine then SELECTED_COLOR else CARD_COLOR
+	card.BackgroundTransparency = if blockedBy then 0.45 else 0
+	card.AutoButtonColor = active
 	card.Text = ""
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0, 10)
 	corner.Parent = card
+	local stroke = Instance.new("UIStroke")
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Color = operator.Color
+	stroke.Thickness = if mine then 2 else 1
+	stroke.Transparency = if blockedBy then 0.8 else 0.35
+	stroke.Parent = card
 	local padding = Instance.new("UIPadding")
-	padding.PaddingTop = UDim.new(0, 14)
-	padding.PaddingLeft = UDim.new(0, 14)
-	padding.PaddingRight = UDim.new(0, 14)
+	padding.PaddingTop = UDim.new(0, 12)
+	padding.PaddingLeft = UDim.new(0, 12)
+	padding.PaddingRight = UDim.new(0, 12)
 	padding.Parent = card
 	local layout = Instance.new("UIListLayout")
 	layout.SortOrder = Enum.SortOrder.LayoutOrder
 	layout.Padding = UDim.new(0, 2)
 	layout.Parent = card
 
-	local grey = Color3.fromRGB(165, 170, 180)
+	local text = if blockedBy then DIM else GREY
 	if isDraft then
-		textLabel(card, `[{index}]`, 13, grey, 0)
+		textLabel(card, `[{index}]`, 12, text, 0)
 	end
-	if weapon then
-		textLabel(card, string.upper(weapon.Name), 26, nil, 1)
-		textLabel(card, weapon.Description, 13, grey, 2)
-		textLabel(card, `{damageText(weapon)}  ·  {fireRateText(weapon)}`, 13, nil, 3)
-		textLabel(card, `{weapon.MagazineSize} round magazine`, 13, nil, 4)
-	else
-		-- Knives Only
-		textLabel(card, "KNIFE", 26, nil, 1)
-		textLabel(card, "No guns this match.", 13, grey, 2)
-		textLabel(card, "One stab kills  ·  quick recharge", 13, nil, 3)
+	textLabel(card, string.upper(operator.Name), 24, if blockedBy then DIM else operator.Color, 1)
+	textLabel(card, operator.Bio, 12, text, 2).Size = UDim2.new(1, 0, 0, 44)
+	if gadget then
+		textLabel(card, `{string.upper(gadget.Name)}  [{gadget.Key}]`, 14, if blockedBy then DIM else GADGET_COLOR, 3)
+		local description = textLabel(card, gadget.Description, 11, text, 4)
+		description.Size = UDim2.new(1, 0, 0, 80)
+		description.TextTruncate = Enum.TextTruncate.AtEnd
 	end
-	textLabel(card, " ", 8, nil, 5)
-	if ability then
-		textLabel(card, `{string.upper(ability.Name)}  [{ability.Key}]`, 18, Color3.fromRGB(120, 190, 255), 6)
-		textLabel(card, ability.Description, 13, grey, 7).Size = UDim2.new(1, 0, 0, 40)
+
+	-- Guns: click one to play this operator with it
+	local gun = gunFor(entry)
+	for i, name in entry.Weapons do
+		local chip = Instance.new("TextButton")
+		chip.Size = UDim2.new(1, 0, 0, 22)
+		chip.LayoutOrder = 10 + i
+		chip.BackgroundColor3 = if name == gun and not blockedBy then operator.Color else CHIP_COLOR
+		chip.BackgroundTransparency = if blockedBy then 0.6 else 0
+		chip.AutoButtonColor = active
+		chip.Font = Enum.Font.GothamBold
+		chip.TextSize = 12
+		chip.TextColor3 = if blockedBy then DIM elseif name == gun then Color3.fromRGB(15, 16, 20) else Color3.new(1, 1, 1)
+		chip.Text = gunName(name)
+		local chipCorner = Instance.new("UICorner")
+		chipCorner.CornerRadius = UDim.new(0, 6)
+		chipCorner.Parent = chip
+		chip.Activated:Connect(function()
+			pick(index, name)
+		end)
+		chip.Parent = card
+	end
+	textLabel(card, gunInfo(gun), 11, text, 20).Size = UDim2.new(1, 0, 0, 28)
+	if blockedBy then
+		textLabel(card, blockedBy, 12, TAKEN_COLOR, 21)
 	end
 
 	card.Activated:Connect(function()
@@ -136,25 +225,52 @@ local function makeCard(index: number, loadout: Loadout): TextButton
 	return card
 end
 
-local function onOffer(options: { Loadout }, newDeadline: number, isRandom: boolean)
+function render()
 	for _, card in cards do
 		card:Destroy()
 	end
 	table.clear(cards)
-	deadline = newDeadline
-	offeredAt = Workspace:GetServerTimeNow()
-	isDraft = not isRandom
-	selected = nil
-
-	-- Pick with a click or 1 / 2 / 3. Left Alt hides the cards so you can look around, and brings
-	-- them back — any time until the round starts.
-	title.Text = if not isDraft then "YOUR LOADOUT"
-		elseif state.touchControls then "PICK YOUR LOADOUT  ·  TAP A CARD"
-		else "PICK YOUR LOADOUT  ·  CLICK OR 1 / 2 / 3  ·  ALT TO HIDE"
-	for i, loadout in options do
-		cards[i] = makeCard(i, loadout)
+	local current = offer
+	if not current then
+		return
 	end
-	refreshSelection()
+	local count = 0
+	for i, entry in current.Operators do
+		-- Random: just the card you got
+		if isDraft or entry.Id == selected then
+			local card = makeCard(i, entry)
+			if card then
+				table.insert(cards, card)
+				count += 1
+			end
+		end
+	end
+	root.Size = UDim2.fromOffset(math.max(count * (CARD_WIDTH + CARD_GAP) - CARD_GAP, 420), 60 + CARD_HEIGHT)
+end
+
+local function onOffer(newOffer: Offer)
+	local newRound = newOffer.Deadline ~= deadline
+	offer = newOffer
+	deadline = newOffer.Deadline
+	isDraft = not newOffer.Random
+	if newRound then
+		offeredAt = Workspace:GetServerTimeNow()
+		table.clear(chosenGun)
+	end
+	-- The server's word on who you are (it may have refused a pick: taken a moment ago)
+	selected = if newOffer.Pick then newOffer.Pick.Operator else nil
+	if newOffer.Pick then
+		chosenGun[newOffer.Pick.Operator] = newOffer.Pick.Weapon
+	end
+
+	local side = string.upper(newOffer.Side)
+	title.Text = if not isDraft then `YOUR OPERATOR  ·  {side}`
+		elseif state.touchControls then `PICK YOUR OPERATOR  ·  {side}  ·  TAP A CARD`
+		else `PICK YOUR OPERATOR  ·  {side}  ·  CLICK OR 1-{#newOffer.Operators}  ·  ALT TO HIDE`
+	render()
+	if not newRound then
+		return -- a teammate picked: just the cards change (hidden cards stay hidden)
+	end
 	root.Visible = true
 
 	if isDraft then
@@ -183,22 +299,26 @@ local function build()
 	root = Instance.new("Frame")
 	root.AnchorPoint = Vector2.new(0.5, 0.5)
 	root.Position = UDim2.fromScale(0.5, 0.55)
-	root.Size = UDim2.fromOffset(720, 330)
+	root.Size = UDim2.fromOffset(720, 60 + CARD_HEIGHT)
 	root.BackgroundTransparency = 1
 	root.Visible = false
 	root.Parent = gui
+	-- Six cards don't fit a phone: everything shrinks to fit the screen
+	scale = Instance.new("UIScale")
+	scale.Parent = root
 
 	title = Instance.new("TextLabel")
 	title.Size = UDim2.new(1, 0, 0, 36)
 	title.BackgroundTransparency = 1
 	title.Font = Enum.Font.GothamBlack
-	title.TextSize = 24
+	title.TextSize = 22
 	title.TextColor3 = Color3.new(1, 1, 1)
 	title.TextStrokeTransparency = 0.5
 	title.Parent = root
 
 	local timerBack = Instance.new("Frame")
-	timerBack.Position = UDim2.new(0.5, -150, 0, 42)
+	timerBack.AnchorPoint = Vector2.new(0.5, 0)
+	timerBack.Position = UDim2.new(0.5, 0, 0, 42)
 	timerBack.Size = UDim2.fromOffset(300, 4)
 	timerBack.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
 	timerBack.BorderSizePixel = 0
@@ -224,20 +344,24 @@ local function build()
 
 	cardRow = Instance.new("Frame")
 	cardRow.Position = UDim2.fromOffset(0, 60)
-	cardRow.Size = UDim2.new(1, 0, 0, 260)
+	cardRow.Size = UDim2.new(1, 0, 0, CARD_HEIGHT)
 	cardRow.BackgroundTransparency = 1
 	cardRow.Parent = root
 	local layout = Instance.new("UIListLayout")
 	layout.FillDirection = Enum.FillDirection.Horizontal
 	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 	layout.SortOrder = Enum.SortOrder.LayoutOrder
-	layout.Padding = UDim.new(0, 16)
+	layout.Padding = UDim.new(0, CARD_GAP)
 	layout.Parent = cardRow
 end
 
 local function update()
 	local now = Workspace:GetServerTimeNow()
 	local remaining = deadline - now
+	-- Fit the row on screen (a little margin; never bigger than designed)
+	local viewport = Workspace.CurrentCamera.ViewportSize
+	local size = root.Size
+	scale.Scale = math.min(1, (viewport.X - 24) / size.X.Offset, viewport.Y * 0.88 / size.Y.Offset)
 	if isDraft then
 		if not state.loadoutWindow then
 			return
@@ -249,9 +373,9 @@ local function update()
 		-- Cards open or hidden (Left Alt toggles state.draftOpen in MouseUnlock)
 		root.Visible = state.draftOpen
 		hint.Visible = not state.draftOpen
-		hint.Text = `{if state.touchControls then "TAP LOADOUT" else "LEFT ALT"}  ·  CHANGE LOADOUT  ({math.ceil(remaining)}s)`
+		hint.Text = `{if state.touchControls then "TAP LOADOUT" else "LEFT ALT"}  ·  CHANGE OPERATOR  ({math.ceil(remaining)}s)`
 	else
-		-- Random: just show what you got for a few seconds
+		-- Random: just show who you got for a few seconds
 		if not root.Visible then
 			return
 		end
@@ -268,6 +392,12 @@ function LoadoutPicker.Start()
 	build()
 	LoadoutOffer.OnClientEvent:Connect(onOffer)
 	RunService.RenderStepped:Connect(update)
+	-- Using your gadget during setup locks your operator in: show it on the cards straight away
+	player:GetAttributeChangedSignal("AbilityCharges"):Connect(function()
+		if isDraft and state.loadoutWindow then
+			render()
+		end
+	end)
 end
 
 return LoadoutPicker

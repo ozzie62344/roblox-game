@@ -1,7 +1,8 @@
 -- Active abilities (used with X): Recon Pulse, Ghost Step, Deployable Cover here, and the Siege
--- gadgets in GadgetService (breach charges, thermite, EMP, shock wire, jammer, armor panel).
--- Charges are tracked here and mirrored to the "AbilityCharges" player attribute for the HUD.
--- Charges refill whenever you spawn or your ability changes.
+-- gadgets in GadgetService (breach charges, thermite, EMP, grenades, heartbeat sensor, shock wire,
+-- jammer, armor panel, barbed wire, impact grenades). Your ability is your operator's gadget
+-- (LoadoutService). Charges are tracked here and mirrored to the "AbilityCharges" player attribute
+-- for the HUD. Charges refill whenever you spawn or your ability changes.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")

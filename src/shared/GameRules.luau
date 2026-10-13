@@ -35,7 +35,7 @@ local rgb = Color3.fromRGB
 
 -- Vote order
 GameRules.List = {
-	rules("Classic", "Classic", "Draft any gun", { rgb(40, 45, 60), rgb(110, 120, 150) }),
+	rules("Classic", "Classic", "Every operator, every gun", { rgb(40, 45, 60), rgb(110, 120, 150) }),
 	rules("Snipers", "Snipers Only", "Everyone gets a sniper", { rgb(30, 55, 40), rgb(110, 170, 100) }, { Weapons = { "Sniper" } }),
 	rules("Shotguns", "Shotguns Only", "Close quarters, big pellets", { rgb(70, 35, 25), rgb(210, 110, 60) }, { Weapons = { "Shotgun" } }),
 	rules("Pistols", "Pistols Only", "Revolvers and autopistols", { rgb(45, 40, 70), rgb(150, 120, 220) }, { Weapons = { "Revolver", "Autopistol" } }),
