@@ -6,8 +6,10 @@
 --   │  couches                                                         couches     │
 --   │                     movement course: crates, low wall, ramp                  │
 --   │                                  spawn                                       │
---   └──────────────────────────────────────────────────────────────────────────────┘
+--   └──────────────────────────────────────────────────────[range door]────────────┘
 --   (east wall: the leaderboard, top 10 for kills / wins / level: LeaderboardService)
+--   (south wall: the doorway to the PRACTICE RANGE. Built plugged ("RangeDoorPlug"); on lobby
+--   servers PracticeRange removes the plug and builds the range behind it)
 
 local MapBuilder = require(script.Parent.MapBuilder)
 
@@ -26,6 +28,13 @@ local FABRIC = Color3.fromRGB(70, 80, 105)
 local SCREEN = Color3.fromRGB(14, 16, 20)
 local ACCENT = Color3.fromRGB(255, 170, 60)
 local LIGHT_BRIGHTNESS = 0.7 -- the ceiling lights overlap a lot; at full strength the room was too bright
+
+-- For the practice range (PracticeRange), so it looks like it belongs to the lobby
+Lobby.HalfZ = HALF_Z
+Lobby.Palette = { Carpet = CARPET, Panel = PANEL, Plaster = PLASTER, Trim = TRIM, Screen = SCREEN, Accent = ACCENT }
+Lobby.LightBrightness = LIGHT_BRIGHTNESS
+-- The range doorway in the south wall: x1..x2 across (from the center), `top` studs high
+Lobby.RangeDoor = { x1 = 10, x2 = 18, top = 10 }
 
 local function screen(map: MapBuilder.Builder, center: Vector3, width: number, title: string, subtitle: string)
 	map:Box("ScreenFrame", center - Vector3.new(width / 2 + 0.3, 3.3, 0.5), center + Vector3.new(width / 2 + 0.3, 3.3, 0), TRIM, Enum.Material.Metal)
@@ -56,11 +65,11 @@ local function screen(map: MapBuilder.Builder, center: Vector3, width: number, t
 	label(subtitle, 40, 0.72, ACCENT)
 end
 
--- The leaderboard on the east wall: top 10 for kills, wins and level, side by side. Built empty;
--- LeaderboardService fills it in (it looks for "Leaderboard" → "Board" → Kills / Wins / Level →
--- Row1..Row10 → Face / Who / Value, and "Status").
+-- The leaderboard on the east wall: top 10 for kills, wins, level and ranked MMR, side by side.
+-- Built empty; LeaderboardService fills it in (it looks for "Leaderboard" → "Board" → Kills /
+-- Wins / Level / Ranked → Row1..Row10 → Face / Who / Value, and "Status").
 local BOARD_ROWS = 10
-local BOARD_COLUMNS = { { "Kills", "MOST KILLS" }, { "Wins", "MOST WINS" }, { "Level", "HIGHEST LEVEL" } }
+local BOARD_COLUMNS = { { "Kills", "MOST KILLS" }, { "Wins", "MOST WINS" }, { "Level", "HIGHEST LEVEL" }, { "Ranked", "TOP RANKED" } }
 
 local function leaderboard(map: MapBuilder.Builder, center: Vector3, width: number, height: number)
 	-- Frame against the wall, glass just in front of it (west), facing into the room
@@ -91,8 +100,8 @@ local function leaderboard(map: MapBuilder.Builder, center: Vector3, width: numb
 	for i, info in BOARD_COLUMNS do
 		local column = Instance.new("Frame")
 		column.Name = info[1]
-		column.Position = UDim2.fromScale(0.02 + (i - 1) * 0.33, 0.15)
-		column.Size = UDim2.fromScale(0.3, 0.77)
+		column.Position = UDim2.fromScale(0.02 + (i - 1) * 0.245, 0.15)
+		column.Size = UDim2.fromScale(0.235, 0.77)
 		column.BackgroundTransparency = 1
 		column.Parent = gui
 		label(column, "Heading", info[2], UDim2.new(), UDim2.fromScale(1, 0.09), ACCENT, Enum.Font.Michroma)
@@ -143,7 +152,8 @@ function Lobby.Build(): Model
 	map:Floor("Floor", o.X - HALF_X, o.Z - HALF_Z, o.X + HALF_X, o.Z + HALF_Z, o.Y, 1, CARPET, Enum.Material.Carpet)
 	map:Floor("Ceiling", o.X - HALF_X - 1, o.Z - HALF_Z - 1, o.X + HALF_X + 1, o.Z + HALF_Z + 1, o.Y + WALL + 1, 1, PLASTER, Enum.Material.Plaster)
 	map:Wall("Wall", o.X - HALF_X, o.Z - HALF_Z, o.X + HALF_X, o.Z - HALF_Z, o.Y, WALL, nil, PLASTER, Enum.Material.Plaster)
-	map:Wall("Wall", o.X - HALF_X, o.Z + HALF_Z, o.X + HALF_X, o.Z + HALF_Z, o.Y, WALL, nil, PLASTER, Enum.Material.Plaster)
+	local door = Lobby.RangeDoor
+	map:Wall("Wall", o.X - HALF_X, o.Z + HALF_Z, o.X + HALF_X, o.Z + HALF_Z, o.Y, WALL, { { from = HALF_X + door.x1, to = HALF_X + door.x2, top = door.top } }, PLASTER, Enum.Material.Plaster)
 	map:Wall("Wall", o.X - HALF_X, o.Z - HALF_Z, o.X - HALF_X, o.Z + HALF_Z, o.Y, WALL, nil, PLASTER, Enum.Material.Plaster)
 	map:Wall("Wall", o.X + HALF_X, o.Z - HALF_Z, o.X + HALF_X, o.Z + HALF_Z, o.Y, WALL, nil, PLASTER, Enum.Material.Plaster)
 	for _, side in { { -1, 0 }, { 1, 0 }, { 0, -1 }, { 0, 1 } } do
@@ -158,10 +168,31 @@ function Lobby.Build(): Model
 			local z = o.Z + sz * (HALF_Z - inset)
 			min, max = Vector3.new(o.X - HALF_X, o.Y, z - 0.1), Vector3.new(o.X + HALF_X, o.Y + 4, z + 0.1)
 		end
-		local band = map:Box("Wainscot", min, max, PANEL, Enum.Material.WoodPlanks)
-		band.CanCollide = false
-		local base = map:Box("Baseboard", min, Vector3.new(max.X, o.Y + 0.6, max.Z) + Vector3.new(0.05, 0, 0.05), TRIM, Enum.Material.Wood)
-		base.CanCollide = false
+		-- (the south one stops either side of the range doorway; the plug below fills the gap)
+		local spans = { { min, max } }
+		if sz == 1 then
+			spans = { { min, Vector3.new(o.X + door.x1, max.Y, max.Z) }, { Vector3.new(o.X + door.x2, min.Y, min.Z), max } }
+		end
+		for _, span in spans do
+			local band = map:Box("Wainscot", span[1], span[2], PANEL, Enum.Material.WoodPlanks)
+			band.CanCollide = false
+			local base = map:Box("Baseboard", span[1], Vector3.new(span[2].X, o.Y + 0.6, span[2].Z) + Vector3.new(0.05, 0, 0.05), TRIM, Enum.Material.Wood)
+			base.CanCollide = false
+		end
+	end
+
+	-- The range doorway starts walled up (wall, wainscot and baseboard, like the rest of the wall).
+	-- PracticeRange removes this on lobby servers; match servers have no range behind it.
+	local plug = Instance.new("Model")
+	plug.Name = "RangeDoorPlug"
+	plug.Parent = map.model
+	local plugWall = map:Box("Wall", at(door.x1, 0, HALF_Z - 0.5), at(door.x2, door.top, HALF_Z + 0.5), PLASTER, Enum.Material.Plaster)
+	local plugBand = map:Box("Wainscot", at(door.x1, 0, HALF_Z - 0.7), at(door.x2, 4, HALF_Z - 0.5), PANEL, Enum.Material.WoodPlanks)
+	local plugBase = map:Box("Baseboard", at(door.x1, 0, HALF_Z - 0.7), at(door.x2, 0.6, HALF_Z - 0.45), TRIM, Enum.Material.Wood)
+	plugBand.CanCollide = false
+	plugBase.CanCollide = false
+	for _, part in { plugWall, plugBand, plugBase } do
+		part.Parent = plug
 	end
 
 	-- Ceiling lights in a grid

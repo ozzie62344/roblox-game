@@ -917,6 +917,7 @@ end
 local function inLobbyMenu(): boolean
 	return MatchState:GetAttribute("ServerKind") == "Lobby"
 		and player:GetAttribute("Location") == "Lobby"
+		and not state.inPractice
 		and MatchState:GetAttribute("Phase") == "Waiting"
 end
 

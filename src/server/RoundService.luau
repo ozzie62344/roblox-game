@@ -10,6 +10,8 @@
 --                 the attackers hunt for it with drones during the setup (DroneService).
 --   Elimination:  wipe the other team, or have more players alive when time runs out.
 -- One team attacks, the other defends; sides swap at halftime.
+-- Ranked matches (MatchState "Ranked", from the teleport data): Classic rules only, a team that
+-- has all left forfeits, and RankedService rates everyone at the end.
 -- Clients read the current state from attributes on ReplicatedStorage.MatchState.
 
 local Players = game:GetService("Players")
@@ -29,6 +31,7 @@ local MatchStats = require(script.Parent.MatchStats)
 local ObjectiveService = require(script.Parent.ObjectiveService)
 local PartyService = require(script.Parent.PartyService)
 local ProgressService = require(script.Parent.ProgressService)
+local RankedService = require(script.Parent.RankedService)
 local ShopService = require(script.Parent.ShopService)
 
 local KillFeed = ReplicatedStorage.Remotes.KillFeed :: RemoteEvent
@@ -108,6 +111,7 @@ local function spawnFreeRoam(player: Player)
 	if character and spot then
 		-- Spread people out a little so they don't spawn inside each other
 		character:PivotTo(spot * CFrame.new(math.random() * 6 - 3, standHeight(character), math.random() * 6 - 3))
+		player:SetAttribute("ServerTeleport", os.clock()) -- (AntiCheat: our own teleport, not a cheat)
 	end
 end
 
@@ -168,6 +172,7 @@ local function placeTeam(teamName: string, side: string)
 			-- Spread teammates out side by side on the pad, facing the way the pad faces
 			local sideOffset = (i - (#members + 1) / 2) * 4
 			character:PivotTo(pad.CFrame * CFrame.new(sideOffset, standHeight(character), 0))
+			player:SetAttribute("ServerTeleport", os.clock()) -- (AntiCheat: our own teleport, not a cheat)
 			root.Anchored = true
 		end
 	end
@@ -329,7 +334,8 @@ local function runRound(round: number, mode: string, attack: string): (string?, 
 	local pickTime = freezeTime + (if mode == "AttackDefend" then MatchConfig.PrepTime else 0)
 	LoadoutService.StartRound(roundPlayers, loadoutMode, pickTime)
 
-	setPhase("PreRound", freezeTime, `ROUND {round}`)
+	local ranked = round == 1 and MatchState:GetAttribute("Ranked") == true
+	setPhase("PreRound", freezeTime, if ranked then "RANKED MATCH · ROUND 1" else `ROUND {round}`)
 	task.wait(freezeTime)
 
 	-- Attack / Defend: defenders get time to set up while attackers scout with drones from spawn
@@ -397,6 +403,7 @@ local function runMatch()
 	abortMatch = false
 	assignTeams()
 	MatchStats.Begin()
+	RankedService.Begin() -- (only does anything in a ranked match)
 	local scores = { Blue = 0, Orange = 0 }
 	setScores(scores)
 
@@ -428,6 +435,14 @@ local function runMatch()
 			matchWinner = winner
 			break
 		end
+		-- Ranked: a team that has all left forfeits (whoever's still here wins)
+		if MatchState:GetAttribute("Ranked") == true then
+			local blueLeft, orangeLeft = #teams.Blue:GetPlayers(), #teams.Orange:GetPlayers()
+			if (blueLeft == 0) ~= (orangeLeft == 0) then
+				matchWinner = if blueLeft > 0 then "Blue" else "Orange"
+				break
+			end
+		end
 
 		local banner = if winner == "Draw" then `ROUND DRAW · {reason}` else `{string.upper(winner)} WINS · {reason}`
 		setPhase("PostRound", MatchConfig.PostRoundTime, banner)
@@ -441,6 +456,8 @@ local function runMatch()
 	end
 
 	if matchWinner and not abortMatch then
+		-- Ranked: new MMR for everyone, first thing (before the results screen, which shows it)
+		RankedService.Finish(matchWinner)
 		for _, teamName in MatchConfig.TeamOrder do
 			for _, player in teams[teamName]:GetPlayers() do
 				ShopService.Award(player, MatchConfig.Credits.MatchPlayed, "MATCH COMPLETE")
@@ -462,6 +479,10 @@ local function runMatch()
 
 	matchRunning = false
 	MatchStats.Stop()
+	RankedService.Cancel() -- (stopped early: no ratings change; already done if it was won)
+	if not IS_MATCH_SERVER then
+		MatchState:SetAttribute("Ranked", nil) -- (a Studio / lobby ranked match was for this match only)
+	end
 	table.clear(presetTeams) -- (Matchmaker's teams were for this match only)
 	ObjectiveService.EndRound()
 	DroneService.Reset()
@@ -509,6 +530,9 @@ local function voteMap()
 	local ruleIds = {}
 	for _, rules in GameRules.List do
 		table.insert(ruleIds, rules.Id)
+	end
+	if MatchState:GetAttribute("Ranked") == true and GameRules.ById.Classic then
+		ruleIds = { "Classic" } -- (ranked is always played straight)
 	end
 	MatchState:SetAttribute("VoteMaps", table.concat(MapService.MapNames, ","))
 	MatchState:SetAttribute("VoteRules", table.concat(ruleIds, ","))
@@ -641,6 +665,7 @@ local function onPlayerAdded(player: Player)
 	if typeof(data) == "table" and typeof(data.Players) == "table" and not MatchState:GetAttribute("Expected") then
 		MatchState:SetAttribute("Expected", math.clamp(#data.Players, 2, MatchConfig.MaxTeamSize * 2))
 		MatchState:SetAttribute("QueueMode", if typeof(data.Mode) == "string" then data.Mode else nil)
+		MatchState:SetAttribute("Ranked", if data.Ranked == true then true else nil)
 	end
 	if typeof(data) == "table" and typeof(data.Teams) == "table" then
 		for _, name in MatchConfig.TeamOrder do
@@ -671,9 +696,13 @@ function RoundService.SpawnFreeRoam(player: Player)
 	end
 end
 
--- `picks`: who plays on which team (Matchmaker in Studio, so a party plays together)
-function RoundService.ForceStart(picks: { [Player]: string }?)
+-- `picks`: who plays on which team (Matchmaker in Studio, so a party plays together); `ranked`:
+-- a full ranked queue in Studio (the match is rated)
+function RoundService.ForceStart(picks: { [Player]: string }?, ranked: boolean?)
 	forceStart = true
+	if not IS_MATCH_SERVER then
+		MatchState:SetAttribute("Ranked", if ranked then true else nil)
+	end
 	if picks then
 		for player, name in picks do
 			presetTeams[player] = name

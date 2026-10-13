@@ -42,7 +42,8 @@
         "Shop": { "$className": "RemoteEvent" },
         "Progress": { "$className": "RemoteEvent" },
         "Party": { "$className": "RemoteEvent" },
-        "Ping": { "$className": "RemoteEvent" }
+        "Ping": { "$className": "RemoteEvent" },
+        "Ranked": { "$className": "RemoteEvent" }
       }
     },
 

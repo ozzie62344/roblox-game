@@ -1,7 +1,8 @@
 -- Owns the mouse and the camera's turning speed every frame (runs right after Roblox's camera,
 -- so it gets the final say):
 --   locked → cursor hidden and locked to the center (you only see the crosshair); how far the
---            camera turns is scaled by MouseSensitivity (and slower while aiming)
+--            camera turns is scaled by MouseSensitivity (and slower while aiming; ClientSettings
+--            sets it from the player's sensitivity settings, and may invert up / down)
 --   free   → cursor visible, camera stops turning, shooting is blocked
 -- Left Alt toggles free mode. The dev panel also frees the mouse while it's open.
 -- Phones: a finger sliding while it holds FIRE turns the camera too (state.lookDrag, from
@@ -36,7 +37,7 @@ local lastYaw: number? = nil
 local lastPitch = 0
 
 local function isFree(): boolean
-	return state.mouseUnlocked or state.devPanelOpen or state.draftOpen or state.voteOpen or state.shopOpen or state.partyOpen or state.modsOpen
+	return state.mouseUnlocked or state.devPanelOpen or state.draftOpen or state.voteOpen or state.shopOpen or state.partyOpen or state.modsOpen or state.settingsOpen
 end
 
 local function yawPitch(look: Vector3): (number, number)
@@ -92,6 +93,9 @@ local function update()
 	end
 	deltaYaw -= drag.X * TOUCH_AIM_SPEED
 	deltaPitch -= drag.Y * TOUCH_AIM_SPEED
+	if state.invertY then
+		deltaPitch = -deltaPitch -- (the invert-look setting)
+	end
 	local newYaw = lastYaw + deltaYaw * scale
 	local newPitch = math.clamp(lastPitch + deltaPitch * scale, -MAX_PITCH, MAX_PITCH)
 	camera.CFrame = CFrame.new(camera.CFrame.Position) * CFrame.fromOrientation(newPitch, newYaw, 0)

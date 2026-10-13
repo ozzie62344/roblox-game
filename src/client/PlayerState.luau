@@ -26,6 +26,8 @@ return {
 	interacting = false, -- planting / disabling: also locks you in place
 	meleeing = false, -- knife swing in progress (gun lowered, can't shoot)
 	aimSensitivity = 1, -- mouse speed multiplier while aiming (set by the gun)
+	adsSensitivityScale = 1, -- the player's ADS sensitivity setting: scales the gun's aim slowdown (ClientSettings)
+	invertY = false, -- the player's invert-look setting (ClientSettings; MouseUnlock, drone, cameras)
 	deployPitch = 0, -- radians, applied to the camera like recoil
 	gesturing = false, -- hands busy with a gadget / ability move (HandsAnimator): gun put away
 	deafUntil = 0, -- os.clock(): a flashbang left your ears ringing (Sound3D muffles everything)
@@ -43,6 +45,8 @@ return {
 
 	-- Where you are: in the lobby you're in third person with your gun put away
 	inLobby = false,
+	-- In the lobby's practice range (client PracticeRange): first person, gun out, so inLobby is false there
+	inPractice = false,
 
 	-- UI
 	devPanelOpen = false,
@@ -53,6 +57,7 @@ return {
 	shopOpen = false, -- lobby: the SHOP is up (cursor free)
 	partyOpen = false, -- lobby: the PARTY screen is up (cursor free)
 	modsOpen = false, -- the MODS menu (attachments) is up, any time (cursor free, no shooting)
+	settingsOpen = false, -- the SETTINGS menu is up, any time (SettingsMenu; cursor free, no shooting)
 	touchControls = false, -- playing on a touch screen: MobileControls' buttons are showing
 	lookDrag = Vector2.zero, -- pixels the finger holding FIRE moved since last frame (MouseUnlock turns the camera)
 	weaponSpin = 0, -- how far the gatling's barrels are spun up, 0..1 (WeaponController; you move slower)

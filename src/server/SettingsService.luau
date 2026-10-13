@@ -4,12 +4,16 @@
 --   Settings:FireServer("LobbyWeapon", name)    the gun they hold in the lobby (ShopMenu's picker
 --                                               under SHOP); it's handed to them whenever they're
 --                                               out of a match
+--   Settings:FireServer("Prefs", json)          the SETTINGS menu (client ClientSettings):
+--                                               sensitivity, FOV, volumes, crosshair... checked
+--                                               against shared/PlayerSettings
 -- Everything is checked and rebuilt here, never stored as the client sent it.
 
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local PlayerSettings = require(ReplicatedStorage.Shared.PlayerSettings)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 local PlayerData = require(script.Parent.PlayerData)
 local WeaponService = require(script.Parent.WeaponService)
@@ -73,6 +77,13 @@ function SettingsService.Start()
 			if layout then
 				PlayerData.Update(player, function(data)
 					data.TouchLayout = layout
+				end, true)
+			end
+		elseif kind == "Prefs" then
+			local prefs = PlayerSettings.CleanJson(value)
+			if prefs then
+				PlayerData.Update(player, function(data)
+					data.Settings = prefs
 				end, true)
 			end
 		end

@@ -6,7 +6,8 @@
 -- It's only a picture: the cursor stays locked and the gun keeps working (on a keyboard it takes
 -- no clicks; on a phone only the board takes taps, and MobileControls' buttons sit on top of it).
 -- The numbers are player attributes the server's MatchStats keeps current: MatchKills /
--- MatchDeaths / MatchAssists (as they change) and Ping (ms, every couple of seconds).
+-- MatchDeaths / MatchAssists (as they change) and Ping (ms, every couple of seconds). In a ranked
+-- match each player's rank badge (RankBadge, from their Mmr / RankedMatches) sits by their name.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -18,6 +19,7 @@ local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local Actions = require(script.Parent.Parent.Input.Actions)
 local state = require(script.Parent.Parent.PlayerState)
 local MenuStyle = require(script.Parent.MenuStyle)
+local RankBadge = require(script.Parent.RankBadge)
 
 local MatchState = ReplicatedStorage:WaitForChild("MatchState")
 
@@ -106,7 +108,12 @@ local function addRow(other: Player, order: number, inMatch: boolean)
 		MenuStyle.Corner(bar, UDim.new(1, 0))
 	end
 	local dead = inMatch and team ~= nil and not alive(other)
-	cell(row, other.DisplayName, 16, 280, 20, if dead then DEAD else nil, true)
+	-- Ranked match: their rank badge at the end of the name column
+	local ranked = inMatch and team ~= nil and MatchState:GetAttribute("Ranked") == true
+	if ranked then
+		RankBadge.ForPlayer(row, other, 26, UDim2.new(0, 282, 0.5, 0), Vector2.new(0.5, 0.5))
+	end
+	cell(row, other.DisplayName, 16, if ranked then 250 else 280, 20, if dead then DEAD else nil, true)
 	for i, attribute in { "MatchKills", "MatchDeaths", "MatchAssists" } do
 		local column = COLUMNS[i]
 		local value = other:GetAttribute(attribute)
@@ -175,7 +182,8 @@ local function build()
 	title.Size = UDim2.new(1, 0, 0, 30)
 	title.BackgroundTransparency = 1
 	title.Parent = content
-	cell(title, if not inMatch then "FREE ROAM" elseif round > 0 then `ROUND {round}` else "MATCH", 4, 300, 26, nil, true)
+	local rankedTag = if inMatch and MatchState:GetAttribute("Ranked") == true then "RANKED · " else ""
+	cell(title, if not inMatch then "FREE ROAM" elseif round > 0 then `{rankedTag}ROUND {round}` else `{rankedTag}MATCH`, 4, 300, 26, nil, true)
 	local columns = Instance.new("Frame")
 	columns.LayoutOrder = 1
 	columns.Size = UDim2.new(1, 0, 0, 18)

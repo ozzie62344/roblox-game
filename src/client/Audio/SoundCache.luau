@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SoundService = game:GetService("SoundService")
 
 local Sounds = require(ReplicatedStorage.Shared.Sounds)
+local SoundGroups = require(script.Parent.SoundGroups)
 
 local SoundCache = {}
 
@@ -31,14 +32,20 @@ local function template(soundId: string): Sound
 	end
 	local sound = Instance.new("Sound")
 	sound.SoundId = soundId
+	sound.SoundGroup = SoundGroups.Effects -- (copies keep it: the EFFECTS volume setting)
 	sound.Parent = getFolder()
 	templates[soundId] = sound
 	return sound
 end
 
--- A fresh Sound for this id (set its volume/pitch/parent, then :Play())
-function SoundCache.New(soundId: string): Sound
-	return template(soundId):Clone()
+-- A fresh Sound for this id (set its volume/pitch/parent, then :Play()). In SoundGroups.Effects
+-- unless given another group (SoundGroups.UI for menu blips).
+function SoundCache.New(soundId: string, group: SoundGroup?): Sound
+	local sound = template(soundId):Clone()
+	if group then
+		sound.SoundGroup = group
+	end
+	return sound
 end
 
 -- Every sound id mentioned anywhere in Sounds.luau (single ids and the random sets)

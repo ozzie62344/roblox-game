@@ -92,6 +92,15 @@ local function score(line: Line): number
 		+ line.objectives * SCORE.Objective + line.rounds * SCORE.RoundWin
 end
 
+-- Everyone's match score so far, by UserId (RankedService: the performance nudge)
+function MatchStats.Scores(): { [number]: number }
+	local scores = {}
+	for userId, line in lines do
+		scores[userId] = score(line)
+	end
+	return scores
+end
+
 -- A new match: everyone on a team starts at zero
 function MatchStats.Begin()
 	table.clear(lines)

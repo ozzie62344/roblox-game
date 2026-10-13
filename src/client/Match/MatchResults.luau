@@ -6,6 +6,8 @@
 -- simply stays up until the teleport.
 -- While it's up the cursor is free (state.mouseUnlocked) and the phone's buttons hide
 -- (state.resultsOpen, MobileControls).
+-- Ranked match: a card top right with your badge and MMR change ("+24 · GOLD II", from the
+-- server's RankedService), and a RANK UP / RANK DOWN / PLACED banner across the middle.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -15,13 +17,16 @@ local Workspace = game:GetService("Workspace")
 
 local Attachments = require(ReplicatedStorage.Shared.Attachments)
 local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
+local Ranked = require(ReplicatedStorage.Shared.Ranked)
 local Skins = require(ReplicatedStorage.Shared.Skins)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 local GunModels = require(script.Parent.Parent.Combat.GunModels)
 local state = require(script.Parent.Parent.PlayerState)
 local MenuStyle = require(script.Parent.MenuStyle)
+local RankBadge = require(script.Parent.RankBadge)
 
 local MatchResultsRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("MatchResults") :: RemoteEvent
+local RankedRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Ranked") :: RemoteEvent
 local MatchState = ReplicatedStorage:WaitForChild("MatchState")
 
 local player = Players.LocalPlayer
@@ -58,8 +63,11 @@ type Results = {
 	delay: number?,
 }
 
+type RankedResult = { before: number, after: number, matches: number, won: boolean }
+
 local gui: ScreenGui
 local showing: { root: Frame, step: RBXScriptConnection }? = nil
+local rankedResult: RankedResult? = nil -- this match's MMR change (arrives just before the results)
 
 local function teamColor(name: string): Color3
 	local team = MatchConfig.Teams[name]
@@ -244,6 +252,65 @@ local function buildTeam(board: Frame, results: Results, teamName: string, order
 	end
 end
 
+-- Ranked: the card (badge, "+24 · GOLD II", what happened) and, if the rank changed, a banner
+-- across the middle for a few seconds
+local function buildRanked(content: Frame, result: RankedResult)
+	local placed = Ranked.IsPlaced(result.matches)
+	local wasPlaced = Ranked.IsPlaced(result.matches - 1)
+	local color = Ranked.ColorFor(result.after, result.matches)
+	local change = result.after - result.before
+	local event, eventColor = "RANKED", GREY
+	if placed and not wasPlaced then
+		event, eventColor = "PLACED!", MenuStyle.Gold
+	elseif placed and Ranked.Step(result.after) > Ranked.Step(result.before) then
+		event, eventColor = "RANK UP!", MenuStyle.Gold
+	elseif placed and Ranked.Step(result.after) < Ranked.Step(result.before) then
+		event, eventColor = "RANK DOWN", MenuStyle.Red
+	end
+
+	local card = Instance.new("Frame")
+	card.AnchorPoint = Vector2.new(1, 0)
+	card.Position = UDim2.fromScale(1, 0)
+	card.Size = UDim2.fromOffset(196, 84)
+	card.BackgroundColor3 = MenuStyle.Panel
+	card.Parent = content
+	MenuStyle.Corner(card, UDim.new(0, 12))
+	MenuStyle.Rim(card, color, 3)
+	RankBadge.New(card, 60, UDim2.new(0, 8, 0.5, 0), Vector2.new(0, 0.5), result.after, result.matches)
+	local top = cell(card, event, 74, 114, 18, eventColor, true)
+	top.Position = UDim2.fromOffset(74, 22)
+	local line = cell(card, `{if change >= 0 then "+" else ""}{change} · {Ranked.Label(result.after, result.matches)}`, 74, 114, 22, nil, true)
+	line.Position = UDim2.fromOffset(74, 52)
+	line.TextColor3 = if change >= 0 then Color3.fromRGB(120, 255, 100) else Color3.fromRGB(255, 110, 100)
+
+	if event == "RANKED" then
+		return
+	end
+	local ribbon = Instance.new("Frame")
+	ribbon.AnchorPoint = Vector2.new(0.5, 0.5)
+	ribbon.Position = UDim2.fromScale(0.5, 0.42)
+	ribbon.Size = UDim2.fromOffset(640, 84)
+	ribbon.BackgroundColor3 = color
+	ribbon.ZIndex = 5
+	ribbon.Parent = content
+	MenuStyle.Corner(ribbon, UDim.new(0, 14))
+	MenuStyle.Rim(ribbon, color:Lerp(Color3.new(), 0.6), 3)
+	local fade = Instance.new("UIGradient")
+	fade.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.2, 0.15), NumberSequenceKeypoint.new(0.8, 0.15), NumberSequenceKeypoint.new(1, 1),
+	})
+	fade.Parent = ribbon
+	local badge = RankBadge.New(ribbon, 72, UDim2.new(0.5, -200, 0.5, 0), Vector2.new(0.5, 0.5), result.after, result.matches)
+	badge.ZIndex = 6
+	local text = MenuStyle.Text(ribbon, `{event}  {Ranked.Label(result.after, result.matches)}`, UDim2.fromOffset(380, 50), UDim2.new(0.5, 40, 0.5, 0), Vector2.new(0.5, 0.5))
+	text.ZIndex = 6
+	task.delay(3.5, function()
+		if ribbon.Parent then
+			ribbon:Destroy()
+		end
+	end)
+end
+
 local function open(results: Results)
 	close()
 	state.resultsOpen = true
@@ -283,6 +350,10 @@ local function open(results: Results)
 		`{string.upper(order[1])}  {results.scores[order[1]] or 0} - {results.scores[order[2]] or 0}  {string.upper(order[2])}`,
 		UDim2.fromOffset(400, 24), UDim2.new(0.5, 0, 0, 58), Vector2.new(0.5, 0)
 	).TextColor3 = GREY
+	if rankedResult and mine and MatchState:GetAttribute("Ranked") == true then
+		buildRanked(content, rankedResult)
+	end
+	rankedResult = nil
 
 	local body = Instance.new("Frame")
 	body.Position = UDim2.fromOffset(0, 92)
@@ -338,6 +409,13 @@ function MatchResults.Start()
 	gui.ResetOnSpawn = false
 	gui.DisplayOrder = 30 -- over the HUD and the menus (a flashbang's white still goes over it)
 	gui.Parent = player:WaitForChild("PlayerGui")
+
+	-- Ranked: my MMR change, shown on the screen when it opens
+	RankedRemote.OnClientEvent:Connect(function(event, result)
+		if event == "Result" and typeof(result) == "table" and typeof(result.before) == "number" and typeof(result.after) == "number" and typeof(result.matches) == "number" then
+			rankedResult = result
+		end
+	end)
 
 	-- The banner first, then the screen (if the match is still over by then)
 	MatchResultsRemote.OnClientEvent:Connect(function(results: Results)

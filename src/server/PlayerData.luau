@@ -13,8 +13,10 @@
 -- Clients see the data as player attributes (Skins.luau): Credits, OwnedSkins, EquippedSkins,
 -- plus TouchLayout (where they moved their phone buttons: SettingsService, MobileControls) and
 -- Attachments (what's on each gun: shared/Attachments, ShopService) and LobbyWeapon (the gun you
--- hold in the lobby: SettingsService), and progression (shared/Progression, ProgressService):
--- Xp, Level, Stats, DailyDay, DailyStreak, Challenges.
+-- hold in the lobby: SettingsService) and Settings (the SETTINGS menu: shared/PlayerSettings,
+-- SettingsService, client ClientSettings), and progression (shared/Progression, ProgressService):
+-- Xp, Level, Stats, DailyDay, DailyStreak, Challenges; and ranked (shared/Ranked, RankedService):
+-- Mmr, RankedMatches, RankedWins, Rank, RankedPlacements.
 
 local DataStoreService = game:GetService("DataStoreService")
 local HttpService = game:GetService("HttpService")
@@ -24,7 +26,9 @@ local RunService = game:GetService("RunService")
 
 local Attachments = require(ReplicatedStorage.Shared.Attachments)
 local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
+local PlayerSettings = require(ReplicatedStorage.Shared.PlayerSettings)
 local Progression = require(ReplicatedStorage.Shared.Progression)
+local Ranked = require(ReplicatedStorage.Shared.Ranked)
 local Skins = require(ReplicatedStorage.Shared.Skins)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 
@@ -36,6 +40,7 @@ export type Data = {
 	Attachments: { [string]: { [string]: string } }, -- gun → slot → attachment id
 	OwnedAttachments: { [string]: boolean }, -- bought (attachment id)
 	LobbyWeapon: string, -- the gun you hold in the lobby, "" = the default
+	Settings: string, -- JSON: the SETTINGS menu's choices (SettingsService checks it), "" = the defaults
 	Xp: number, -- total XP ever earned (the level follows from it: Progression.LevelFor)
 	RewardedLevel: number, -- the highest level whose track reward has been given
 	Kills: number, -- career stats (leaderboards)
@@ -46,6 +51,9 @@ export type Data = {
 	DailyStreak: number, -- days in a row it had been claimed, as of DailyDay
 	ChallengeDay: number, -- the UTC day the challenges are for (new ones when it changes)
 	Challenges: { Progression.ChallengeState },
+	Mmr: number, -- ranked skill rating (shared/Ranked)
+	RankedMatches: number, -- ranked matches finished (or left: a loss)
+	RankedWins: number,
 }
 
 local PlayerData = {}
@@ -77,8 +85,9 @@ end
 
 local function newData(): Data
 	return {
-		Credits = MatchConfig.Credits.Starting, Skins = {}, Equipped = {}, TouchLayout = "", Attachments = {}, OwnedAttachments = {}, LobbyWeapon = "",
+		Credits = MatchConfig.Credits.Starting, Skins = {}, Equipped = {}, TouchLayout = "", Attachments = {}, OwnedAttachments = {}, LobbyWeapon = "", Settings = "",
 		Xp = 0, RewardedLevel = 1, Kills = 0, Headshots = 0, Wins = 0, Matches = 0, DailyDay = 0, DailyStreak = 0, ChallengeDay = 0, Challenges = {},
+		Mmr = Ranked.StartMmr, RankedMatches = 0, RankedWins = 0,
 	}
 end
 
@@ -120,6 +129,9 @@ local function fromStored(stored: any): Data
 	if typeof(stored.LobbyWeapon) == "string" and Weapons[stored.LobbyWeapon] then
 		data.LobbyWeapon = stored.LobbyWeapon
 	end
+	if typeof(stored.Settings) == "string" and #stored.Settings <= PlayerSettings.MaxJson then
+		data.Settings = stored.Settings
+	end
 	if typeof(stored.OwnedAttachments) == "table" then
 		for id, owned in stored.OwnedAttachments do
 			if owned == true and Attachments.ById[id] then
@@ -149,6 +161,9 @@ local function fromStored(stored: any): Data
 	data.DailyDay = count(stored.DailyDay, 0)
 	data.DailyStreak = count(stored.DailyStreak, 0)
 	data.ChallengeDay = count(stored.ChallengeDay, 0)
+	data.Mmr = count(stored.Mmr, Ranked.StartMmr)
+	data.RankedMatches = count(stored.RankedMatches, 0)
+	data.RankedWins = count(stored.RankedWins, 0)
 	if typeof(stored.Challenges) == "table" then
 		for _, entry in stored.Challenges do
 			local challenge = typeof(entry) == "table" and Progression.ChallengeById[entry.Id]
@@ -185,12 +200,19 @@ local function publish(player: Player, data: Data)
 	end
 	player:SetAttribute("OwnedAttachments", table.concat(ownedAttachments, ","))
 	player:SetAttribute("LobbyWeapon", data.LobbyWeapon)
+	player:SetAttribute("Settings", data.Settings)
 	player:SetAttribute("Xp", data.Xp)
 	player:SetAttribute("Level", (Progression.LevelFor(data.Xp)))
 	player:SetAttribute("Stats", HttpService:JSONEncode({ Kills = data.Kills, Headshots = data.Headshots, Wins = data.Wins, Matches = data.Matches }))
 	player:SetAttribute("DailyDay", data.DailyDay)
 	player:SetAttribute("DailyStreak", data.DailyStreak)
 	player:SetAttribute("Challenges", HttpService:JSONEncode({ Day = data.ChallengeDay, List = data.Challenges }))
+	local placed = Ranked.IsPlaced(data.RankedMatches)
+	player:SetAttribute("Mmr", data.Mmr)
+	player:SetAttribute("RankedMatches", data.RankedMatches)
+	player:SetAttribute("RankedWins", data.RankedWins)
+	player:SetAttribute("Rank", if placed then Ranked.RankName(data.Mmr) else "")
+	player:SetAttribute("RankedPlacements", if placed then nil else data.RankedMatches)
 end
 
 -- Claims the player's data. Returns it, or nil if the DataStore can't be reached.
@@ -259,6 +281,7 @@ local function save(player: Player, release: boolean)
 				Attachments = data.Attachments,
 				OwnedAttachments = data.OwnedAttachments,
 				LobbyWeapon = data.LobbyWeapon,
+				Settings = data.Settings,
 				Xp = data.Xp,
 				RewardedLevel = data.RewardedLevel,
 				Kills = data.Kills,
@@ -269,6 +292,9 @@ local function save(player: Player, release: boolean)
 				DailyStreak = data.DailyStreak,
 				ChallengeDay = data.ChallengeDay,
 				Challenges = data.Challenges,
+				Mmr = data.Mmr,
+				RankedMatches = data.RankedMatches,
+				RankedWins = data.RankedWins,
 				Lock =if USE_LOCKS and not release then { Job = game.JobId, At = os.time() } else nil,
 			}
 		end)
@@ -314,7 +340,22 @@ function PlayerData.IsSaving(player: Player): boolean
 	return session ~= nil and session.saving
 end
 
+-- Runs `hook` when a player is leaving, before their data's last save (RankedService: leaving a
+-- ranked match early is a loss). Changes made there with Update are in that save.
+local leavingHooks: { (Player) -> () } = {}
+function PlayerData.OnLeaving(hook: (Player) -> ())
+	table.insert(leavingHooks, hook)
+end
+
 local function onPlayerRemoving(player: Player)
+	if sessions[player] then
+		for _, hook in leavingHooks do
+			local ok, err = pcall(hook, player)
+			if not ok then
+				warn(`PlayerData: leaving hook failed for {player.Name}: {err}`)
+			end
+		end
+	end
 	save(player, true)
 	sessions[player] = nil
 end

@@ -10,6 +10,7 @@ local Workspace = game:GetService("Workspace")
 
 local GameRules = require(ReplicatedStorage.Shared.GameRules)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
+local AntiCheat = require(script.Parent.AntiCheat)
 local DestructionService = require(script.Parent.DestructionService)
 local MatchStats = require(script.Parent.MatchStats)
 
@@ -27,6 +28,12 @@ local MAX_ORIGIN_DISTANCE = 8 -- studs between the player's head and where they 
 local HIT_TOLERANCE = 5 -- extra studs allowed between the claimed hit point and the part (for lag)
 local RELOAD_TOLERANCE = 0.15
 local MAX_BURST = 3 -- shots that can arrive bunched together because of network jitter
+-- (anti-cheat) Fire rate allowed on average: RPM x this (the client never goes over RPM itself)
+local FIRE_RATE_TOLERANCE = 1.15
+-- (anti-cheat) The camera can lean / drop a little past the head (and the server's copy of the
+-- head lags a moving player a little), but a shot origin this many studs beyond a solid wall
+-- (seen from the head) is shooting from the other side of it
+local ORIGIN_WALL_DEPTH = 2
 local MAX_PENETRATIONS = 4 -- breakable surfaces one bullet can go through
 -- Damage left after going through each kind of breakable surface (Siege: glass and barricades
 -- give no protection; drywall loss isn't documented, 0.8 is our pick). Headshots still kill.
@@ -81,6 +88,10 @@ end
 -- Players frozen in their spawn (pre-round / attackers during defender prep) can't be hurt
 local function isProtected(targetHumanoid: Humanoid): boolean
 	local targetPlayer = Players:GetPlayerFromCharacter(targetHumanoid.Parent)
+	-- No PvP in the lobby (its practice range shoots bots only: PracticeRange / PracticeBots)
+	if targetPlayer and targetPlayer:GetAttribute("Location") == "Lobby" then
+		return true
+	end
 	local targetRoot = targetHumanoid.Parent and targetHumanoid.Parent:FindFirstChild("HumanoidRootPart") :: BasePart?
 	return targetPlayer ~= nil and targetRoot ~= nil and targetRoot.Anchored
 end
@@ -114,6 +125,24 @@ local function isBlocked(origin: Vector3, target: Vector3, shooter: Model): bool
 	local result = Workspace:Raycast(origin, offset.Unit * (distance - 0.5), params)
 	-- Hitting another character on the way is fine; hitting a wall is not
 	return result ~= nil and findHumanoid(result.Instance) == nil
+end
+
+-- (anti-cheat) Is the claimed shot origin on the far side of a solid wall from the shooter's head?
+-- Only unbreakable walls count (bullets go through glass / drywall / barricades anyway), not
+-- floors or ceilings (lying down drops the camera below the head), and only well past the face.
+local function originBehindWall(head: BasePart, origin: Vector3, shooter: Model): boolean
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { shooter }
+	local offset = origin - head.Position
+	if offset.Magnitude < ORIGIN_WALL_DEPTH then
+		return false
+	end
+	local result = Workspace:Raycast(head.Position, offset, params)
+	if not result or findHumanoid(result.Instance) or result.Instance:GetAttribute("Breakable") then
+		return false
+	end
+	return math.abs(result.Normal.Y) < 0.7 and (origin - result.Position).Magnitude > ORIGIN_WALL_DEPTH
 end
 
 -- Follows a bullet from origin to endPosition. Glass, drywall and barricades on the way take the
@@ -176,6 +205,9 @@ local function checkShot(player: Player, character: Model, weapon: Weapons.Weapo
 	-- Every bullet breaks what it passes through, hit or miss
 	local through = traceShot(origin, endPosition, character, if weapon.Pellets > 1 then "Pellet" else "Bullet")
 	if not hitPart or not through then
+		if hitPart and not through and findHumanoid(hitPart) then
+			AntiCheat.Suspect(player, "hit claimed through a solid wall") -- (anti-cheat, logged only)
+		end
 		return endPosition, nil
 	end
 
@@ -236,14 +268,16 @@ local function onFire(player: Player, origin: any, shots: any)
 		data.reloadEnd = nil
 	end
 	if data.ammo <= 0 then
+		AntiCheat.Suspect(player, "shot with an empty mag") -- (anti-cheat, logged only)
 		return
 	end
 
 	-- Fire rate: a small budget absorbs network jitter but caps the average rate
-	local interval = 60 / weapon.RPM
+	local interval = 60 / (weapon.RPM * FIRE_RATE_TOLERANCE)
 	data.shotBudget = math.min(data.shotBudget + (now - data.lastFire) / interval, MAX_BURST)
 	data.lastFire = now
 	if data.shotBudget < 1 then
+		AntiCheat.Suspect(player, "fire rate over RPM") -- (anti-cheat, logged only)
 		return
 	end
 	data.shotBudget -= 1
@@ -251,6 +285,12 @@ local function onFire(player: Player, origin: any, shots: any)
 
 	-- Shot must start near the shooter's head
 	if (origin - head.Position).Magnitude > MAX_ORIGIN_DISTANCE then
+		AntiCheat.Suspect(player, "shot origin far from the head") -- (anti-cheat, logged only)
+		return
+	end
+	-- ...and not from the other side of a wall (anti-cheat)
+	if originBehindWall(head, origin, character :: Model) then
+		AntiCheat.Suspect(player, "shot origin behind a wall")
 		return
 	end
 
@@ -273,8 +313,13 @@ local function onFire(player: Player, origin: any, shots: any)
 		ShotFired:FireAllClients(player, origin, endPositions, weapon.Name)
 	end
 
+	-- (anti-cheat) Kills on other players feed the aimbot heuristic: logged only, never acted on
+	local aim = if typeof(shots[1]) == "table" and typeof(shots[1][1]) == "Vector3" then shots[1][1] else nil
 	for targetHumanoid, total in totals do
 		applyDamage(player, targetHumanoid, total.damage, total.headshot, origin, weapon.Name)
+		if targetHumanoid.Health <= 0 and Players:GetPlayerFromCharacter(targetHumanoid.Parent) then
+			AntiCheat.NoteKill(player, total.headshot, aim)
+		end
 	end
 end
 

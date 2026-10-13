@@ -163,7 +163,7 @@ end
 
 local function canPing(): boolean
 	if state.inLobby or state.devPanelOpen or state.mouseUnlocked or state.draftOpen or state.voteOpen or state.modsOpen
-		or state.droning or state.spectating or state.resultsOpen then
+		or state.settingsOpen or state.droning or state.spectating or state.resultsOpen then
 		return false
 	end
 	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")

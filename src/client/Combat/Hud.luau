@@ -17,6 +17,8 @@ local gui: ScreenGui
 local crosshairBars: { Frame } = {}
 local hitMarkerBars: { Frame } = {}
 local hitMarkerToken = 0
+local crosshairSize = 1 -- the player's settings (ClientSettings → SetCrosshairStyle / SetHitMarkers)
+local hitMarkersOn = true
 local ammoLabel: TextLabel
 local healthFill: Frame
 local healthBack: Frame
@@ -214,11 +216,12 @@ end
 
 -- gap = distance in pixels from the center to each bar
 function Hud.SetCrosshair(gap: number, visible: boolean)
+	local reach = gap + 4 * crosshairSize
 	local offsets = {
-		Vector2.new(0, -(gap + 4)),
-		Vector2.new(0, gap + 4),
-		Vector2.new(-(gap + 4), 0),
-		Vector2.new(gap + 4, 0),
+		Vector2.new(0, -reach),
+		Vector2.new(0, reach),
+		Vector2.new(-reach, 0),
+		Vector2.new(reach, 0),
 	}
 	for i, bar in crosshairBars do
 		bar.Visible = visible
@@ -226,8 +229,26 @@ function Hud.SetCrosshair(gap: number, visible: boolean)
 	end
 end
 
+-- The player's crosshair settings: colour, and size (1 = normal; longer, and thicker when big)
+function Hud.SetCrosshairStyle(color: Color3, size: number)
+	crosshairSize = size
+	local length = math.floor(8 * size + 0.5)
+	local thickness = if size >= 1.5 then 3 else 2
+	for i, bar in crosshairBars do
+		bar.Size = if i <= 2 then UDim2.fromOffset(thickness, length) else UDim2.fromOffset(length, thickness)
+		bar.BackgroundColor3 = color
+	end
+end
+
+function Hud.SetHitMarkers(on: boolean)
+	hitMarkersOn = on
+end
+
 -- kind: "body", "head" or "kill"
 function Hud.HitMarker(kind: string)
+	if not hitMarkersOn then
+		return
+	end
 	hitMarkerToken += 1
 	local token = hitMarkerToken
 	local color = if kind == "body" then WHITE else RED

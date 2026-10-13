@@ -1,5 +1,6 @@
 -- Top-of-screen match info (scores, timer, players alive), round banners and the kill feed.
--- Reads the attributes RoundService sets on ReplicatedStorage.MatchState.
+-- Reads the attributes RoundService sets on ReplicatedStorage.MatchState ("RANKED · " in front of
+-- the round line in a ranked match).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -226,11 +227,17 @@ local function update()
 		-- (the mode too, unless it's Classic: "ROUND 2 · KNIVES ONLY · PREPARE")
 		local rules = GameRules.Current()
 		local prefix = if rules.Id == "Classic" then `ROUND {round}` else `ROUND {round} · {string.upper(rules.Name)}`
+		if MatchState:GetAttribute("Ranked") == true then
+			prefix = "RANKED · " .. prefix
+		end
 		phaseText = if phaseText == "" then prefix else `{prefix} · {phaseText}`
 	elseif phase == "Waiting" then
 		-- Match server: waiting for everyone teleported in. Lobby: the menu says it all.
 		if MatchState:GetAttribute("ServerKind") == "Match" then
 			phaseText ..= ` ({#Players:GetPlayers()}/{MatchState:GetAttribute("Expected") or "?"})`
+			if MatchState:GetAttribute("Ranked") == true then
+				phaseText = "RANKED · " .. phaseText
+			end
 		else
 			phaseText = if player:GetAttribute("IsDev") then "P → dev panel (start a match)" else ""
 		end

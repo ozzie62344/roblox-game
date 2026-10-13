@@ -320,7 +320,7 @@ local function update(dt: number)
 		return
 	end
 
-	local uiOpen = state.devPanelOpen or state.mouseUnlocked or state.draftOpen or state.voteOpen or state.modsOpen
+	local uiOpen = state.devPanelOpen or state.mouseUnlocked or state.draftOpen or state.voteOpen or state.modsOpen or state.settingsOpen
 	-- cover / plant / disable / fortify / knife / gadget moves / driving a drone
 	local handsBusy = state.deploying or state.interacting or state.meleeing or state.gesturing or state.droning
 	state.aiming = aimHeld and not reloading and not uiOpen and not handsBusy
@@ -337,8 +337,9 @@ local function update(dt: number)
 	end
 	state.recoilRoll -= state.recoilRoll * (1 - math.exp(-18 * dt))
 
-	-- Slower mouse while aimed in (especially scoped) for precise aiming (MouseUnlock applies it)
-	state.aimSensitivity = 1 + (weapon.AdsSensitivity - 1) * state.aimAlpha
+	-- Slower mouse while aimed in (especially scoped) for precise aiming (MouseUnlock applies it),
+	-- times the player's ADS sensitivity setting
+	state.aimSensitivity = 1 + (weapon.AdsSensitivity * state.adsSensitivityScale - 1) * state.aimAlpha
 
 	currentSpread = computeSpread()
 

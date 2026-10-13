@@ -4,7 +4,9 @@
 -- Match/ProgressMenu).
 --
 -- Kept in OrderedDataStores, one per board, keyed by UserId (the Level board ranks by total XP).
--- A stored number only ever goes up, so a server with stale data can't knock anyone down.
+-- A stored number only ever goes up, so a server with stale data can't knock anyone down; except
+-- the Ranked board (top MMR, only players done with their placements: shared/Ranked), where it's
+-- the latest MMR, which goes down too.
 --   Writing: a player's numbers are noted when they change (ProgressService) and written every
 --            45 seconds, when they leave and when the server shuts down, only if they changed.
 --   Reading: the top of each board every minute, names looked up once and cached.
@@ -12,8 +14,9 @@
 -- the first read, the boards show the players in this server; players in this server always
 -- show their live numbers (so a kill shows up on the board in seconds, not minutes).
 --
--- Clients read ReplicatedStorage.Leaderboards: attributes Kills / Wins / Level (JSON lists of
--- {Id, Name, Value}, best first; Level's Value is the level) and Live (false: this server only).
+-- Clients read ReplicatedStorage.Leaderboards: attributes Kills / Wins / Level / Ranked (JSON lists
+-- of {Id, Name, Value}, best first; Level's Value is the level, Ranked's the MMR) and Live (false:
+-- this server only).
 
 local DataStoreService = game:GetService("DataStoreService")
 local HttpService = game:GetService("HttpService")
@@ -23,17 +26,18 @@ local UserService = game:GetService("UserService")
 local Workspace = game:GetService("Workspace")
 
 local Progression = require(ReplicatedStorage.Shared.Progression)
+local Ranked = require(ReplicatedStorage.Shared.Ranked)
 local PlayerData = require(script.Parent.PlayerData)
 
 local LeaderboardService = {}
 
 type Entry = { Id: number, Name: string, Value: number }
 
-local BOARDS = { "Kills", "Wins", "Level" }
-local STORE_NAMES = { Kills = "TopKills_v1", Wins = "TopWins_v1", Level = "TopXp_v1" }
+local BOARDS = { "Kills", "Wins", "Level", "Ranked" }
+local STORE_NAMES = { Kills = "TopKills_v1", Wins = "TopWins_v1", Level = "TopXp_v1", Ranked = "TopMmr_v1" }
 local SHOWN = 10 -- rows per board
 local WRITE_INTERVAL = 45 -- seconds between writes of changed numbers
-local READ_INTERVAL = 60 -- seconds between reads of the top players (3 reads a minute: well inside the budget)
+local READ_INTERVAL = 60 -- seconds between reads of the top players (4 reads a minute: well inside the budget)
 local SHOW_INTERVAL = 10 -- seconds between rebuilding what's shown (no requests: cached + live)
 
 local stores: { [string]: OrderedDataStore } = {}
@@ -46,7 +50,7 @@ end
 
 local pending: { [number]: { [string]: number } } = {} -- UserId → board → number not written yet
 local written: { [number]: { [string]: number } } = {} -- what was last written (skip unchanged)
-local stored: { [string]: { Entry } } = { Kills = {}, Wins = {}, Level = {} } -- last read
+local stored: { [string]: { Entry } } = { Kills = {}, Wins = {}, Level = {}, Ranked = {} } -- last read
 local names: { [number]: string } = {}
 local live = false -- a read has worked
 local warned = false
@@ -59,9 +63,11 @@ local function warnOnce(message: string)
 	end
 end
 
--- A player's number on each board (Level: total XP, so ties in level still have an order)
+-- A player's number on each board (Level: total XP, so ties in level still have an order;
+-- Ranked: MMR once placed, 0 = not on it)
 local function numbersOf(data: PlayerData.Data): { [string]: number }
-	return { Kills = data.Kills, Wins = data.Wins, Level = data.Xp }
+	local mmr = if Ranked.IsPlaced(data.RankedMatches) then data.Mmr else 0
+	return { Kills = data.Kills, Wins = data.Wins, Level = data.Xp, Ranked = mmr }
 end
 
 local function write(userId: number)
@@ -79,6 +85,9 @@ local function write(userId: number)
 		end
 		local ok, err = pcall(function()
 			store:UpdateAsync(tostring(userId), function(old)
+				if board == "Ranked" then
+					return math.floor(value) -- (MMR goes down too)
+				end
 				return math.max(if typeof(old) == "number" then old else 0, value)
 			end)
 		end)
@@ -166,7 +175,7 @@ local function show()
 			-- (everyone here is on the level board, even at level 1; kills / wins once they have some)
 			if value and (value > 0 or board == "Level") then
 				local entry = byId[player.UserId]
-				if not entry or value >= entry.Value then
+				if not entry or value >= entry.Value or board == "Ranked" then
 					byId[player.UserId] = { Id = player.UserId, Name = player.DisplayName, Value = value }
 				end
 			end
@@ -209,7 +218,11 @@ local function show()
 			row.Visible = entry ~= nil
 			if entry then
 				(row:FindFirstChild("Who") :: TextLabel).Text = entry.Name;
-				(row:FindFirstChild("Value") :: TextLabel).Text = if board == "Level" then `LV {entry.Value}` else tostring(entry.Value);
+				local value = row:FindFirstChild("Value") :: TextLabel
+				value.Text = if board == "Level" then `LV {entry.Value}` else tostring(entry.Value)
+				if board == "Ranked" then
+					value.TextColor3 = (Ranked.TierFor(entry.Value)).Color -- (the tier's colour)
+				end;
 				(row:FindFirstChild("Face") :: ImageLabel).Image = if entry.Id > 0 then `rbxthumb://type=AvatarHeadShot&id={entry.Id}&w=48&h=48` else ""
 			end
 		end

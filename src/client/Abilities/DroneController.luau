@@ -224,7 +224,7 @@ local function update(dt: number)
 		local delta = UserInputService:GetMouseDelta() + TouchLook.Consume()
 		local speed = LOOK_SPEED * Config.MouseSensitivity
 		yaw -= delta.X * speed
-		pitch = math.clamp(pitch - delta.Y * speed, -MAX_PITCH, MAX_PITCH)
+		pitch = math.clamp(pitch - delta.Y * speed * (if state.invertY then -1 else 1), -MAX_PITCH, MAX_PITCH)
 	end
 	local facing = CFrame.Angles(0, yaw, 0)
 

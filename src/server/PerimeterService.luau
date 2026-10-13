@@ -58,6 +58,7 @@ local function check()
 			local back = lastInside[player]
 			if back then
 				(character :: Model):PivotTo(back)
+				player:SetAttribute("ServerTeleport", os.clock()) -- (AntiCheat: our own teleport, not a cheat)
 				root.AssemblyLinearVelocity = Vector3.zero
 				AbilityEffect:FireClient(player, "Status", "DEFENDERS CAN'T GO OUTSIDE DURING SETUP")
 			end

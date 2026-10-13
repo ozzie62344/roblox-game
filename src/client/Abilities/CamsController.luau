@@ -148,7 +148,7 @@ local function update()
 		local delta = UserInputService:GetMouseDelta() + TouchLook.Consume()
 		local speed = LOOK_SPEED * Config.MouseSensitivity
 		turn = math.clamp(turn - delta.X * speed, -MAX_TURN, MAX_TURN)
-		pitch = math.clamp(pitch - delta.Y * speed, MIN_PITCH, MAX_PITCH)
+		pitch = math.clamp(pitch - delta.Y * speed * (if state.invertY then -1 else 1), MIN_PITCH, MAX_PITCH)
 	end
 	local camera = Workspace.CurrentCamera
 	camera.CameraType = Enum.CameraType.Scriptable -- every frame, in case anything else reset it

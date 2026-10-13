@@ -8,7 +8,8 @@
 --                  with the XP still to go (rewards unlock by themselves, nothing to claim)
 --     CHALLENGES   today's 3 challenges with progress bars, and how long until new ones
 --     DAILY        the week of login rewards, today's to CLAIM, your streak
---     TOP PLAYERS  the leaderboards (most kills, most wins, highest level) and your own numbers
+--     TOP PLAYERS  the leaderboards (most kills, most wins, highest level, top ranked MMR) and
+--                  your own numbers
 --   Daily reward popup: comes up by itself in the lobby when today's is waiting (CLAIM / LATER).
 --   Anywhere: "LEVEL UP!" and "CHALLENGE COMPLETE" banners. At the end of a match: the XP card
 --   (what the match was worth and for what, the bar filling up, LEVEL UP! and what it unlocked).
@@ -24,6 +25,7 @@ local Workspace = game:GetService("Workspace")
 
 local Attachments = require(ReplicatedStorage.Shared.Attachments)
 local Progression = require(ReplicatedStorage.Shared.Progression)
+local Ranked = require(ReplicatedStorage.Shared.Ranked)
 local Skins = require(ReplicatedStorage.Shared.Skins)
 local Sounds = require(ReplicatedStorage.Shared.Sounds)
 local Effects = require(script.Parent.Parent.Combat.Effects)
@@ -46,7 +48,7 @@ local SOFT_TEXT = Color3.fromRGB(170, 176, 190)
 local LOCKED_TEXT = Color3.fromRGB(120, 124, 135)
 local TABS = { "Levels", "Challenges", "Daily", "Top" }
 local TAB_NAMES = { Levels = "Levels", Challenges = "Challenges", Daily = "Daily", Top = "Top Players" }
-local BOARDS = { { "Kills", "MOST KILLS" }, { "Wins", "MOST WINS" }, { "Level", "HIGHEST LEVEL" } }
+local BOARDS = { { "Kills", "MOST KILLS" }, { "Wins", "MOST WINS" }, { "Level", "HIGHEST LEVEL" }, { "Ranked", "TOP RANKED" } }
 local LEVEL_CARD_WIDTH, LEVEL_CARD_GAP = 150, 10
 -- End-of-match card: what each kind of XP is called, in this order
 local GAIN_NAMES = {
@@ -169,6 +171,7 @@ end
 local function inLobbyMenu(): boolean
 	return MatchState:GetAttribute("ServerKind") == "Lobby"
 		and player:GetAttribute("Location") == "Lobby"
+		and not state.inPractice
 		and MatchState:GetAttribute("Phase") == "Waiting"
 end
 
@@ -491,6 +494,9 @@ local function refreshTop()
 				row.who.Text = tostring(entry.Name)
 				row.who.TextColor3 = if id == player.UserId then GOLD_TEXT else Color3.new(1, 1, 1)
 				row.value.Text = if board == "Level" then `LV {entry.Value}` else formatNumber(tonumber(entry.Value) or 0)
+				if board == "Ranked" then
+					row.value.TextColor3 = (Ranked.TierFor(tonumber(entry.Value) or 0)).Color -- (the tier's colour)
+				end
 				row.face.Image = if id > 0 then `rbxthumb://type=AvatarHeadShot&id={id}&w=48&h=48` else ""
 			end
 		end
@@ -499,7 +505,9 @@ local function refreshTop()
 	local stats = decode("Stats")
 	if typeof(stats) == "table" then
 		local level = Progression.LevelFor(xp())
-		youLabel.Text = `YOU · {formatNumber(stats.Kills or 0)} KILLS · {formatNumber(stats.Headshots or 0)} HEADSHOTS · {formatNumber(stats.Wins or 0)} WINS · {formatNumber(stats.Matches or 0)} MATCHES · LEVEL {level}`
+		local mmr, rankedMatches = player:GetAttribute("Mmr"), player:GetAttribute("RankedMatches")
+		local rank = if typeof(mmr) == "number" and typeof(rankedMatches) == "number" and rankedMatches > 0 then ` · {Ranked.Label(mmr, rankedMatches)}` else ""
+		youLabel.Text = `YOU · {formatNumber(stats.Kills or 0)} KILLS · {formatNumber(stats.Headshots or 0)} HEADSHOTS · {formatNumber(stats.Wins or 0)} WINS · {formatNumber(stats.Matches or 0)} MATCHES · LEVEL {level}{rank}`
 	else
 		youLabel.Text = ""
 	end
@@ -744,11 +752,13 @@ local function buildDaily(page: Frame)
 end
 
 local function buildTop(page: Frame)
+	local gap = 16
+	local width = (1000 - gap * (#BOARDS - 1)) / #BOARDS -- (the page is 1000 wide)
 	for i, info in BOARDS do
 		local board = info[1]
 		local column = Instance.new("Frame")
-		column.Position = UDim2.fromOffset((i - 1) * 342, 0)
-		column.Size = UDim2.fromOffset(316, 336)
+		column.Position = UDim2.fromOffset((i - 1) * (width + gap), 0)
+		column.Size = UDim2.fromOffset(width, 336)
 		column.BackgroundColor3 = CARD
 		MenuStyle.Corner(column, UDim.new(0, 12))
 		MenuStyle.Rim(column, EDGE, 2)
@@ -775,9 +785,9 @@ local function buildTop(page: Frame)
 			face.BackgroundColor3 = Color3.fromRGB(46, 50, 60)
 			MenuStyle.Corner(face, UDim.new(1, 0))
 			face.Parent = row
-			local who = leftText(row, "", UDim2.new(1, -150, 0, 20), UDim2.new(0, 62, 0.5, 0), Vector2.new(0, 0.5))
+			local who = leftText(row, "", UDim2.new(1, -136, 0, 20), UDim2.new(0, 62, 0.5, 0), Vector2.new(0, 0.5))
 			thinOutline(who, 1.5)
-			local value = MenuStyle.Text(row, "", UDim2.fromOffset(80, 20), UDim2.new(1, -4, 0.5, 0), Vector2.new(1, 0.5))
+			local value = MenuStyle.Text(row, "", UDim2.fromOffset(68, 20), UDim2.new(1, -4, 0.5, 0), Vector2.new(1, 0.5))
 			value.TextXAlignment = Enum.TextXAlignment.Right
 			value.TextColor3 = GOLD_TEXT
 			thinOutline(value, 1.5)

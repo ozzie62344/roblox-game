@@ -2,10 +2,13 @@
 -- Used for your own shots and for other players' shots (ShotFired from the server).
 
 local Debris = game:GetService("Debris")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
+local Sounds = require(ReplicatedStorage.Shared.Sounds)
 local SoundCache = require(script.Parent.Parent.Audio.SoundCache)
+local SoundGroups = require(script.Parent.Parent.Audio.SoundGroups)
 
 local Effects = {}
 
@@ -64,12 +67,18 @@ function Effects.Impact(position: Vector3, normal: Vector3?)
 	Debris:AddItem(hole, 6)
 end
 
--- Plays a sound in 3D at a position (other players' gunshots), or flat if no position (your own)
-function Effects.Sound(soundId: string, position: Vector3?, volume: number?, pitch: number?)
+-- The shop's blips are menu sounds (the UI volume setting). (The same file is also the defuser's
+-- beep, so it's told apart by being played flat, from here.)
+local UI_SOUNDS = { [Sounds.Shop.Buy] = true, [Sounds.Shop.Credits] = true }
+
+-- Plays a sound in 3D at a position (other players' gunshots), or flat if no position (your own).
+-- `group`: a SoundGroups group (default Effects; flat shop blips go in UI).
+function Effects.Sound(soundId: string, position: Vector3?, volume: number?, pitch: number?, group: SoundGroup?)
 	if soundId == "" then
 		return
 	end
-	local sound = SoundCache.New(soundId) -- preloaded copy, so it starts instantly
+	local ui = not position and UI_SOUNDS[soundId]
+	local sound = SoundCache.New(soundId, group or if ui then SoundGroups.UI else nil) -- preloaded copy, so it starts instantly
 	sound.Volume = volume or 0.6
 	sound.PlaybackSpeed = pitch or 1
 	sound.RollOffMaxDistance = 400

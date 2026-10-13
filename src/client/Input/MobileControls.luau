@@ -6,7 +6,8 @@
 --               hold while sprinting to slide), KNIFE, your ability (or DASH),
 --               LEAN LEFT / RIGHT, DRONE / CAMS, RAPPEL, USE (hold: shows up when there's
 --               something to plant, disable, barricade or reinforce), LOADOUT while you can
---               still change it, MODS, SCORE (the scoreboard), PING (mark for your team)
+--               still change it, MODS, SCORE (the scoreboard), PING (mark for your team),
+--               SETTINGS (SettingsMenu; its CONTROLS page can start EDIT BUTTONS too)
 --   Drone:      the thumbstick drives, dragging looks (TouchLook), HOP, SPOT, EXIT (Roblox hides its
 --               jump button while you're in the drone: your body's jumping is switched off)
 --   Cameras:    < > switch camera, dragging looks, SPOT, EXIT
@@ -36,6 +37,7 @@ local CamsController = require(script.Parent.Parent.Abilities.CamsController)
 local DroneController = require(script.Parent.Parent.Abilities.DroneController)
 local MenuStyle = require(script.Parent.Parent.Match.MenuStyle)
 local ModsMenu = require(script.Parent.Parent.Match.ModsMenu)
+local SettingsMenu = require(script.Parent.Parent.Match.SettingsMenu)
 local Scoreboard = require(script.Parent.Parent.Match.Scoreboard)
 local Spectate = require(script.Parent.Parent.Match.Spectate)
 local TeamPing = require(script.Parent.Parent.Match.TeamPing)
@@ -345,6 +347,15 @@ local SPECS: { Spec } = {
 		color = Color3.fromRGB(40, 110, 90),
 	},
 
+	-- The SETTINGS menu (in the lobby it has its own button). Left of PING.
+	{
+		id = "Settings", label = "SET-\nTINGS", side = "TopRight", x = 4.65, y = 1.0, size = 0.8, modes = { "Play", "Drone", "Cams", "Spectate" },
+		press = function()
+			SettingsMenu.Toggle()
+		end,
+		color = Color3.fromRGB(70, 76, 92),
+	},
+
 	-- Lobby: move the buttons around
 	{
 		id = "EditButtons", label = "EDIT\nBUTTONS", side = "TopRight", x = 1.4, y = 1.0, size = 1.1, modes = { "Other" },
@@ -365,7 +376,7 @@ local function currentModeNow(): Mode?
 	if editing then
 		return "Edit"
 	end
-	if state.devPanelOpen or state.draftOpen or state.voteOpen or state.shopOpen or state.modsOpen or state.inLobby
+	if state.devPanelOpen or state.draftOpen or state.voteOpen or state.shopOpen or state.modsOpen or state.settingsOpen or state.inLobby
 		or state.resultsOpen or state.killCam ~= nil then
 		return "Other" -- menus are tapped directly (the kill cam and match results have their own buttons)
 	end
@@ -491,6 +502,11 @@ local function loadLayout()
 			moved[id] = { x = spot.x, y = spot.y, s = if typeof(spot.s) == "number" then spot.s else 1 }
 		end
 	end
+end
+
+-- EDIT BUTTONS from elsewhere (SettingsMenu → CONTROLS)
+function MobileControls.EditButtons()
+	editing = true
 end
 
 local function finishEditing()

@@ -106,7 +106,7 @@ local function swing()
 	if not character or not humanoid or humanoid.Health <= 0 or not root or root.Anchored then
 		return
 	end
-	if state.devPanelOpen or state.mouseUnlocked or state.draftOpen or state.deploying or state.interacting or state.gesturing or state.droning or state.spectating or state.inLobby then
+	if state.devPanelOpen or state.mouseUnlocked or state.draftOpen or state.settingsOpen or state.deploying or state.interacting or state.gesturing or state.droning or state.spectating or state.inLobby then
 		return
 	end
 	local now = os.clock()

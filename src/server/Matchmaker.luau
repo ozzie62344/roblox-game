@@ -9,6 +9,10 @@
 -- matched players on the teams made here).
 -- Clients see the queues as MatchState attributes "Queue<mode>" = "userId,userId,...", and what
 -- you're queued for (your party's leader picked) as your "Queued" attribute ("1v1,2v2").
+-- RANKED (shared/Ranked) has a queue of its own per mode ("Ranked2v2", seen as MatchState
+-- "QueueRanked2v2"; you have "QueuedRanked" = true), so ranked players only meet ranked players.
+-- Only level 20+ can queue, and a party only if every member is. The teleport data says Ranked,
+-- and the match server rates the match (RankedService).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -16,7 +20,10 @@ local RunService = game:GetService("RunService")
 local TeleportService = game:GetService("TeleportService")
 
 local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
+local Progression = require(ReplicatedStorage.Shared.Progression)
+local Ranked = require(ReplicatedStorage.Shared.Ranked)
 local PartyService = require(script.Parent.PartyService)
+local PlayerData = require(script.Parent.PlayerData)
 local RoundService = require(script.Parent.RoundService)
 
 local Queue = ReplicatedStorage.Remotes.Queue :: RemoteEvent
@@ -33,6 +40,27 @@ local lastRequest: { [Player]: number } = {}
 
 local function teamSize(mode: string): number
 	return tonumber(string.match(mode, "^(%d+)v")) :: number
+end
+
+-- The queue a mode's casual / ranked players wait in
+local function queueKey(mode: string, ranked: boolean): string
+	return if ranked then "Ranked" .. mode else mode
+end
+
+-- Why `unit` can't queue for ranked (someone under the level, or their data isn't in yet), or nil
+local function rankedBlock(unit: Unit): string?
+	for _, member in unit do
+		local data = PlayerData.Get(member)
+		if not data then
+			return `{string.upper(member.DisplayName)} IS STILL LOADING · TRY AGAIN`
+		end
+		local level = Progression.LevelFor(data.Xp)
+		if level < Ranked.MinLevel then
+			local who = if #unit > 1 then `{string.upper(member.DisplayName)} IS` else "YOU'RE"
+			return `{who} LEVEL {level} · RANKED NEEDS LEVEL {Ranked.MinLevel}`
+		end
+	end
+	return nil
 end
 
 local function publish()
@@ -69,6 +97,7 @@ local function leaveUnit(unit: Unit, reason: string?, except: Player?)
 	end
 	for _, player in unit do
 		player:SetAttribute("Queued", nil)
+		player:SetAttribute("QueuedRanked", nil)
 		if reason and player ~= except and player.Parent then
 			Queue:FireClient(player, "Stopped", reason)
 		end
@@ -81,10 +110,11 @@ local function leave(player: Player)
 		leaveUnit(unit)
 	end
 	player:SetAttribute("Queued", nil)
+	player:SetAttribute("QueuedRanked", nil)
 end
 
 -- `sides`: the players on each team, in MatchConfig.TeamOrder
-local function launch(mode: string, sides: { { Player } })
+local function launch(mode: string, sides: { { Player } }, ranked: boolean)
 	local group, teamOf = {}, {}
 	for i, side in sides do
 		for _, player in side do
@@ -97,11 +127,11 @@ local function launch(mode: string, sides: { { Player } })
 		table.insert(everyone, player.UserId)
 	end
 	for _, player in group do
-		Queue:FireClient(player, "Found", mode, everyone)
+		Queue:FireClient(player, "Found", mode, everyone, ranked)
 	end
 	if RunService:IsStudio() then
 		-- shortcut: the whole test server plays (no teleports in Studio); fine for testing
-		RoundService.ForceStart(teamOf)
+		RoundService.ForceStart(teamOf, ranked)
 		return
 	end
 	task.wait(2) -- MATCH FOUND on screen (clients set the loading screen as the teleport screen)
@@ -121,7 +151,8 @@ local function launch(mode: string, sides: { { Player } })
 		local options = Instance.new("TeleportOptions")
 		options.ReservedServerAccessCode = TeleportService:ReserveServer(game.PlaceId)
 		-- Teams: who plays where (RoundService). Parties: so they come back together (PartyService).
-		options:SetTeleportData({ Mode = mode, Players = ids, Teams = teams, Parties = PartyService.ForTeleport(present) })
+		-- Ranked: the match is rated (RankedService).
+		options:SetTeleportData({ Mode = mode, Players = ids, Teams = teams, Parties = PartyService.ForTeleport(present), Ranked = ranked })
 		TeleportService:TeleportAsync(game.PlaceId, present, options)
 	end)
 	if not ok then
@@ -163,20 +194,22 @@ local function pickTeams(list: { Unit }, size: number): { { Unit } }?
 	return nil
 end
 
--- Smallest mode first: whichever queue can make a match first goes
+-- Smallest mode first: whichever queue can make a match first goes (casual, then ranked)
 local function check()
-	for _, mode in MatchConfig.QueueModes do
-		local sides = pickTeams(queues[mode], teamSize(mode))
-		if sides then
-			local players = {}
-			for i, units in sides do
-				players[i] = {}
-				for _, unit in units do
-					leaveUnit(unit)
-					table.move(unit, 1, #unit, #players[i] + 1, players[i])
+	for _, ranked in { false, true } do
+		for _, mode in MatchConfig.QueueModes do
+			local sides = pickTeams(queues[queueKey(mode, ranked)], teamSize(mode))
+			if sides then
+				local players = {}
+				for i, units in sides do
+					players[i] = {}
+					for _, unit in units do
+						leaveUnit(unit)
+						table.move(unit, 1, #unit, #players[i] + 1, players[i])
+					end
 				end
+				task.spawn(launch, mode, players, ranked)
 			end
-			task.spawn(launch, mode, players)
 		end
 	end
 	publish()
@@ -184,11 +217,13 @@ end
 
 function Matchmaker.Start()
 	for _, mode in MatchConfig.QueueModes do
-		queues[mode] = {}
+		queues[queueKey(mode, false)] = {}
+		queues[queueKey(mode, true)] = {}
 	end
 	publish()
 
-	Queue.OnServerEvent:Connect(function(player, action, modes)
+	-- Queue("Join", modes, ranked?) / Queue("Leave")
+	Queue.OnServerEvent:Connect(function(player, action, modes, ranked)
 		-- (a few requests a second is plenty for clicking around a menu)
 		local now = os.clock()
 		if now - (lastRequest[player] or 0) < 0.1 then
@@ -208,6 +243,12 @@ function Matchmaker.Start()
 			return
 		end
 		local unit = PartyService.MembersOf(player)
+		ranked = ranked == true
+		local blocked = if ranked then rankedBlock(unit) else nil
+		if blocked then
+			Queue:FireClient(player, "Stopped", blocked)
+			return
+		end
 		for _, member in unit do
 			leave(member)
 		end
@@ -215,12 +256,13 @@ function Matchmaker.Start()
 		local picked = {}
 		for _, mode in MatchConfig.QueueModes do
 			if table.find(modes, mode) and teamSize(mode) >= #unit then
-				table.insert(queues[mode], unit)
+				table.insert(queues[queueKey(mode, ranked)], unit)
 				table.insert(picked, mode)
 			end
 		end
 		for _, member in unit do
 			member:SetAttribute("Queued", if #picked > 0 then table.concat(picked, ",") else nil)
+			member:SetAttribute("QueuedRanked", if #picked > 0 and ranked then true else nil)
 		end
 		check()
 	end)

@@ -8,7 +8,8 @@
 --   NO, and goes away by itself when its time runs out. What happens ("BOB JOINED THE PARTY")
 --   shows under it for a few seconds.
 -- The server (PartyService) checks everything. Parties come from the "PartyLeader" player
--- attributes; MainMenu asks Leader() / Size(): only the leader queues, for modes the party fits.
+-- attributes; MainMenu asks Leader() / Size() / Members(): only the leader queues, for modes the
+-- party fits (and ranked only if everyone's level is high enough).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -103,9 +104,15 @@ function PartyMenu.Size(): number
 	return #partyOf(player)
 end
 
+-- Everyone in my party, leader first ({ me } on my own): MainMenu checks they can all play ranked
+function PartyMenu.Members(): { Player }
+	return partyOf(player)
+end
+
 local function inLobbyMenu(): boolean
 	return MatchState:GetAttribute("ServerKind") == "Lobby"
 		and player:GetAttribute("Location") == "Lobby"
+		and not state.inPractice
 		and MatchState:GetAttribute("Phase") == "Waiting"
 end
 
