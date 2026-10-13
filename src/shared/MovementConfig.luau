@@ -60,6 +60,10 @@ return {
 	LeanBodyAngle = 22, -- degrees other players see your upper body tilt
 	LeanSpeed = 26, -- how fast you lean in/out
 
+	-- Normal jump: how high (studs) a jump lifts you. Roblox's default is 7.2, enough to hit your
+	-- head on most ceilings; 4.5 still gets you up onto a crate or through a window.
+	JumpHeight = 4.5,
+
 	-- Wall jump (Space while in the air next to a wall) — ability
 	WallJumpUp = 75, -- upward speed of a wall jump
 	WallJumpPush = 30, -- how hard you're pushed away from the wall

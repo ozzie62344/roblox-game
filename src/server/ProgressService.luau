@@ -137,6 +137,22 @@ function ProgressService.Record(player: Player, event: Progression.Event)
 	LeaderboardService.Note(player)
 end
 
+-- Dev panel: jump `player` up `levels` levels (exactly the XP it takes, so they land at the start
+-- of the new level). Rewards on the track for those levels are handed out as usual.
+function ProgressService.GiveLevels(player: Player, levels: number)
+	local data = PlayerData.Get(player)
+	if not data or levels <= 0 then
+		return
+	end
+	local level, into = Progression.LevelFor(data.Xp)
+	local needed = -into
+	for l = level, level + levels - 1 do
+		needed += Progression.XpToNext(l)
+	end
+	addXp(player, needed, "DEV")
+	LeaderboardService.Note(player)
+end
+
 local function claimDaily(player: Player)
 	local data = PlayerData.Get(player)
 	local day = today()

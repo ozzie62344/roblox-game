@@ -10,6 +10,7 @@ local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local AbilityService = require(script.Parent.AbilityService)
 local Dummies = require(script.Parent.Dummies)
 local MapService = require(script.Parent.MapService)
+local ProgressService = require(script.Parent.ProgressService)
 local RoundService = require(script.Parent.RoundService)
 local ShopService = require(script.Parent.ShopService)
 local WeaponService = require(script.Parent.WeaponService)
@@ -70,6 +71,21 @@ local actions: { [string]: (player: Player, arg: any) -> () } = {
 			return
 		end
 		ShopService.Adjust(target, amount, "GIFT")
+	end,
+
+	-- Give anyone in the server levels (same picker as coins)
+	GiveLevels = function(_, arg)
+		if typeof(arg) ~= "table" then
+			return
+		end
+		local target, levels = arg.Player, arg.Levels
+		if typeof(target) ~= "Instance" or not target:IsA("Player") or target.Parent ~= Players then
+			return
+		end
+		if typeof(levels) ~= "number" or levels ~= math.floor(levels) or levels < 1 or levels > 100 then
+			return
+		end
+		ProgressService.GiveLevels(target, levels)
 	end,
 
 	RefillAmmo = function(player)

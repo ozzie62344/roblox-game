@@ -276,7 +276,7 @@ local function build()
 		DevAction:FireServer("RefillAmmo")
 		WeaponController.Refill()
 	end)
-	-- Coins: pick anyone in the server (◀ ▶, starts on you), then give or take some
+	-- Coins and levels: pick anyone in the server (◀ ▶, starts on you), then give or take some
 	local coins = Instance.new("Frame")
 	coins.Size = UDim2.new(1, 0, 0, 0)
 	coins.AutomaticSize = Enum.AutomaticSize.Y
@@ -287,7 +287,7 @@ local function build()
 	coinsLayout.Padding = UDim.new(0, 4)
 	coinsLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	coinsLayout.Parent = coins
-	heading(coins, "COINS (shop credits)", 1)
+	heading(coins, "COINS + LEVELS (pick a player)", 1)
 	local target: Player = player
 	local pickRow = Instance.new("Frame")
 	pickRow.Size = UDim2.new(1, 0, 0, 30)
@@ -318,7 +318,8 @@ local function build()
 			target = player -- (they left)
 		end
 		local credits = target:GetAttribute("Credits")
-		targetLabel.Text = `{target.DisplayName} · {if typeof(credits) == "number" then credits else "?"} coins`
+		local level = target:GetAttribute("Level")
+		targetLabel.Text = `{target.DisplayName} · {if typeof(credits) == "number" then credits else "?"} coins · LV {if typeof(level) == "number" then level else "?"}`
 	end
 	local function step(by: number)
 		local list = Players:GetPlayers()
@@ -353,6 +354,24 @@ local function build()
 			task.delay(0.5, showTarget) -- (once the server has updated their total)
 		end)
 		b.Parent = amounts
+	end
+	local levelButtons = Instance.new("Frame")
+	levelButtons.Size = UDim2.new(1, 0, 0, 0)
+	levelButtons.AutomaticSize = Enum.AutomaticSize.Y
+	levelButtons.LayoutOrder = 4
+	levelButtons.BackgroundTransparency = 1
+	levelButtons.Parent = coins
+	local levelGrid = amountGrid:Clone()
+	levelGrid.Parent = levelButtons
+	for i, levels in { 1, 5, 10, 25 } do
+		local b = Instance.new("TextButton")
+		b.LayoutOrder = i
+		styleButton(b, `+{levels} LV`)
+		b.Activated:Connect(function()
+			DevAction:FireServer("GiveLevels", { Player = target, Levels = levels })
+			task.delay(0.5, showTarget)
+		end)
+		b.Parent = levelButtons
 	end
 	showTarget()
 

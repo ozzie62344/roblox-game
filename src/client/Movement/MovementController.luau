@@ -499,6 +499,9 @@ local function setupCharacter(character: Model)
 
 	local newHumanoid = character:WaitForChild("Humanoid") :: Humanoid
 	local newRoot = character:WaitForChild("HumanoidRootPart") :: BasePart
+	-- A short hop (Siege-style): Roblox's default 7 studs bonked your head on low ceilings
+	newHumanoid.UseJumpPower = false
+	newHumanoid.JumpHeight = Config.JumpHeight
 
 	local attachment = Instance.new("Attachment")
 	attachment.Name = "MovementAttachment"

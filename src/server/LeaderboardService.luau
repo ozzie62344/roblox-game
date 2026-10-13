@@ -6,8 +6,8 @@
 -- Kept in OrderedDataStores, one per board, keyed by UserId (the Level board ranks by total XP).
 -- A stored number only ever goes up, so a server with stale data can't knock anyone down.
 --   Writing: a player's numbers are noted when they change (ProgressService) and written every
---            couple of minutes, when they leave and when the server shuts down, only if they changed.
---   Reading: the top of each board every few minutes, names looked up once and cached.
+--            45 seconds, when they leave and when the server shuts down, only if they changed.
+--   Reading: the top of each board every minute, names looked up once and cached.
 -- Every request is pcall'd. With no DataStore (Studio without API access, an outage) or before
 -- the first read, the boards show the players in this server; players in this server always
 -- show their live numbers (so a kill shows up on the board in seconds, not minutes).
@@ -32,8 +32,8 @@ type Entry = { Id: number, Name: string, Value: number }
 local BOARDS = { "Kills", "Wins", "Level" }
 local STORE_NAMES = { Kills = "TopKills_v1", Wins = "TopWins_v1", Level = "TopXp_v1" }
 local SHOWN = 10 -- rows per board
-local WRITE_INTERVAL = 120 -- seconds between writes of changed numbers
-local READ_INTERVAL = 300 -- seconds between reads of the top players
+local WRITE_INTERVAL = 45 -- seconds between writes of changed numbers
+local READ_INTERVAL = 60 -- seconds between reads of the top players (3 reads a minute: well inside the budget)
 local SHOW_INTERVAL = 10 -- seconds between rebuilding what's shown (no requests: cached + live)
 
 local stores: { [string]: OrderedDataStore } = {}
@@ -216,7 +216,7 @@ local function show()
 	end
 	local status = gui:FindFirstChild("Status", true) :: TextLabel?
 	if status then
-		status.Text = if live then "TOP PLAYERS WORLDWIDE · UPDATED EVERY FEW MINUTES" else "LEADERBOARDS OFFLINE · SHOWING THIS SERVER"
+		status.Text = if live then "TOP PLAYERS FROM EVERY SERVER · UPDATED EVERY MINUTE" else "LEADERBOARDS OFFLINE · SHOWING THIS SERVER"
 	end
 end
 

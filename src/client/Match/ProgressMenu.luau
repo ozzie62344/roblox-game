@@ -92,7 +92,7 @@ local popupBack: Frame
 local popupTiles: { Tile } = {}
 local popupStreak: TextLabel
 local popupClaim: TextButton
-local banner: CanvasGroup
+local banner: Frame
 local bannerTitle: TextLabel
 local bannerSub: TextLabel
 local summary: Frame
@@ -301,14 +301,32 @@ local function showBanner(title: string, sub: string, color: Color3)
 	bannerTitle.Text = title
 	bannerTitle.TextColor3 = color
 	bannerSub.Text = sub
-	banner.GroupTransparency = 0
+	-- (Fades each label rather than a CanvasGroup: on some devices a CanvasGroup can't get its
+	-- texture and draws its children ignoring GroupTransparency, so the banner never went away.)
+	local labels = { bannerTitle, bannerSub }
+	for _, label in labels do
+		label.TextTransparency = 0
+		local stroke = label:FindFirstChildOfClass("UIStroke") :: UIStroke
+		stroke.Transparency = 0
+	end
+	banner.Visible = true
 	local scale = banner:FindFirstChild("Pop") :: UIScale
 	scale.Scale = 0.6
 	TweenService:Create(scale, TweenInfo.new(0.35, Enum.EasingStyle.Back), { Scale = 1 }):Play()
 	task.delay(3.2, function()
-		if bannerCount == mine then
-			TweenService:Create(banner, TweenInfo.new(0.6), { GroupTransparency = 1 }):Play()
+		if bannerCount ~= mine then
+			return
 		end
+		local fade = TweenInfo.new(0.6)
+		for _, label in labels do
+			TweenService:Create(label, fade, { TextTransparency = 1 }):Play()
+			TweenService:Create(label:FindFirstChildOfClass("UIStroke") :: UIStroke, fade, { Transparency = 1 }):Play()
+		end
+		task.delay(0.65, function()
+			if bannerCount == mine then
+				banner.Visible = false
+			end
+		end)
 	end)
 end
 
@@ -486,7 +504,7 @@ local function refreshTop()
 		youLabel.Text = ""
 	end
 	local live = folder and folder:GetAttribute("Live") == true
-	boardStatus.Text = if live then "TOP PLAYERS WORLDWIDE · UPDATED EVERY FEW MINUTES" else "LEADERBOARDS OFFLINE · SHOWING PLAYERS IN THIS SERVER"
+	boardStatus.Text = if live then "TOP PLAYERS FROM EVERY SERVER · UPDATED EVERY MINUTE" else "LEADERBOARDS OFFLINE · SHOWING PLAYERS IN THIS SERVER"
 end
 
 local function refresh()
@@ -901,13 +919,13 @@ end
 
 local function buildMatchBits()
 	-- Banner: LEVEL UP! / CHALLENGE COMPLETE
-	banner = Instance.new("CanvasGroup")
+	banner = Instance.new("Frame")
 	banner.Name = "Banner"
 	banner.AnchorPoint = Vector2.new(0.5, 0.5)
 	banner.Position = UDim2.fromScale(0.5, 0.27)
 	banner.Size = UDim2.fromOffset(760, 110)
 	banner.BackgroundTransparency = 1
-	banner.GroupTransparency = 1
+	banner.Visible = false
 	banner.Parent = gui
 	local pop = Instance.new("UIScale")
 	pop.Name = "Pop"
