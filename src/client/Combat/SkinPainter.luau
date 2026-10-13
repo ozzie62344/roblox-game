@@ -11,7 +11,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Skins = require(ReplicatedStorage.Shared.Skins)
-local GunMaterials = require(script.Parent.GunMaterials)
 local Stickers = require(script.Parent.Stickers)
 
 local SkinPainter = {}
@@ -34,7 +33,9 @@ end
 local function paint(part: BasePart, color: Color3, material: Enum.Material, reflectance: number?)
 	part.Color = color
 	part.Material = material
-	part.MaterialVariant = GunMaterials.VariantFor(material)
+	-- (no grain texture on skins: tinted skin colours made it look speckled and dirty. Only the
+	-- plain factory finish keeps GunMaterials' metal grain, from GunModels.)
+	part.MaterialVariant = ""
 	part.Reflectance = reflectance or 0
 	if material == Enum.Material.ForceField then
 		part.CastShadow = false
