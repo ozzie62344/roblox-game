@@ -13,6 +13,7 @@ local Sound3D = require(script.Parent.Sound3D)
 local DroneHum = {}
 
 local TOP_SPEED = 13 -- DroneController's driving speed
+local SPRINT = 1.6 -- ...and how much faster sprinting is (it whines higher still)
 local MUFFLE_EVERY = 0.25 -- seconds between wall checks
 
 local lastMuffle = 0
@@ -44,7 +45,7 @@ local function update()
 			hum:Play()
 		end
 		local velocity = body.AssemblyLinearVelocity
-		local speed = math.clamp(Vector3.new(velocity.X, 0, velocity.Z).Magnitude / TOP_SPEED, 0, 1)
+		local speed = math.clamp(Vector3.new(velocity.X, 0, velocity.Z).Magnitude / TOP_SPEED, 0, SPRINT)
 		local walls, throughFloor = 0, false
 		if recheck then
 			-- (just above the drone: from your own drone's camera the body itself would count as a wall)
@@ -54,7 +55,7 @@ local function update()
 		else
 			walls = hum:GetAttribute("Walls") or 0
 		end
-		hum.Volume = config.Volume * speed * Sounds.MuffleVolumeScale ^ walls
+		hum.Volume = config.Volume * math.min(speed, 1) * Sounds.MuffleVolumeScale ^ walls
 		hum.PlaybackSpeed = config.Pitch * (0.8 + 0.3 * speed)
 	end
 end
