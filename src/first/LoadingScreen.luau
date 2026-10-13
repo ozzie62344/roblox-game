@@ -1,4 +1,4 @@
--- The BREACH ROULETTE loading screen. ReplicatedFirst/Loading shows it when you join; the lobby's
+-- The BREACHPOINT loading screen. ReplicatedFirst/Loading shows it when you join; the lobby's
 -- MainMenu also gives it to Roblox as the teleport screen on the way into a match.
 
 local TweenService = game:GetService("TweenService")
@@ -59,7 +59,7 @@ function LoadingScreen.Build(status: string): ScreenGui
 	gradient.Rotation = 25
 	gradient.Parent = root
 
-	text(root, 'BREACH <font color="#ffb43c">ROULETTE</font>', UDim2.fromScale(0.8, 0.13), 0.4)
+	text(root, 'BREACH<font color="#ffb43c">POINT</font>', UDim2.fromScale(0.8, 0.13), 0.4)
 
 	local bar = Instance.new("Frame")
 	bar.AnchorPoint = Vector2.new(0.5, 0.5)

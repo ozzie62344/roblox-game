@@ -103,7 +103,7 @@ function Lobby.Build(): Model
 	end
 
 	-- Screens on the north wall (voting will go here later)
-	screen(map, at(0, 10, -HALF_Z + 0.6), 26, "BREACH ROULETTE", "PRESS PLAY TO FIND A MATCH")
+	screen(map, at(0, 10, -HALF_Z + 0.6), 26, "BREACHPOINT", "PRESS PLAY TO FIND A MATCH")
 	screen(map, at(-28, 9, -HALF_Z + 0.6), 12, "MODES", "1v1 · 2v2 · 3v3 · 4v4")
 	screen(map, at(28, 9, -HALF_Z + 0.6), 12, "MAPS", "VOTED IN EVERY MATCH")
 

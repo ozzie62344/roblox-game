@@ -45,7 +45,8 @@ local maps: Row
 local modes: Row
 
 local function displayName(name: string): string
-	return string.upper((string.gsub(name, "(%l)(%u)", "%1 %2"))) -- "TestArena" → "TEST ARENA"
+	local spaced = string.gsub(string.gsub(name, "(%l)(%u)", "%1 %2"), "(%a)(%d)", "%1 %2")
+	return string.upper(spaced) -- "TestArena" → "TEST ARENA", "Flight9" → "FLIGHT 9"
 end
 
 -- A card with a two-color gradient, a big name, an optional line under it and a votes strip
