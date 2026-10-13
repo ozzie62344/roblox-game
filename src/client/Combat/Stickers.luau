@@ -133,34 +133,38 @@ local CAT: Design = {
 -- Cheeto: a lumpy, slightly bent cheese puff, with a shine and a little dust
 ---------------------------------------------------------------------------------------------
 local CHEESE = Color3.fromRGB(255, 150, 35)
-local CHEESE_DEEP = Color3.fromRGB(248, 136, 28)
-local CHEESE_SHINE = Color3.fromRGB(255, 202, 112)
-local CHEESE_DUST = Color3.fromRGB(214, 100, 18)
-local LUMPS = { { -0.31, -0.03, 0.3 }, { -0.11, 0.04, 0.35 }, { 0.1, 0.04, 0.33 }, { 0.29, -0.03, 0.27 } }
+local CHEESE_SHADE = Color3.fromRGB(208, 98, 18)
+local CHEESE_SHINE = Color3.fromRGB(255, 205, 120)
+local CHEESE_DUST = Color3.fromRGB(200, 92, 16)
+-- Overlapping lumps along a gentle bend, all one colour on one layer so they read as one puff;
+-- the same lumps a little lower and darker behind them give it a rounded underside
+local LUMPS = { { -0.36, -0.04, 0.28 }, { -0.18, 0.03, 0.33 }, { 0, 0.05, 0.34 }, { 0.18, 0.03, 0.32 }, { 0.35, -0.04, 0.27 } }
+local SHADE_DROP = 0.035
 
 local cheetoSpots = {}
 for _, lump in LUMPS do
 	table.insert(cheetoSpots, Vector2.new(lump[1], lump[2]))
 end
-for _, spot in { { -0.44, -0.03 }, { 0.41, -0.03 }, { -0.11, 0.2 }, { 0.1, -0.12 } } do
+for _, spot in { { -0.48, -0.04 }, { 0.47, -0.04 }, { 0, 0.21 }, { 0, -0.14 } } do
 	table.insert(cheetoSpots, Vector2.new(spot[1], spot[2]))
 end
 
 local CHEETO: Design = {
-	parts = 7,
+	parts = 13,
 	top = 0.5,
 	bottom = 0.5,
 	gap = Vector2.new(1.1, 1),
-	size = 0.05,
+	size = 0.055,
 	turn = true,
 	spots = cheetoSpots,
 	draw = function(kit)
-		for i, lump in LUMPS do
-			kit.disc(lump[1], lump[2], i % 2, lump[3], if i % 2 == 0 then CHEESE else CHEESE_DEEP)
+		for _, lump in LUMPS do
+			kit.disc(lump[1], lump[2] - SHADE_DROP, 0, lump[3], CHEESE_SHADE)
+			kit.disc(lump[1], lump[2], 1, lump[3] - 0.02, CHEESE)
 		end
-		kit.disc(-0.13, 0.12, 2, 0.09, CHEESE_SHINE)
-		kit.disc(0.13, -0.03, 2, 0.05, CHEESE_DUST)
-		kit.disc(-0.3, 0, 2, 0.045, CHEESE_DUST)
+		kit.disc(-0.12, 0.11, 2, 0.1, CHEESE_SHINE)
+		kit.disc(0.16, -0.01, 2, 0.05, CHEESE_DUST)
+		kit.disc(-0.27, -0.02, 2, 0.045, CHEESE_DUST)
 	end,
 }
 
