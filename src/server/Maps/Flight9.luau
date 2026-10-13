@@ -69,6 +69,9 @@ local TENT_R = 17
 local TENT_SPRING = 8.4 -- where the arch starts (it peaks at TENT_SPRING + TENT_R)
 -- The tail section lies turned off line beyond the mid section's west end
 local TAIL = CFrame.new(-46, 0, 0) * CFrame.Angles(0, math.rad(8), 0)
+-- The torn-off wing and an engine pod out in the north field
+local WING = CFrame.new(-24, GROUND + 0.8, 62) * CFrame.Angles(0, math.rad(-16), math.rad(7))
+local POD = CFrame.new(-64, 2.4, 50) * CFrame.Angles(0, math.rad(30), math.rad(6))
 
 -- Look
 local SNOW = Color3.fromRGB(228, 232, 236) -- off-white: pure white glares
@@ -81,6 +84,14 @@ local SOOT = Color3.fromRGB(34, 31, 30)
 local SCORCH = Color3.fromRGB(78, 66, 56)
 local SCAR = Color3.fromRGB(58, 50, 44) -- ploughed earth and burnt fuel
 local WINDOW_DARK = Color3.fromRGB(38, 46, 58)
+local WINDOW_FRAME = Color3.fromRGB(196, 201, 207)
+local SEAM = Color3.fromRGB(172, 178, 186) -- panel joints in the skin
+local DIRTY_SNOW = Color3.fromRGB(176, 170, 162)
+local SHADOW_SNOW = Color3.fromRGB(214, 222, 232) -- a bluer drift
+local INSULATION = Color3.fromRGB(214, 190, 120)
+local CABLE = Color3.fromRGB(36, 36, 38)
+local MASK_YELLOW = Color3.fromRGB(230, 196, 60)
+local REFLECTOR = Color3.fromRGB(236, 120, 40)
 local LINING = Color3.fromRGB(226, 222, 212) -- cabin panels
 local DECK = Color3.fromRGB(118, 122, 128)
 local HOLD_DECK = Color3.fromRGB(84, 88, 94)
@@ -284,6 +295,122 @@ local function wallSign(map: MapBuilder.Builder, text: string, point: Vector3, o
 	sign(map, text, CFrame.lookAt(at, at + out), size, background, textColor, see)
 end
 
+-- Pieces of [x1, x2] left between the gaps (each gap padded by `pad`)
+local function segments(x1: number, x2: number, gaps: { { number } }, pad: number): { { number } }
+	local sorted = table.clone(gaps)
+	table.sort(sorted, function(a, b)
+		return a[1] < b[1]
+	end)
+	local out = {}
+	local cursor = x1
+	for _, gap in sorted do
+		local a, b = gap[1] - pad, gap[2] + pad
+		if a > cursor then
+			table.insert(out, { cursor, math.min(a, x2) })
+		end
+		cursor = math.max(cursor, b)
+	end
+	if x2 > cursor then
+		table.insert(out, { cursor, x2 })
+	end
+	return out
+end
+
+-- Repeatable scatter: 0..1 from a couple of numbers (no math.random: the map is the same every round)
+local function noise(a: number, b: number?): number
+	local v = math.sin(a * 12.9898 + (b or 0) * 78.233) * 43758.5453
+	return v - math.floor(v)
+end
+
+-- Looks-only part placed by `frame`; small detail casts no shadow. Dressing fixed to a soft wall
+-- goes in Trim, so a breach through the wall takes it away too (DestructionService).
+local function decoPart(map: MapBuilder.Builder, name: string, size: Vector3, frame: CFrame, color: Color3, material: Enum.Material, parent: Instance?): Part
+	local part = map:Part(name, size, frame, color, material)
+	cosmetic(part, parent or map.geometry)
+	if size.X * size.Y * size.Z < 8 or math.min(size.X, size.Y, size.Z) < 0.3 then
+		part.CastShadow = false
+	end
+	return part
+end
+
+-- Looks-only block between two corners
+local function deco(map: MapBuilder.Builder, name: string, x1: number, y1: number, z1: number, x2: number, y2: number, z2: number, color: Color3, material: Enum.Material, parent: Instance?): Part
+	local min = Vector3.new(math.min(x1, x2), math.min(y1, y2), math.min(z1, z2))
+	local max = Vector3.new(math.max(x1, x2), math.max(y1, y2), math.max(z1, z2))
+	return decoPart(map, name, max - min, CFrame.new((min + max) / 2), color, material, parent)
+end
+
+-- Looks-only cylinder (its axis along the frame's X)
+local function decoTube(map: MapBuilder.Builder, name: string, length: number, diameter: number, frame: CFrame, color: Color3, material: Enum.Material, parent: Instance?): Part
+	local part = decoPart(map, name, Vector3.new(length, diameter, diameter), frame, color, material, parent)
+	part.Shape = Enum.PartType.Cylinder
+	return part
+end
+
+-- Round cable / rope / hose / strut from `a` to `b`
+local function cable(map: MapBuilder.Builder, name: string, a: Vector3, b: Vector3, diameter: number, color: Color3, material: Enum.Material?, parent: Instance?): Part
+	local dir = (b - a).Unit
+	local frame = if math.abs(dir.Y) > 0.999
+		then CFrame.new((a + b) / 2) * CFrame.Angles(0, 0, math.pi / 2) -- (straight up: lookAt has no "up" to go by)
+		else CFrame.lookAt((a + b) / 2, b) * CFrame.Angles(0, math.pi / 2, 0) -- (turns the cylinder's X onto the line)
+	return decoTube(map, name, (b - a).Magnitude, diameter, frame, color, material or Enum.Material.Rubber, parent)
+end
+
+-- Looks-only wedge (climbs toward its +Z)
+local function decoWedge(map: MapBuilder.Builder, name: string, size: Vector3, frame: CFrame, color: Color3, material: Enum.Material, parent: Instance?): WedgePart
+	local part = wedge(map, name, size, frame, color, material)
+	cosmetic(part, parent or map.geometry)
+	part.CastShadow = false
+	return part
+end
+
+-- Snow blown up against a wall: `height` high where it meets the face at `point` (on the
+-- ground), tailing off `run` studs out along `out`, `length` long along the wall. You wade
+-- through it (looks only).
+local function drift(map: MapBuilder.Builder, point: Vector3, out: Vector3, length: number, height: number, run: number)
+	local centre = point + out * (run / 2) + Vector3.new(0, height / 2, 0)
+	decoWedge(map, "Drift", Vector3.new(length, height, run), CFrame.lookAt(centre, centre + out), SNOW, Enum.Material.Snow)
+end
+
+-- Drifts along a wall face from a to b (world x or z along it), leaving the doorways in `gaps`
+-- clear. `alongX`: the wall runs along x at `fixed` (else along z at `fixed`).
+local function driftAlong(map: MapBuilder.Builder, alongX: boolean, fixed: number, a: number, b: number, out: number, gaps: { { number } }, height: number?)
+	for i, s in segments(a, b, gaps, 0.6) do
+		local length = s[2] - s[1]
+		if length > 1.5 then
+			local mid = (s[1] + s[2]) / 2
+			local point = if alongX then Vector3.new(mid, GROUND, fixed) else Vector3.new(fixed, GROUND, mid)
+			local dir = if alongX then Vector3.new(0, 0, out) else Vector3.new(out, 0, 0)
+			local h = (height or 1.3) * (0.75 + 0.5 * noise(mid, fixed + i))
+			drift(map, point, dir, length, h, h * 2.4)
+		end
+	end
+end
+
+-- Layer of snow lying on top of something (roofs, crates, barriers): looks only
+local function snowCap(map: MapBuilder.Builder, x1: number, z1: number, x2: number, z2: number, top: number, thick: number?, parent: Instance?): Part
+	return deco(map, "SnowCap", x1, top, z1, x2, top + (thick or 0.3), z2, SNOW, Enum.Material.Snow, parent)
+end
+
+-- Icicles hanging under an edge from `a` to `b`
+local function icicles(map: MapBuilder.Builder, a: Vector3, b: Vector3, count: number)
+	for i = 1, count do
+		local t = (i - 0.5 + (noise(a.X + i, a.Z) - 0.5) * 0.6) / count
+		local length = 0.5 + 1.6 * noise(b.X - i, b.Z + i)
+		local p = a:Lerp(b, t)
+		local spike = Instance.new("CornerWedgePart")
+		spike.Name = "Icicle"
+		spike.Size = Vector3.new(0.28, length, 0.28)
+		spike.CFrame = CFrame.new(p - Vector3.new(0, length / 2, 0)) * CFrame.Angles(math.pi, noise(i, a.X) * 6, 0) -- (upside down: the point hangs)
+		spike.Color = ICE
+		spike.Material = Enum.Material.Ice
+		spike.Transparency = 0.25
+		spike.Anchored = true
+		spike.CastShadow = false
+		cosmetic(spike, map.geometry)
+	end
+end
+
 local function ceilingOf(level: number): number
 	return if level == BF then B - 1 elseif level == B then F2 - 1 else CEILING
 end
@@ -355,27 +482,6 @@ local function buildFloors(map: MapBuilder.Builder)
 	end
 end
 
--- Pieces of [x1, x2] left between the gaps (each gap padded by `pad`)
-local function segments(x1: number, x2: number, gaps: { { number } }, pad: number): { { number } }
-	local sorted = table.clone(gaps)
-	table.sort(sorted, function(a, b)
-		return a[1] < b[1]
-	end)
-	local out = {}
-	local cursor = x1
-	for _, gap in sorted do
-		local a, b = gap[1] - pad, gap[2] + pad
-		if a > cursor then
-			table.insert(out, { cursor, math.min(a, x2) })
-		end
-		cursor = math.max(cursor, b)
-	end
-	if x2 > cursor then
-		table.insert(out, { cursor, x2 })
-	end
-	return out
-end
-
 -- Boreal Air's livery down one side of a hull section (side = -1 / 1: the wall on z = side * HULL):
 -- the navy cheat line and red pinstripe, a row of cabin windows, the same windows inside (sky
 -- through them), skipping the doors and windows in `gaps` and the bulkheads at `bulkheads`
@@ -384,11 +490,30 @@ local function livery(map: MapBuilder.Builder, x1: number, x2: number, side: num
 	local function strip(name: string, a: number, b: number, y1: number, y2: number, face: number, out: number, color: Color3, material: Enum.Material)
 		cosmetic(block(map, name, a, y1, face, b, y2, face + out * 0.08, color, material), map.geometry)
 	end
+	local trim = map:Folder("Trim")
 	for _, s in segments(x1, x2, gaps, 0.7) do
 		strip("Stripe", s[1], s[2], B + 2.2, B + 3, outer, side, NAVY, Enum.Material.SmoothPlastic)
 		strip("Pinstripe", s[1], s[2], B + 3.2, B + 3.45, outer, side, LIVERY_RED, Enum.Material.SmoothPlastic)
+		-- Lap joints between the skin's panel rows
+		for _, y in { B + 1.2, B + 6.7, SHOULDER - 0.7 } do
+			strip("Seam", s[1], s[2], y, y + 0.1, outer, side * 0.6, SEAM, Enum.Material.Metal)
+		end
 	end
-	local x = x1 + 1.6
+	-- The frames behind the skin show as joints every other window
+	local x = x1 + 2.9
+	while x < x2 - 0.5 do
+		local clear = true
+		for _, gap in gaps do
+			if x > gap[1] - 0.8 and x < gap[2] + 0.8 then
+				clear = false
+			end
+		end
+		if clear then
+			cosmetic(block(map, "Seam", x - 0.06, B + 0.3, outer, x + 0.06, SHOULDER - 0.05, outer + side * 0.05, SEAM, Enum.Material.Metal), trim).CastShadow = false
+		end
+		x += 5.2
+	end
+	x = x1 + 1.6
 	while x < x2 - 1 do
 		local clear = true
 		for _, gap in gaps do
@@ -397,7 +522,14 @@ local function livery(map: MapBuilder.Builder, x1: number, x2: number, side: num
 			end
 		end
 		if clear then
-			strip("CabinWindow", x - 0.5, x + 0.5, B + 4.3, B + 5.9, outer, side, WINDOW_DARK, Enum.Material.Glass)
+			-- Rounded like a real cabin window: a pane between two discs
+			cosmetic(block(map, "CabinWindow", x - 0.5, B + 4.8, outer, x + 0.5, B + 5.4, outer + side * 0.08, WINDOW_DARK, Enum.Material.Glass), trim)
+			for _, y in { B + 4.8, B + 5.4 } do
+				local disc = tube(map, "CabinWindow", 0.08, 1, CFrame.new(x, y, outer + side * 0.04) * CFrame.Angles(0, math.pi / 2, 0), WINDOW_DARK, Enum.Material.Glass)
+				cosmetic(disc, trim).CastShadow = false
+			end
+			-- and its frame, a shade lighter than the skin
+			cosmetic(block(map, "WindowFrame", x - 0.64, B + 4.15, outer, x + 0.64, B + 6.05, outer + side * 0.05, WINDOW_FRAME, Enum.Material.Metal), trim).CastShadow = false
 			local hidden = false
 			for _, at in bulkheads do
 				if math.abs(x - at) < 1.4 then
@@ -423,6 +555,34 @@ local function shoulders(map: MapBuilder.Builder, frame: CFrame, length: number)
 		table.insert(parts, map:Part("HullShoulder", size, frame * CFrame.new(centre) * CFrame.Angles(side * math.pi / 4, 0, 0), HULL_GREY, Enum.Material.Metal))
 	end
 	return parts
+end
+
+-- The skin's round cross-section over the shoulders: the chamfer under it is what you walk on and
+-- what shuts the cabin in; this is the curve you see from outside (three facets each side,
+-- bowing out from the wall's top to the roof's edge). `frame` as for `shoulders`.
+local CURVE = { Vector2.new(HULL + 0.5, SHOULDER), Vector2.new(11.96, SHOULDER + 2), Vector2.new(10.5, SHOULDER + 3.46), Vector2.new(CROWN, F2) } -- (z, y)
+local function facet(map: MapBuilder.Builder, frame: CFrame, length: number, side: number, i: number, thick: number, lift: number, color: Color3, material: Enum.Material, parent: Instance?): Part
+	local a, b = CURVE[i], CURVE[i + 1]
+	local along = (b - a).Unit
+	local n = Vector2.new(along.Y, -along.X) -- (outward, on the +z side)
+	local centre = (a + b) / 2 + n * (lift - thick / 2)
+	local normal = Vector3.new(0, n.Y, side * n.X)
+	local placed = frame * CFrame.fromMatrix(Vector3.new(0, centre.Y, side * centre.X), Vector3.xAxis, normal, Vector3.xAxis:Cross(normal))
+	return decoPart(map, "HullCurve", Vector3.new(length, thick, (b - a).Magnitude + 0.06), placed, color, material, parent)
+end
+local function roundShoulders(map: MapBuilder.Builder, frame: CFrame, length: number, parent: Instance?)
+	for _, side in { -1, 1 } do
+		for i = 1, 3 do
+			facet(map, frame, length, side, i, 0.4, 0, HULL_GREY, Enum.Material.Metal, parent).CastShadow = true
+		end
+	end
+end
+-- Snow lying along the top of the curve (the flatter facets)
+local function shoulderSnow(map: MapBuilder.Builder, frame: CFrame, length: number, parent: Instance?)
+	for _, side in { -1, 1 } do
+		facet(map, frame, length, side, 3, 0.3, 0.25, SNOW, Enum.Material.Snow, parent)
+		facet(map, frame * CFrame.new(0, 0, 0), length * 0.7, side, 2, 0.2, 0.15, SNOW, Enum.Material.Snow, parent)
+	end
 end
 
 -- A wall straight across a fuselage section at `x` on the main deck, with its top stepped in
@@ -458,6 +618,31 @@ local function brokenEnd(map: MapBuilder.Builder, frame: CFrame, parent: Instanc
 		add("Soot", Vector3.new(6, 0.1, 5.4), CFrame.new(centre) * CFrame.Angles(side * math.pi / 4, 0, 0), SOOT)
 	end
 	add("Soot", Vector3.new(5, 0.1, 2 * CROWN - 1), CFrame.new(-2.5, F2 + 0.05, 0), SOOT)
+	-- The last frame ring standing proud of the tear, bent: up both sides, over the shoulders
+	local rib = DARK_METAL
+	for _, side in { -1, 1 } do
+		decoPart(map, "Frame", Vector3.new(0.4, SHOULDER - B + 0.6, 0.5), frame * CFrame.new(0.7, (B + SHOULDER) / 2 - 0.3, side * (HULL + 0.1)) * CFrame.Angles(side * 0.04, 0, 0), rib, Enum.Material.Metal, parent)
+		decoPart(map, "Frame", Vector3.new(0.4, 0.5, (F2 - SHOULDER) * math.sqrt(2)), frame * CFrame.new(0.7, (SHOULDER + F2) / 2 - 0.2, side * ((HULL + CROWN) / 2 + 0.1)) * CFrame.Angles(side * math.pi / 4, 0, 0), rib, Enum.Material.Metal, parent)
+		-- Jagged skin round the bottom corners, and stringers snapped off along the tear
+		decoWedge(map, "TornSkin", Vector3.new(0.25, 2.6, 2.2), frame * CFrame.new(1, B + 1.4, side * (HULL + 0.3)) * CFrame.Angles(0, side * 0.4 + math.pi / 2, 0.3), SCORCH, Enum.Material.Metal, parent)
+		for _, y in { B + 4.5, SHOULDER - 1 } do
+			decoPart(map, "Stringer", Vector3.new(1.8, 0.2, 0.3), frame * CFrame.new(0.9, y, side * (HULL - 0.2)) * CFrame.Angles(0, side * 0.25, -0.15), STEEL, Enum.Material.Metal, parent)
+		end
+		-- Insulation blankets torn out with it
+		decoPart(map, "Insulation", Vector3.new(1.2, 2.2, 0.6), frame * CFrame.new(0.5, B + 6.2, side * (HULL - 1.2)) * CFrame.Angles(0.3, 0.2, side * 0.25), INSULATION, Enum.Material.Fabric, parent)
+	end
+	decoPart(map, "Frame", Vector3.new(0.4, 0.5, 2 * CROWN), frame * CFrame.new(0.7, F2 - 0.3, 0) * CFrame.Angles(0.05, 0, 0), rib, Enum.Material.Metal, parent)
+	-- Floor beams sticking out of the deck
+	for _, z in { -9, -5, 5, 9 } do
+		decoPart(map, "FloorBeam", Vector3.new(1.4 + noise(z, frame.X) * 1.6, 0.6, 0.35), frame * CFrame.new(0.9, B - 0.7, z) * CFrame.Angles(0, 0, -0.08), STEEL, Enum.Material.Metal, parent)
+	end
+	-- Wiring looms and hydraulic lines hanging out of the ceiling (clear of the doorway)
+	for i, c in { { 4, 3.2, CABLE }, { 5.5, 4.6, LIVERY_RED }, { -4.5, 3.8, CABLE }, { -6, 5.4, SAFETY_YELLOW }, { 7.5, 2.6, MESH }, { -8, 3, CABLE } } do
+		local z, drop = c[1], c[2]
+		local top = frame * Vector3.new(0.2, F2 - 1.2, z)
+		local bottom = frame * Vector3.new(0.9 + noise(i, z) * 1.2, F2 - 1.2 - drop, z + (noise(z, i) - 0.5) * 1.5)
+		cable(map, "Wiring", top, bottom, if c[3] == CABLE then 0.22 else 0.14, c[3], Enum.Material.Rubber, parent)
+	end
 end
 
 local function buildFuselage(map: MapBuilder.Builder)
@@ -521,6 +706,82 @@ local function buildFuselage(map: MapBuilder.Builder)
 	for _, cabin in { { MID_W + 0.5, -16.5 }, { -15.5, MID_E - 0.5 }, { FWD_W + 0.5, 25.5 }, { 26.5, COCKPIT - 0.5 } } do
 		for _, side in { -1, 1 } do
 			cosmetic(block(map, "Bins", cabin[1], SHOULDER - 2.2, side * (HULL - 2.4), cabin[2], SHOULDER, side * (HULL - 0.5), LINING, Enum.Material.SmoothPlastic), map.geometry)
+			local face = side * (HULL - 2.42)
+			-- Bin doors, the service strip under them, a cove light along the top
+			local x = cabin[1] + 3.6
+			while x < cabin[2] - 1 do
+				deco(map, "BinSeam", x - 0.05, SHOULDER - 2.15, face, x + 0.05, SHOULDER - 0.05, face - side * 0.04, SEAM, Enum.Material.SmoothPlastic)
+				deco(map, "BinLatch", x - 1.9, SHOULDER - 0.55, face, x - 1.3, SHOULDER - 0.35, face - side * 0.05, DARK_METAL, Enum.Material.Metal)
+				x += 3.6
+			end
+			deco(map, "ServiceStrip", cabin[1], SHOULDER - 2.45, side * (HULL - 2.3), cabin[2], SHOULDER - 2.2, side * (HULL - 0.5), Color3.fromRGB(200, 198, 190), Enum.Material.SmoothPlastic)
+			deco(map, "CoveLight", cabin[1], SHOULDER + 0.02, side * (HULL - 2.45), cabin[2], SHOULDER + 0.12, side * (HULL - 2.2), Color3.fromRGB(255, 236, 200), Enum.Material.Neon)
+		end
+	end
+
+	-- Inside: the ceiling's cream lining, flat between the bins and sloping over them (the bare
+	-- skin otherwise), with the roof hatches left open through it
+	for _, s in { { MID_W + 0.5, MID_E - 0.5 }, { FWD_W + 0.5, FWD_E - 0.5 } } do
+		for _, piece in map:FloorWithHoles("CabinCeiling", s[1], -8.1, s[2], 8.1, UPPER_HOLES, F2 - 1.04, 0.06, LINING, Enum.Material.SmoothPlastic) do
+			cosmetic(piece, map.geometry).CastShadow = false
+		end
+		local length = s[2] - s[1]
+		local inner = Vector2.new(HULL - 0.5, SHOULDER - 0.42) -- the chamfer's inner face, from the wall...
+		local top = Vector2.new(CROWN - 0.42, F2 - 1) -- ...to the ceiling
+		for _, side in { -1, 1 } do
+			local mid = (inner + top) / 2 - Vector2.new(0.05, 0.05)
+			decoPart(map, "CabinCeiling", Vector3.new(length, 0.06, (top - inner).Magnitude), CFrame.new((s[1] + s[2]) / 2, mid.Y, side * mid.X) * CFrame.Angles(side * math.pi / 4, 0, 0), LINING, Enum.Material.SmoothPlastic)
+		end
+	end
+
+	-- Outside: the round of the skin over the shoulders, the joints and antennas on the roof, snow
+	-- where it's out in the open (the forward section is under the tent up to its cockpit)
+	roundShoulders(map, CFrame.new((MID_W + MID_E) / 2, 0, 0), MID_E - MID_W + 1)
+	roundShoulders(map, CFrame.new((FWD_W + FWD_E) / 2, 0, 0), FWD_E - FWD_W + 1)
+	shoulderSnow(map, CFrame.new(-27, 0, 0), 22) -- (not under the gantry)
+	shoulderSnow(map, CFrame.new((TENT_E + FWD_E) / 2 + 0.5, 0, 0), FWD_E - TENT_E - 1)
+	for _, s in { { MID_W - 0.5, MID_E + 0.5 }, { FWD_W - 0.5, FWD_E + 0.5 } } do
+		for _, z in { -4.5, 4.5 } do
+			deco(map, "RoofSeam", s[1], F2, z - 0.06, s[2], F2 + 0.04, z + 0.06, SEAM, Enum.Material.Metal)
+		end
+	end
+	for _, a in { { -30, 0 }, { -10, 2.5 }, { 22, -1 }, { 52.5, 3 } } do -- VHF blades
+		decoWedge(map, "Antenna", Vector3.new(0.15, 1.2, 1.6), CFrame.new(a[1], F2 + 0.6, a[2]) * CFrame.Angles(0, math.pi / 2, 0), DARK_METAL, Enum.Material.Metal)
+	end
+	deco(map, "Beacon", 41.7, F2, -0.3, 42.3, F2 + 0.35, 0.3, LIVERY_RED, Enum.Material.Neon)
+	-- Snow drifted on the mid section's roof, patchy, and on the cockpit roof round its hatch
+	for _, p in { { -39, -7.5, -25, 6.5 }, { -22, 1, -12, 8 }, { -21, -8, -16, -3 }, { -6, -7, 0, 2 } } do
+		snowCap(map, p[1], p[2], p[3], p[4], F2, 0.22 + noise(p[1]) * 0.15)
+	end
+	for _, p in { { 46.6, -8, 56, -2.4 }, { 46.6, 2.4, 56, 8 }, { 51.4, -2.4, 56, 2.4 } } do
+		snowCap(map, p[1], p[2], p[3], p[4], F2, 0.25)
+	end
+	-- Soot streaked back along the roof and the curve from the breaks
+	for _, s in { { MID_W + 3, 1 }, { MID_E - 3, -1 }, { FWD_W + 3, 1 } } do
+		for _, side in { -1, 1 } do
+			facet(map, CFrame.new(s[1] + s[2] * 1.5, 0, 0), 7, side, 2, 0.1, 0.05, SOOT, Enum.Material.Metal)
+			facet(map, CFrame.new(s[1] + s[2] * 3, 0, 0), 4, side, 3, 0.1, 0.05, SCORCH, Enum.Material.Metal)
+		end
+	end
+	-- The nose: the cone's steps smoothed over, the windscreen's black mask, its frames and wipers
+	for _, n in { { 2.2, 3.4, 14.4 }, { 5, 6, 10.6 }, { 7.2, 8, 6.4 } } do
+		decoTube(map, "NoseCone", n[2] - n[1] + 0.8, n[3], CFrame.new(FWD_E + (n[1] + n[2]) / 2, -1.8, 0), HULL_GREY, Enum.Material.Metal).CastShadow = true
+	end
+	-- (the mask is painted round the panes, over their frames: the glass stays clear)
+	local front = FWD_E + 0.63
+	local mask = Color3.fromRGB(30, 31, 34)
+	for _, m in { { -9.2, 9.2, B + 5.4, B + 6 }, { -9.2, 9.2, B + 8.6, B + 9.5 }, { -9.2, -8, B + 6, B + 8.6 }, { -2, 2, B + 6, B + 8.6 }, { 8, 9.2, B + 6, B + 8.6 } } do
+		deco(map, "WindscreenMask", front, m[3], m[1], front + 0.05, m[4], m[2], mask, Enum.Material.SmoothPlastic)
+	end
+	for _, z in { -5, 5 } do
+		decoPart(map, "Wiper", Vector3.new(0.12, 2.4, 0.18), CFrame.new(front + 0.15, B + 7, z + (if z < 0 then 1.2 else -1.2)) * CFrame.Angles(math.rad(if z < 0 then 50 else -50), 0, 0), BLACK, Enum.Material.Metal)
+	end
+	-- Pitot probes by the nose, the cockpit's side windows masked black too
+	for _, side in { -1, 1 } do
+		decoPart(map, "Pitot", Vector3.new(0.9, 0.12, 0.12), CFrame.new(FWD_E - 2, B + 5.2, side * (HULL + 0.8)) * CFrame.Angles(0, side * 0.3, 0), STEEL, Enum.Material.Metal)
+		local face = side * (HULL + 0.63)
+		for _, m in { { 48.5, 52.5, B + 2.6, B + 3 }, { 48.5, 52.5, B + 7, B + 7.9 }, { 48.5, 49, B + 3, B + 7 }, { 52, 52.5, B + 3, B + 7 } } do
+			deco(map, "WindscreenMask", m[1], m[3], face, m[2], m[4], face + side * 0.05, mask, Enum.Material.SmoothPlastic, map:Folder("Trim"))
 		end
 	end
 end
@@ -542,12 +803,28 @@ local function buildTail(map: MapBuilder.Builder)
 		cosmetic(at("Stripe", Vector3.new(17, 0.8, 0.08), CFrame.new(-9, B + 2.6, face), NAVY, Enum.Material.SmoothPlastic), yard)
 		cosmetic(at("Pinstripe", Vector3.new(17, 0.25, 0.08), CFrame.new(-9, B + 3.33, face), LIVERY_RED, Enum.Material.SmoothPlastic), yard)
 		for i = 0, 5 do
-			cosmetic(at("CabinWindow", Vector3.new(1, 1.6, 0.08), CFrame.new(-2.5 - i * 2.6, B + 5.1, face), WINDOW_DARK, Enum.Material.Glass), yard)
+			local x = -2.5 - i * 2.6
+			decoPart(map, "CabinWindow", Vector3.new(1, 0.6, 0.08), TAIL * CFrame.new(x, B + 5.1, face), WINDOW_DARK, Enum.Material.Glass, yard)
+			for _, y in { B + 4.8, B + 5.4 } do
+				decoTube(map, "CabinWindow", 0.08, 1, TAIL * CFrame.new(x, y, face) * CFrame.Angles(0, math.pi / 2, 0), WINDOW_DARK, Enum.Material.Glass, yard)
+			end
+			if i % 2 == 0 then
+				decoPart(map, "Seam", Vector3.new(0.12, SHOULDER - B, 0.05), TAIL * CFrame.new(x - 1.3, (B + SHOULDER) / 2, face), SEAM, Enum.Material.Metal, yard)
+			end
 		end
+		for _, y in { B + 1.2, B + 6.7 } do
+			decoPart(map, "Seam", Vector3.new(17, 0.1, 0.05), TAIL * CFrame.new(-9, y, face), SEAM, Enum.Material.Metal, yard)
+		end
+		-- Snow drifted up the side it's lying on, and icicles off the shoulder
+		decoWedge(map, "Drift", Vector3.new(17, 1.6, 4), TAIL * CFrame.new(-9, GROUND + 0.8, side * (HULL + 0.5 + 2)) * CFrame.Angles(0, if side > 0 then math.pi else 0, 0), SNOW, Enum.Material.Snow, yard)
+		icicles(map, TAIL * Vector3.new(-17, SHOULDER - 0.1, side * (HULL + 0.6)), TAIL * Vector3.new(-1, SHOULDER - 0.1, side * (HULL + 0.6)), 7)
 	end
 	for _, part in shoulders(map, TAIL * CFrame.new(-9, 0, 0), 18) do
 		part.Parent = yard
 	end
+	roundShoulders(map, TAIL * CFrame.new(-9, 0, 0), 18, yard)
+	shoulderSnow(map, TAIL * CFrame.new(-10, 0, 0), 14, yard)
+	decoPart(map, "SnowCap", Vector3.new(14, 0.3, 2 * CROWN - 2), TAIL * CFrame.new(-10, F2 + 0.15, 0), SNOW, Enum.Material.Snow, yard)
 	at("TailRoof", Vector3.new(18, 1, 2 * CROWN), CFrame.new(-9, F2 - 0.5, 0), HULL_GREY, Enum.Material.Metal)
 	-- The aft pressure bulkhead closes the cabin off
 	at("AftBulkhead", Vector3.new(1, HULL_WALL, 2 * HULL), CFrame.new(-17.5, B + HULL_WALL / 2, 0), LINING, Enum.Material.SmoothPlastic)
@@ -570,6 +847,16 @@ local function buildTail(map: MapBuilder.Builder)
 	-- Tailplanes: one still on, one snapped and drooping into the snow
 	at("Tailplane", Vector3.new(8, 0.8, 15), CFrame.new(-31, 9.6, 15) * CFrame.Angles(0.06, 0, 0), HULL_GREY, Enum.Material.Metal)
 	at("Tailplane", Vector3.new(7, 0.8, 9), CFrame.new(-30, 5.2, -12.5) * CFrame.Angles(-0.42, 0.25, 0), HULL_GREY, Enum.Material.Metal)
+	-- The elevator's hinge line and snow on the one still on; the rudder's hinge line; the cone's
+	-- steps smoothed over
+	decoPart(map, "Seam", Vector3.new(0.12, 0.05, 14.5), TAIL * CFrame.new(-33.3, 10.02, 15) * CFrame.Angles(0.06, 0, 0), SEAM, Enum.Material.Metal, yard)
+	decoPart(map, "SnowCap", Vector3.new(6, 0.3, 12), TAIL * CFrame.new(-30.5, 10.15, 15.5) * CFrame.Angles(0.06, 0, 0), SNOW, Enum.Material.Snow, yard)
+	for _, side in { -1, 1 } do
+		decoPart(map, "Seam", Vector3.new(0.14, 24, 0.05), TAIL * CFrame.new(-33.2, 24, side * 0.82), Color3.fromRGB(20, 36, 70), Enum.Material.SmoothPlastic, yard)
+	end
+	for _, c in { { -23.9, 2.6, 17.2, 4.7 }, { -29.8, 2.4, 12.6, 6.4 } } do
+		decoTube(map, "TailCone", c[2], c[3], TAIL * CFrame.new(c[1], c[4], 0), HULL_GREY, Enum.Material.Metal, yard).CastShadow = true
+	end
 	-- Seats still bolted in (facing the break), one row torn loose
 	for i, x in { -5, -10, -14.5 } do
 		for _, z in { -8.5, 0, 8.5 } do
@@ -788,6 +1075,24 @@ end
 local function uld(map: MapBuilder.Builder, x: number, z: number, base: number)
 	block(map, "ULD", x - 2.6, base, z - 2.4, x + 2.6, base + 5.2, z + 2.4, Color3.fromRGB(176, 182, 188), Enum.Material.Metal)
 	cosmetic(block(map, "ULDNet", x - 2.3, base + 0.3, z - 2.5, x + 2.3, base + 4.6, z - 2.4, Color3.fromRGB(60, 62, 56), Enum.Material.Fabric), map.geometry)
+	-- Its aluminium base and top rails, the net's straps
+	deco(map, "ULDRail", x - 2.68, base, z - 2.48, x + 2.68, base + 0.35, z + 2.48, STEEL, Enum.Material.Metal)
+	deco(map, "ULDRail", x - 2.66, base + 4.95, z - 2.46, x + 2.66, base + 5.2, z + 2.46, STEEL, Enum.Material.Metal)
+	for _, sx in { -1.15, 1.15 } do
+		deco(map, "ULDStrap", x + sx - 0.12, base + 0.3, z - 2.56, x + sx + 0.12, base + 4.6, z - 2.5, SAFETY_ORANGE, Enum.Material.Fabric)
+	end
+end
+
+local function crate(map: MapBuilder.Builder, x: number, z: number, base: number, size: number, color: Color3?, snowy: boolean?)
+	local h = size / 2
+	block(map, "Crate", x - h, base, z - h, x + h, base + size, z + h, color or CRATE, Enum.Material.WoodPlanks)
+	-- Battens round it near the top and the bottom (looks only)
+	for _, y in { base + 0.15, base + size - 0.45 } do
+		deco(map, "Batten", x - h - 0.06, y, z - h - 0.06, x + h + 0.06, y + 0.3, z + h + 0.06, Color3.fromRGB(96, 74, 48), Enum.Material.Wood)
+	end
+	if snowy then
+		snowCap(map, x - h + 0.1, z - h + 0.1, x + h - 0.1, z + h - 0.1, base + size, 0.35)
+	end
 end
 
 -- THE EXCAVATION PIT north of the mid section: dug down to the hold through the ice, a vehicle
@@ -817,8 +1122,59 @@ local function buildPit(map: MapBuilder.Builder)
 	uld(map, -18, 23, BF)
 	uld(map, -11, 25, BF)
 	for _, c in { { -38, 28 }, { -34, 28 } } do
-		block(map, "Crate", c[1] - 1.8, BF, c[2] - 1.8, c[1] + 1.8, BF + 3.6, c[2] + 1.8, CRATE, Enum.Material.WoodPlanks)
+		crate(map, c[1], c[2], BF, 3.6, nil, true)
 	end
+	-- Timber shoring against the ice walls, snow lipping over the rim (looks only)
+	local timber = Color3.fromRGB(122, 92, 62)
+	for _, p in { { 1.2, 14 }, { 1.2, 19 } } do
+		deco(map, "Shoring", p[1], BF, p[2] - 0.35, p[1] + 0.3, PIT_RIM - 0.2, p[2] + 0.35, timber, Enum.Material.Wood)
+	end
+	for _, x in { -18, -12, -7 } do
+		deco(map, "Shoring", x - 0.35, BF, 37.2, x + 0.35, PIT_RIM - 0.2, 37.5, timber, Enum.Material.Wood)
+	end
+	deco(map, "Waler", -19, BF + 4, 36.9, -6, BF + 4.7, 37.2, timber, Enum.Material.Wood)
+	deco(map, "Waler", 0.9, BF + 4, 13, 1.2, BF + 4.7, 20, timber, Enum.Material.Wood)
+	for _, r in { { -44.6, 12, -43.4, 31 }, { -20, 37.4, -4, 38.6 }, { 1.4, 12.5, 2.6, 22 } } do
+		snowCap(map, r[1], r[2], r[3], r[4], PIT_RIM, 0.4)
+	end
+	-- Meltwater frozen in the low spots, slush trodden dark round the rig and the hold doors
+	deco(map, "Ice", -24, BF, 27, -15, BF + 0.06, 31, ICE, Enum.Material.Ice).Transparency = 0.2
+	for _, d in { { -33, 17.5, -22, 27 }, { -16, 12.6, -5, 17 }, { -38, 12.6, -30, 15 } } do
+		deco(map, "Slush", d[1], BF, d[2], d[3], BF + 0.05, d[4], DIRTY_SNOW, Enum.Material.Snow)
+	end
+	-- The rig: lattice braces up the mast, the hydraulic line, a lamp at the top, ice cores laid out
+	for _, b in { { 0, 6 }, { 6, 12 }, { 12, 18 } } do
+		cable(map, "Brace", Vector3.new(-29.2, BF + 1 + b[1], 21.2), Vector3.new(-29.2, BF + 1 + b[2], 22.8), 0.2, SAFETY_ORANGE, Enum.Material.Metal)
+		cable(map, "Brace", Vector3.new(-26.8, BF + 1 + b[1], 22.8), Vector3.new(-26.8, BF + 1 + b[2], 21.2), 0.2, SAFETY_ORANGE, Enum.Material.Metal)
+	end
+	cable(map, "Hose", Vector3.new(-29.8, BF + 3.6, 20.2), Vector3.new(-28.7, BF + 19, 21.3), 0.25, CABLE)
+	local lamp = deco(map, "Light", -28.4, BF + 20.4, 20.4, -27.6, BF + 21, 21.2, Color3.fromRGB(255, 240, 210), Enum.Material.Neon)
+	local rigLight = Instance.new("SpotLight")
+	rigLight.Face = Enum.NormalId.Bottom
+	rigLight.Range = 30
+	rigLight.Angle = 80
+	rigLight.Brightness = 1.6
+	rigLight.Color = Color3.fromRGB(255, 236, 205)
+	rigLight.Parent = lamp
+	deco(map, "CoreTray", -24.5, BF, 18.5, -20.5, BF + 0.5, 20.5, OLIVE, Enum.Material.Wood)
+	for i = 0, 2 do
+		decoTube(map, "IceCore", 3.6, 0.5, CFrame.new(-22.5, BF + 0.65, 18.9 + i * 0.6), ICE, Enum.Material.Glacier)
+	end
+	-- Work light on a stand, the dewatering pump and its hose up over the rim
+	deco(map, "LightStand", -42.8, BF, 25.8, -42.5, BF + 7, 26.1, SAFETY_YELLOW, Enum.Material.Metal)
+	local work = decoPart(map, "Light", Vector3.new(1.6, 1, 0.3), CFrame.lookAt(Vector3.new(-42.2, BF + 7.2, 26), Vector3.new(-30, BF, 22)), Color3.fromRGB(240, 246, 255), Enum.Material.Neon)
+	local workLight = Instance.new("SpotLight")
+	workLight.Face = Enum.NormalId.Front
+	workLight.Range = 36
+	workLight.Angle = 75
+	workLight.Brightness = 1.4
+	workLight.Color = Color3.fromRGB(230, 240, 255)
+	workLight.Parent = work
+	deco(map, "Pump", -6.2, BF, 29, -4.4, BF + 1.6, 31.6, SAFETY_ORANGE, Enum.Material.Metal)
+	cable(map, "Hose", Vector3.new(-5.3, BF + 1.2, 31.6), Vector3.new(-5.6, BF + 0.2, 36.6), 0.4, CABLE)
+	cable(map, "Hose", Vector3.new(-5.6, BF + 0.2, 36.6), Vector3.new(-5.8, PIT_RIM + 0.3, 37.3), 0.4, CABLE)
+	cable(map, "Hose", Vector3.new(-5.8, PIT_RIM + 0.3, 37.3), Vector3.new(-7, GROUND + 0.2, 46), 0.4, CABLE)
+
 	-- Warning signs on posts at the rim
 	for _, s in { { -20, 38.6, Vector3.zAxis }, { -44.6, 20, -Vector3.xAxis } } do
 		local point = Vector3.new(s[1], PIT_RIM + 1.6, s[2])
@@ -836,10 +1192,18 @@ end
 local function seats(map: MapBuilder.Builder, x: number, z1: number, z2: number)
 	block(map, "Seats", x - 1, B, z1, x + 1, B + 1.5, z2, SEAT, Enum.Material.Fabric)
 	block(map, "SeatBack", x - 1.5, B, z1, x - 1, B + 3.9, z2, SEAT, Enum.Material.Fabric)
-end
-
-local function crate(map: MapBuilder.Builder, x: number, z: number, base: number, size: number, color: Color3?)
-	block(map, "Crate", x - size / 2, base, z - size / 2, x + size / 2, base + size, z + size / 2, color or CRATE, Enum.Material.WoodPlanks)
+	-- Looks only: an armrest between every seat, a headrest cover on each
+	local count = math.max(1, math.round((z2 - z1) / 1.7))
+	local width = (z2 - z1) / count
+	for i = 0, count do
+		local z = math.clamp(z1 + i * width, z1 + 0.12, z2 - 0.12)
+		deco(map, "Armrest", x - 1, B + 1.5, z - 0.12, x + 0.75, B + 2.2, z + 0.12, DARK_CARPET[1], Enum.Material.SmoothPlastic)
+	end
+	for i = 0, count - 1 do
+		local z = z1 + i * width
+		local tone = if noise(x, z) > 0.8 then Color3.fromRGB(196, 206, 222) else Color3.fromRGB(224, 222, 214)
+		deco(map, "Headrest", x - 1.56, B + 3.05, z + 0.18, x - 0.94, B + 3.96, z + width - 0.18, tone, Enum.Material.Fabric)
+	end
 end
 
 -- Something glowing (a screen, a laptop, LEDs): looks only
@@ -984,6 +1348,224 @@ local function buildProps(map: MapBuilder.Builder)
 	crate(map, 10.5, 12, B, 3)
 end
 
+-- Monitor on a desk: a screen on a little stand, facing `out` (±x or ±z)
+local function monitor(map: MapBuilder.Builder, x: number, z: number, base: number, out: Vector3, width: number?)
+	local w = (width or 1.6) / 2
+	local across = Vector3.new(math.abs(out.Z), 0, math.abs(out.X))
+	local centre = Vector3.new(x, base + 1.2, z)
+	local half = across * w + Vector3.new(0, 0.55, 0) + Vector3.new(math.abs(out.X), 0, math.abs(out.Z)) * 0.08
+	local min, max = centre - half, centre + half
+	deco(map, "Monitor", min.X, min.Y, min.Z, max.X, max.Y, max.Z, BLACK, Enum.Material.SmoothPlastic)
+	local face = centre + out * 0.1
+	local inner = across * (w - 0.1) + Vector3.new(0, 0.45, 0) + Vector3.new(math.abs(out.X), 0, math.abs(out.Z)) * 0.02
+	glow(map, face.X - inner.X, face.Y - inner.Y, face.Z - inner.Z, face.X + inner.X, face.Y + inner.Y, face.Z + inner.Z, if noise(x, z) > 0.5 then SCREEN else Color3.fromRGB(120, 230, 160))
+	deco(map, "MonitorStand", x - 0.1, base, z - 0.1, x + 0.1, base + 0.7, z + 0.1, DARK_METAL, Enum.Material.Metal)
+end
+
+-- Office chair (looks only): seat, back, the post
+local function chair(map: MapBuilder.Builder, x: number, z: number, base: number, facing: Vector3)
+	deco(map, "Chair", x - 0.8, base + 1.4, z - 0.8, x + 0.8, base + 1.75, z + 0.8, BLACK, Enum.Material.Fabric)
+	local back = Vector3.new(x, base, z) - facing * 0.75
+	local across = Vector3.new(math.abs(facing.Z), 0, math.abs(facing.X)) * 0.75 + Vector3.new(math.abs(facing.X), 0, math.abs(facing.Z)) * 0.1
+	deco(map, "Chair", back.X - across.X, base + 1.75, back.Z - across.Z, back.X + across.X, base + 3.9, back.Z + across.Z, BLACK, Enum.Material.Fabric)
+	deco(map, "ChairPost", x - 0.12, base, z - 0.12, x + 0.12, base + 1.4, z + 0.12, DARK_METAL, Enum.Material.Metal)
+end
+
+-- The small things that make the rooms lived in (looks only unless it says so)
+local function buildInteriors(map: MapBuilder.Builder)
+	local trim = map:Folder("Trim")
+	local paper = Color3.fromRGB(232, 230, 222)
+	local bags = { Color3.fromRGB(150, 40, 44), Color3.fromRGB(40, 44, 50), Color3.fromRGB(60, 90, 130), Color3.fromRGB(190, 150, 60), Color3.fromRGB(86, 96, 70) }
+
+	-- ECONOMY: the oxygen masks dropped and still dangling, a couple of bins burst open, bags and
+	-- papers everywhere
+	for i, x in { -33, -28, -23, -18 } do
+		for _, side in { -1, 1 } do
+			local z = side * (HULL - 2.9 - noise(x, side) * 0.8)
+			local length = 1 + noise(side, x) * 0.8
+			cable(map, "MaskTube", Vector3.new(x, SHOULDER - 2.45, z), Vector3.new(x + 0.2, SHOULDER - 2.45 - length, z), 0.06, Color3.fromRGB(220, 220, 214), Enum.Material.SmoothPlastic)
+			deco(map, "OxygenMask", x - 0.05, SHOULDER - 2.85 - length, z - 0.2, x + 0.45, SHOULDER - 2.45 - length, z + 0.2, MASK_YELLOW, Enum.Material.SmoothPlastic)
+		end
+		if i % 2 == 0 then
+			local side = if i == 2 then 1 else -1
+			decoPart(map, "BinDoor", Vector3.new(3.4, 0.12, 1.8), CFrame.new(x, SHOULDER - 2.7, side * (HULL - 3)) * CFrame.Angles(side * 1.1, 0, 0), LINING, Enum.Material.SmoothPlastic)
+		end
+	end
+	for i, l in { { -36, -5, 0.4 }, { -31, 4.6, 1.3 }, { -26.5, -1, 2.2 }, { -21, 5.4, 0.9 }, { -12, 3, 0.2 }, { 20, -10, 1.6 }, { 33, -2, 0.5 } } do
+		deco(map, "Bag", l[1] - 0.9, B, l[2] - 0.6, l[1] + 0.9, B + 0.9, l[2] + 0.6, bags[i % #bags + 1], Enum.Material.Fabric).CFrame *= CFrame.Angles(0, l[3], 0)
+	end
+	for i, p in { { -37, 0 }, { -27, 5 }, { -22, -5 }, { -10, -4 }, { 18, 2 }, { 30, -3 } } do
+		decoPart(map, "Paper", Vector3.new(0.9, 0.03, 1.2), CFrame.new(p[1], B + 0.06, p[2]) * CFrame.Angles(0, i * 1.3, 0), paper, Enum.Material.SmoothPlastic)
+	end
+
+	-- GALLEY: the galley units against the south wall (solid: knee-high cover), a cart pulled out,
+	-- the trolley's handle and its spilled drawer
+	block(map, "GalleyUnit", -15.5, B, -HULL + 0.5, -10, B + 3.4, -10.1, Color3.fromRGB(196, 198, 200), Enum.Material.Metal)
+	deco(map, "Worktop", -15.5, B + 3.4, -HULL + 0.5, -10, B + 3.5, -10, STEEL, Enum.Material.DiamondPlate)
+	for _, x in { -14.1, -12.6, -11.1 } do
+		deco(map, "CartDoor", x - 0.05, B + 0.3, -10.12, x + 0.05, B + 3.2, -10.06, DARK_METAL, Enum.Material.Metal)
+	end
+	deco(map, "GalleyCabinet", -15.5, B + 5, -HULL + 0.5, -10, B + 6.7, -10.6, Color3.fromRGB(206, 208, 210), Enum.Material.Metal)
+	glow(map, -13.6, B + 5.3, -10.66, -12.4, B + 5.6, -10.6, Color3.fromRGB(255, 170, 70))
+	deco(map, "TrolleyHandle", -15.5, B + 3.1, 8.8, -13.9, B + 3.3, 9, DARK_METAL, Enum.Material.Metal)
+	decoPart(map, "Drawer", Vector3.new(1.2, 0.5, 1.4), CFrame.new(-12.5, B + 0.25, 10.2) * CFrame.Angles(0, 0.5, 0.1), Color3.fromRGB(190, 192, 194), Enum.Material.Metal)
+
+	-- BUSINESS: seats unbolted and stacked out of the way, a laptop on the folding table
+	for i = 0, 1 do
+		decoPart(map, "Seats", Vector3.new(2, 1.4, 2.4), CFrame.new(15.6, B + 0.7 + i * 1.4, -10.2) * CFrame.Angles(0, i * 0.3, 0), SEAT, Enum.Material.Fabric)
+	end
+	deco(map, "Laptop", 15.6, B + 2.8, 8.4, 16.8, B + 2.86, 9.4, BLACK, Enum.Material.SmoothPlastic)
+	glow(map, 15.6, B + 2.86, 9.36, 16.8, B + 3.6, 9.42)
+
+	-- FIRST CLASS: wood caps on the suites, their screens, bottles on the bar
+	for _, s in { { 28, -HULL + 0.5 }, { 28, 7 }, { 37, 7 } } do
+		deco(map, "SuiteCap", s[1] - 0.05, B + 3.8, s[2] - 0.05, s[1] + 5.05, B + 3.95, s[2] + 4.55, Color3.fromRGB(176, 140, 104), Enum.Material.Wood)
+		local face = if s[2] < 0 then s[2] + 4.55 else s[2] - 0.05
+		glow(map, s[1] + 1.5, B + 2.2, face - 0.03, s[1] + 3.5, B + 3.3, face + 0.03, Color3.fromRGB(90, 140, 200))
+	end
+	deco(map, "BarTop", 38.9, B + 3.6, -6.6, 42.6, B + 3.7, -3.4, Color3.fromRGB(220, 218, 210), Enum.Material.Marble)
+	for i, c in { Color3.fromRGB(60, 110, 60), Color3.fromRGB(120, 60, 30), Color3.fromRGB(200, 200, 190) } do
+		cosmetic(drum(map, "Bottle", 39.6 + i * 0.7, -4.2 - (i % 2) * 0.6, B + 3.7, 0.9, 0.3, c, Enum.Material.Glass), map.geometry)
+	end
+
+	-- COCKPIT: six displays, the yokes, throttles on the pedestal, side consoles, the seats' rests,
+	-- the overhead panel's lights, breaker panels on the bulkhead behind
+	for _, z in { -8.7, 6.3 } do
+		glow(map, 53.9, B + 1.6, z, 54, B + 3.2, z + 2.4, Color3.fromRGB(110, 220, 140))
+	end
+	for _, z in { -4.5, 4.5 } do
+		cable(map, "YokeColumn", Vector3.new(53.9, B, z), Vector3.new(53.1, B + 2.5, z), 0.3, BLACK, Enum.Material.SmoothPlastic)
+		deco(map, "Yoke", 52.9, B + 2.45, z - 0.8, 53.15, B + 2.65, z + 0.8, BLACK, Enum.Material.SmoothPlastic)
+		for _, d in { -0.8, 0.8 } do
+			deco(map, "YokeGrip", 52.9, B + 2.45, z + d - 0.12, 53.15, B + 3.2, z + d + 0.12, BLACK, Enum.Material.SmoothPlastic)
+		end
+		deco(map, "Headrest", 49.42, B + 3.7, z - 1.3, 50.06, B + 4.7, z + 1.3, Color3.fromRGB(80, 80, 86), Enum.Material.Fabric)
+		local console = if z < 0 then -HULL + 0.5 else HULL - 1.8
+		deco(map, "SideConsole", 48, B, console, 53.6, B + 2.4, console + 1.3, Color3.fromRGB(54, 56, 62), Enum.Material.SmoothPlastic)
+		glow(map, 51, B + 2.4, console + 0.3, 52.4, B + 2.46, console + 1, Color3.fromRGB(255, 190, 90))
+	end
+	for _, z in { -0.5, 0.3 } do
+		cable(map, "Throttle", Vector3.new(53, B + 2.6, z + 0.1), Vector3.new(52.7, B + 3.3, z + 0.1), 0.18, Color3.fromRGB(200, 200, 200), Enum.Material.SmoothPlastic)
+	end
+	glow(map, 52.3, B + 2.6, -0.8, 53.6, B + 2.66, 0.8, Color3.fromRGB(110, 220, 140))
+	glow(map, 51.3, F2 - 2.26, -2.6, 53.7, F2 - 2.2, 2.6, Color3.fromRGB(255, 210, 120))
+	for _, z in { -11, 8.4 } do
+		deco(map, "BreakerPanel", COCKPIT + 0.5, B + 2, z, COCKPIT + 0.62, B + 8, z + 2.6, Color3.fromRGB(40, 42, 46), Enum.Material.SmoothPlastic)
+	end
+
+	-- HOLDS: roller tracks in the cargo deck, the hull's frames down the walls, a cargo net
+	for _, z in { -6, -2, 2, 6 } do
+		deco(map, "RollerTrack", MID_W, BF, z - 0.2, MID_E, BF + 0.06, z + 0.2, STEEL, Enum.Material.Metal)
+	end
+	for _, side in { -1, 1 } do
+		local doors = if side < 0 then { { -33, -28 }, { -15, -10 } } else { { -36, -31 }, { -14, -6 } }
+		for x = MID_W + 2, MID_E - 2, 4 do
+			local clear = true
+			for _, d in doors do
+				if x > d[1] - 0.8 and x < d[2] + 0.8 then
+					clear = false
+				end
+			end
+			if clear and x ~= -20 then
+				deco(map, "Frame", x - 0.2, BF, side * (HULL - 0.5), x + 0.2, B - 1, side * (HULL - 0.85), DARK_METAL, Enum.Material.Metal, trim)
+			end
+		end
+	end
+	deco(map, "CargoNet", -27, BF + 0.5, -HULL + 0.42, -21, BF + 7, -HULL + 0.5, Color3.fromRGB(60, 62, 56), Enum.Material.Fabric, trim)
+
+	-- ICE STORE / VAULT: cores racked in tubes, frost creeping up the concrete
+	for _, r in { { -35.75, -36.5, -24.5 }, { -8.25, -26.5, -21.5 } } do
+		for i = 0, 2 do
+			decoTube(map, "CoreTube", r[3] - r[2], 0.6, CFrame.new(r[1], BF + 1.5 + i * 2, (r[2] + r[3]) / 2) * CFrame.Angles(0, math.pi / 2, 0), ICE, Enum.Material.Glass).Transparency = 0.3
+		end
+	end
+	for _, f in { { -23.5, -37.5, -4.5, -37.4, 2.2 }, { -37.5, -37.5, -37.4, -12.5, 1.6 } } do
+		deco(map, "Frost", f[1], BF, f[2], f[3], BF + f[5], f[4], Color3.fromRGB(210, 226, 236), Enum.Material.Ice)
+	end
+
+	-- DRILL LAB: cores laid out on the logging table, a monitor; MEDBAY: pillows and blankets, an
+	-- IV stand, the curtain between the cots
+	deco(map, "CoreBox", -28.6, B + 3, -31.6, -25.4, B + 3.4, -28.4, OLIVE, Enum.Material.Wood)
+	for i = 0, 2 do
+		decoTube(map, "IceCore", 2.9, 0.55, CFrame.new(-27, B + 3.6, -31 + i * 0.9), ICE, Enum.Material.Glacier)
+	end
+	for _, x in { -21.5, -10 } do
+		deco(map, "Pillow", x + 0.4, B + 2.2, -39.2, x + 3.1, B + 2.6, -38.2, WHITE, Enum.Material.Fabric)
+		deco(map, "Blanket", x - 0.05, B + 2.2, -37.6, x + 3.55, B + 2.3, -35, Color3.fromRGB(70, 96, 120), Enum.Material.Fabric)
+	end
+	deco(map, "IVStand", -17, B, -38.6, -16.85, B + 6.4, -38.45, STEEL, Enum.Material.Metal)
+	deco(map, "IVBag", -17.3, B + 5.2, -38.8, -16.6, B + 6.2, -38.6, Color3.fromRGB(200, 220, 230), Enum.Material.Glass)
+	deco(map, "CurtainRail", -14.2, B + 9, -40, -14, B + 9.1, -34, STEEL, Enum.Material.Metal)
+	deco(map, "Curtain", -14.15, B + 1.6, -40, -14.05, B + 9, -36.5, Color3.fromRGB(150, 190, 180), Enum.Material.Fabric)
+
+	-- COMMS: radios on the desk, a chair, the map on the wall; CONTROL: monitors and chairs at the
+	-- consoles, the screen wall's bezel; SERVER ROOM: cable trays over the racks
+	for i = 0, 1 do
+		deco(map, "Radio", 14.6, B + 3 + i * 1.1, -37.6 + i * 0.4, 16, B + 4 + i * 1.1, -35.4 + i * 0.4, Color3.fromRGB(70, 76, 66), Enum.Material.Metal)
+		glow(map, 16, B + 3.3 + i * 1.1, -37 + i * 0.4, 16.06, B + 3.6 + i * 1.1, -36 + i * 0.4, Color3.fromRGB(255, 170, 60))
+	end
+	chair(map, 18.6, -34, B, -Vector3.xAxis)
+	deco(map, "WallMap", 21.6, B + 4, -24.62, 25.8, B + 8.5, -24.5, Color3.fromRGB(196, 206, 186), Enum.Material.Cardboard, trim)
+	for _, d in { { 32, 35 }, { 41, 44 } } do
+		deco(map, "ScreenBezel", d[1] + 0.1, B + 2.9, -36.6, d[2] - 0.1, B + 4.8, -36.5, BLACK, Enum.Material.SmoothPlastic)
+		chair(map, (d[1] + d[2]) / 2, -32.4, B, -Vector3.zAxis)
+	end
+	monitor(map, 36, -25.2, B + 3, -Vector3.zAxis, 1.3)
+	monitor(map, 40, -25.2, B + 3, -Vector3.zAxis, 1.3)
+	deco(map, "ScreenBezel", 45.45, B + 3.7, -39.3, 45.55, B + 9.3, -30.7, BLACK, Enum.Material.SmoothPlastic)
+	deco(map, "CableTray", 47, F2 - 2, -39, 55.5, F2 - 1.8, -38, MESH, Enum.Material.DiamondPlate)
+	deco(map, "CableTray", 54, F2 - 2, -37, 55, F2 - 1.8, -26, MESH, Enum.Material.DiamondPlate)
+	for _, r in { { 47.5, -37.5 }, { 52.5, -37.5 } } do
+		glow(map, r[1] + 0.3, B + 2.5, r[2] - 0.05, r[1] + 2.5, B + 2.65, r[2] + 0.05, Color3.fromRGB(255, 90, 70))
+	end
+
+	-- DECON: shower heads, hazmat suits hanging on the rack, boots under it; LAB HALL: an
+	-- extinguisher, the notice board
+	for _, z in { 35.25, 38.25 } do
+		deco(map, "ShowerHead", 15.6, B + 7, z - 0.3, 16.4, B + 7.2, z + 0.3, STEEL, Enum.Material.Metal)
+		deco(map, "Drain", 15.5, B, z - 0.5, 16.5, B + 0.06, z + 0.5, DARK_METAL, Enum.Material.DiamondPlate)
+	end
+	for i = 0, 2 do
+		local x = 22.9 + i * 1.05
+		deco(map, "HazmatSuit", x - 0.4, B + 1.6, 37.6, x + 0.4, B + 5.4, 38.4, SAFETY_YELLOW, Enum.Material.Fabric)
+		deco(map, "Visor", x - 0.25, B + 4.6, 37.55, x + 0.25, B + 5.1, 37.6, Color3.fromRGB(40, 60, 70), Enum.Material.Glass)
+	end
+	deco(map, "Boots", 22.5, B, 36.6, 25.5, B + 0.8, 37.6, BLACK, Enum.Material.Rubber)
+	cosmetic(drum(map, "Extinguisher", 33.1, 23, B + 2, 1.6, 0.5, LIVERY_RED, Enum.Material.Metal), map.geometry)
+	deco(map, "NoticeBoard", 33.38, B + 4, 32, 33.5, B + 7, 36, Color3.fromRGB(176, 140, 100), Enum.Material.Cardboard, trim)
+
+	-- SAMPLE STORE: sample boxes on the shelves, a biohazard drum
+	for i = 0, 2 do
+		deco(map, "SampleBox", 46.4 + i * 1.8, B + 2 + (i % 2) * 2.4, 24, 47.8 + i * 1.8, B + 3 + (i % 2) * 2.4, 24.8, if i == 1 then SAFETY_ORANGE else WHITE, Enum.Material.SmoothPlastic)
+	end
+	cosmetic(drum(map, "BioDrum", 45, 30, B, 2.6, 2, SAFETY_YELLOW, Enum.Material.Metal), map.geometry)
+
+	-- BIO LAB: monitors and a microscope on the bench, racks of tubes, the whiteboard, an upright
+	-- sample freezer in the corner (solid)
+	monitor(map, 15.6, 27.5, F2 + 3, Vector3.xAxis)
+	monitor(map, 15.6, 36.5, F2 + 3, Vector3.xAxis)
+	deco(map, "Microscope", 15.2, F2 + 3, 28.8, 16.4, F2 + 3.4, 29.8, WHITE, Enum.Material.SmoothPlastic)
+	deco(map, "Microscope", 15.4, F2 + 3.4, 29.1, 15.8, F2 + 4.6, 29.5, BLACK, Enum.Material.SmoothPlastic)
+	deco(map, "TubeRack", 15.2, F2 + 3, 34.6, 16.6, F2 + 3.6, 35.6, Color3.fromRGB(120, 180, 220), Enum.Material.Glass)
+	deco(map, "Whiteboard", 29.38, F2 + 3, 32, 29.5, F2 + 6.5, 37.6, Color3.fromRGB(236, 236, 230), Enum.Material.SmoothPlastic, trim)
+	deco(map, "Writing", 29.36, F2 + 4.5, 33, 29.38, F2 + 5.6, 36.2, Color3.fromRGB(40, 70, 140), Enum.Material.SmoothPlastic, trim)
+	block(map, "Freezer", 27.4, F2, 37.9, 29.4, F2 + 7, 39.5, Color3.fromRGB(226, 232, 236), Enum.Material.Metal)
+	glow(map, 27.7, F2 + 6, 37.84, 29.1, F2 + 6.3, 37.9, Color3.fromRGB(120, 200, 255))
+
+	-- RECORDER LAB: a monitor and a laptop on the benches, photos and red string on the evidence
+	-- board, evidence bags
+	monitor(map, 40.3, 22.85, F2 + 3, Vector3.zAxis, 1.4)
+	deco(map, "Laptop", 47.6, F2 + 3, 23.4, 49, F2 + 3.06, 24.4, BLACK, Enum.Material.SmoothPlastic)
+	for i, p in { { 47.6, 6.4 }, { 49.2, 5.5 }, { 50.4, 6.6 } } do
+		deco(map, "Photo", p[1], F2 + p[2] - 0.5, 34.3, p[1] + 0.8, F2 + p[2] + 0.1, 34.33, if i == 2 then Color3.fromRGB(140, 150, 160) else paper, Enum.Material.SmoothPlastic)
+	end
+	cable(map, "String", Vector3.new(48, F2 + 6.2, 34.29), Vector3.new(49.6, F2 + 5.2, 34.29), 0.04, LIVERY_RED, Enum.Material.SmoothPlastic)
+	cable(map, "String", Vector3.new(49.6, F2 + 5.2, 34.29), Vector3.new(50.8, F2 + 6.4, 34.29), 0.04, LIVERY_RED, Enum.Material.SmoothPlastic)
+	for i = 0, 1 do
+		decoPart(map, "EvidenceBag", Vector3.new(1, 0.15, 1.3), CFrame.new(39 + i * 1.4, F2 + 3.08, 24) * CFrame.Angles(0, 0.4 * i, 0), Color3.fromRGB(200, 210, 214), Enum.Material.Glass)
+	end
+end
+
 -- Pine: a trunk and tiers of boughs with snow on them. In the Yard folder (trees aren't a roof).
 local function pine(map: MapBuilder.Builder, x: number, z: number, height: number)
 	local yard = map:Folder("Yard")
@@ -1015,6 +1597,10 @@ local function barrier(map: MapBuilder.Builder, x: number, z: number, alongX: bo
 	local tx, tz = if alongX then 3 else 0.4, if alongX then 0.4 else 3
 	block(map, "Barrier", x - hx, GROUND, z - hz, x + hx, GROUND + 1.2, z + hz, CONCRETE, Enum.Material.Concrete)
 	block(map, "Barrier", x - tx, GROUND + 1.2, z - tz, x + tx, GROUND + 3.2, z + tz, CONCRETE, Enum.Material.Concrete)
+	-- A reflective band round the top, snow along it (looks only)
+	local rx, rz = if alongX then 2.6 else 0.44, if alongX then 0.44 else 2.6
+	deco(map, "Reflector", x - rx, GROUND + 2.4, z - rz, x + rx, GROUND + 2.75, z + rz, REFLECTOR, Enum.Material.SmoothPlastic)
+	snowCap(map, x - tx + 0.05, z - tz + 0.05, x + tx - 0.05, z + tz - 0.05, GROUND + 3.2, 0.25)
 end
 
 -- Floodlight tower at (x, z), its lamps tipped down at `target`
@@ -1024,16 +1610,25 @@ local function floodlight(map: MapBuilder.Builder, x: number, z: number, target:
 	block(map, "Mast", x - 0.35, GROUND, z - 0.35, x + 0.35, GROUND + 22, z + 0.35, DARK_METAL, Enum.Material.Metal).Parent = yard
 	local head = Vector3.new(x, GROUND + 22.6, z)
 	local frame = CFrame.lookAt(head, Vector3.new(target.X, head.Y, target.Z)) * CFrame.Angles(-0.4, 0, 0)
-	map:Part("LampBar", Vector3.new(6, 1.6, 1), frame, DARK_METAL, Enum.Material.Metal).Parent = yard
-	local lens = cosmetic(map:Part("Light", Vector3.new(5.4, 1.1, 0.1), frame * CFrame.new(0, 0, -0.55), Color3.fromRGB(240, 246, 255), Enum.Material.Neon), yard)
-	lens.CastShadow = false
-	local light = Instance.new("SpotLight")
-	light.Face = Enum.NormalId.Front
-	light.Range = 60
-	light.Angle = 70
-	light.Brightness = 2
-	light.Color = Color3.fromRGB(230, 240, 255)
-	light.Parent = lens
+	map:Part("LampBar", Vector3.new(6.4, 0.5, 0.5), frame * CFrame.new(0, 0, 0.6), DARK_METAL, Enum.Material.Metal).Parent = yard
+	-- Four lamp heads on the bar, lenses glowing; one light for the lot (no shadows: cheap)
+	for i, d in { { -1.6, 0.85 }, { 1.6, 0.85 }, { -1.6, -0.85 }, { 1.6, -0.85 } } do
+		decoPart(map, "LampHead", Vector3.new(2.8, 1.5, 0.9), frame * CFrame.new(d[1], d[2], 0), Color3.fromRGB(52, 56, 62), Enum.Material.Metal, yard).CastShadow = true
+		local lens = decoPart(map, "Light", Vector3.new(2.4, 1.15, 0.1), frame * CFrame.new(d[1], d[2], -0.48), Color3.fromRGB(240, 246, 255), Enum.Material.Neon, yard)
+		if i == 1 then
+			local light = Instance.new("SpotLight")
+			light.Face = Enum.NormalId.Front
+			light.Range = 60
+			light.Angle = 70
+			light.Brightness = 2.2
+			light.Color = Color3.fromRGB(230, 240, 255)
+			light.Shadows = false
+			light.Parent = lens
+		end
+	end
+	-- The ballast box at its foot and the cable up the mast
+	deco(map, "Ballast", x + 0.35, GROUND + 3, z - 0.6, x + 1.1, GROUND + 4.6, z + 0.6, SAFETY_YELLOW, Enum.Material.Metal, yard)
+	cable(map, "Cable", Vector3.new(x + 0.45, GROUND + 4.6, z), Vector3.new(x + 0.45, GROUND + 22, z), 0.15, CABLE, Enum.Material.Rubber, yard)
 end
 
 -- A piece of debris on the snow: `size` placed by `frame` (put in the Yard folder)
@@ -1075,7 +1670,7 @@ local function buildOutside(map: MapBuilder.Builder)
 	snowbank(map, 69, 18, 12, false, 2.6)
 
 	-- THE TORN WING out in the north field: tip up, its root dug in and burnt black
-	local wing = CFrame.new(-24, GROUND + 0.8, 62) * CFrame.Angles(0, math.rad(-16), math.rad(7))
+	local wing = WING
 	for i, seg in { { -28, -10, 14 }, { -10, 8, 10.5 }, { 8, 26, 7 } } do
 		local mid = (seg[1] + seg[2]) / 2
 		local leading = 7 - 0.22 * (mid + 28)
@@ -1085,7 +1680,7 @@ local function buildOutside(map: MapBuilder.Builder)
 	debris(map, "Pylon", Vector3.new(4, 2.4, 6), wing * CFrame.new(-16, -1.4, 1), Color3.fromRGB(150, 154, 160), Enum.Material.Metal)
 	cosmetic(map:Part("Soot", Vector3.new(5, 0.1, 13), wing * CFrame.new(-25.5, 0.95, 0.5), SOOT, Enum.Material.Metal), map:Folder("Yard"))
 	-- An engine pod that came off, half buried
-	local pod = CFrame.new(-64, 2.4, 50) * CFrame.Angles(0, math.rad(30), math.rad(6))
+	local pod = POD
 	tube(map, "EngineNacelle", 12, 7, pod, Color3.fromRGB(186, 190, 196), Enum.Material.Metal).Parent = map:Folder("Yard")
 	cosmetic(tube(map, "Intake", 0.3, 6, pod * CFrame.new(6.05, 0, 0), BLACK, Enum.Material.Metal), map:Folder("Yard"))
 	tube(map, "Exhaust", 3, 4.4, pod * CFrame.new(-7, 0, 0), DARK_METAL, Enum.Material.Metal).Parent = map:Folder("Yard")
@@ -1137,7 +1732,7 @@ local function buildOutside(map: MapBuilder.Builder)
 		barrier(map, b[1], b[2], b[3])
 	end
 	for _, c in { { 8, -20, 3.4 }, { 10.5, -22.4, 2.4 }, { -46, -16, 3 }, { 58, 30, 3.4 }, { 46, 46, 3 }, { -2, 42, 3 } } do
-		crate(map, c[1], c[2], GROUND, c[3], OLIVE)
+		crate(map, c[1], c[2], GROUND, c[3], OLIVE, true)
 	end
 
 	-- Floodlights over the site
@@ -1145,6 +1740,8 @@ local function buildOutside(map: MapBuilder.Builder)
 	floodlight(map, 4, -34, Vector3.new(10, 0, 0))
 	floodlight(map, 60, 22, Vector3.new(30, 0, 0))
 	floodlight(map, -50, 44, Vector3.new(-20, 0, 25))
+	floodlight(map, -70, 24, Vector3.new(-48, 0, 2)) -- (on the tail)
+	floodlight(map, 82, 18, Vector3.new(56, 0, 0)) -- (on the nose)
 
 	-- Helipad (north-east): the pad, its H, edge lights, a windsock
 	local pad = drum(map, "Helipad", 66, 64, GROUND - 0.1, 0.35, 28, CONCRETE, Enum.Material.Concrete)
@@ -1238,6 +1835,337 @@ local function buildOutside(map: MapBuilder.Builder)
 	end
 end
 
+-- Signboard on two posts, facing `out`
+local function postSign(map: MapBuilder.Builder, text: string, point: Vector3, out: Vector3, size: Vector2, background: Color3, textColor: Color3)
+	local across = Vector3.new(out.Z, 0, out.X) * (size.X / 2 - 0.4)
+	for _, d in { -1, 1 } do
+		local p = point + across * d - out * 0.15
+		block(map, "SignPost", p.X - 0.12, GROUND, p.Z - 0.12, p.X + 0.12, point.Y + size.Y / 2, p.Z + 0.12, DARK_METAL, Enum.Material.Metal)
+	end
+	wallSign(map, text, point, out, size, background, textColor)
+end
+
+-- The wreckage out in the field and the yard's kit, finished off: the wing's control surfaces and
+-- fuel stain, the engine's fan, the gear's bogie, the snowcat, the generators, the checkpoint
+local function buildYardDetail(map: MapBuilder.Builder)
+	local yard = map:Folder("Yard")
+	local silver = Color3.fromRGB(214, 218, 222)
+
+	-- WING: flaps hanging off the trailing edge (one torn half off), the aileron, rounded leading
+	-- edges, spoilers standing up, snow on top, the ribs and lines torn out of its root
+	for _, f in { { -19, 16, 3, 0.25, -9, -0.42 }, { -1, 16, 2.6, 0.2, -9.44, -0.22 }, { 17, 10, 2, 0.16, -9.9, 0.1 } } do
+		decoPart(map, "Flap", Vector3.new(f[2], f[4], f[3]), WING * CFrame.new(f[1], -0.2, f[5]) * CFrame.Angles(f[6], 0, 0) * CFrame.new(0, 0, -f[3] / 2), Color3.fromRGB(188, 192, 198), Enum.Material.Metal, yard)
+	end
+	for _, l in { { -19, 5.02, 1.5 }, { -1, 1.06, 1.2 }, { 17, -2.9, 0.9 } } do
+		decoTube(map, "LeadingEdge", 18.2, l[3], WING * CFrame.new(l[1], 0, l[2]), Color3.fromRGB(200, 204, 210), Enum.Material.Metal, yard)
+	end
+	for _, x in { -23, -16 } do
+		decoPart(map, "Spoiler", Vector3.new(5, 0.15, 1.8), WING * CFrame.new(x, 0.75, -6.6) * CFrame.Angles(0.55, 0, 0) * CFrame.new(0, 0, 0.9), Color3.fromRGB(180, 184, 190), Enum.Material.Metal, yard)
+	end
+	decoPart(map, "SnowCap", Vector3.new(14, 0.28, 8), WING * CFrame.new(-19, 0.88, 0), SNOW, Enum.Material.Snow, yard)
+	decoPart(map, "SnowCap", Vector3.new(15, 0.22, 5), WING * CFrame.new(0, 0.71, -3.6), SNOW, Enum.Material.Snow, yard)
+	decoPart(map, "NavLight", Vector3.new(0.5, 0.3, 0.5), WING * CFrame.new(26.3, 0.3, -2.8), Color3.fromRGB(80, 255, 120), Enum.Material.Neon, yard)
+	for i, z in { -6, -1.5, 3 } do
+		decoPart(map, "Rib", Vector3.new(1.4, 1.2, 0.15), WING * CFrame.new(-28.6, 0, z) * CFrame.Angles(0, 0.2 * i, 0.3), DARK_METAL, Enum.Material.Metal, yard)
+	end
+	cable(map, "Hydraulics", WING * Vector3.new(-28, 0.2, -3), WING * Vector3.new(-30.5, -0.6, -2), 0.2, CABLE, Enum.Material.Rubber, yard)
+	-- The fuel it bled into the snow round its root
+	for i, s in { { -47, 55, 9, 6, 0.3 }, { -41, 51, 7, 5, 1.1 }, { -51, 50, 5, 4, 2 } } do
+		local stain = deco(map, "FuelStain", s[1] - s[3] / 2, GROUND, s[2] - s[4] / 2, s[1] + s[3] / 2, GROUND + 0.03 + i * 0.005, s[2] + s[4] / 2, Color3.fromRGB(70, 62, 54), Enum.Material.SmoothPlastic)
+		stain.CFrame *= CFrame.Angles(0, s[5], 0)
+		stain.Reflectance = 0.12
+	end
+
+	-- ENGINE: the intake lip, fan blades and spinner, the exhaust plug, the cowl's seams, snow
+	-- drifted round it
+	decoTube(map, "IntakeLip", 0.8, 7.4, POD * CFrame.new(5.75, 0, 0), silver, Enum.Material.Metal, yard)
+	for k = 0, 7 do
+		decoPart(map, "FanBlade", Vector3.new(0.08, 2.5, 0.55), POD * CFrame.new(6.25, 0, 0) * CFrame.Angles(k * math.pi / 4, 0, 0) * CFrame.new(0, 1.55, 0) * CFrame.Angles(0, 0.6, 0), Color3.fromRGB(96, 100, 108), Enum.Material.Metal, yard)
+	end
+	decoPart(map, "Spinner", Vector3.new(1.6, 1.6, 1.6), POD * CFrame.new(6.3, 0, 0), silver, Enum.Material.Metal, yard).Shape = Enum.PartType.Ball
+	decoPart(map, "ExhaustPlug", Vector3.new(2.4, 2.4, 2.4), POD * CFrame.new(-8.5, 0, 0), Color3.fromRGB(70, 66, 62), Enum.Material.Metal, yard).Shape = Enum.PartType.Ball
+	for _, x in { 1.5, -3 } do
+		decoTube(map, "CowlSeam", 0.15, 7.08, POD * CFrame.new(x, 0, 0), SEAM, Enum.Material.Metal, yard)
+	end
+	decoPart(map, "SnowCap", Vector3.new(8, 0.3, 2.4), POD * CFrame.new(-0.5, 3.52, 0), SNOW, Enum.Material.Snow, yard)
+	local across = POD:VectorToWorldSpace(Vector3.zAxis)
+	across = Vector3.new(across.X, 0, across.Z).Unit
+	for _, side in { -1, 1 } do
+		local foot = POD * Vector3.new(-1, 0, side * 3.2)
+		drift(map, Vector3.new(foot.X, GROUND, foot.Z), across * side, 9, 2.2, 4)
+	end
+
+	-- GEAR: hubs, the bogie beam, the chrome oleo
+	for _, w in { { 66, -22.35 }, { 66, -17.65 }, { 69.4, -22.35 }, { 69.4, -17.65 } } do
+		decoTube(map, "Hub", 0.1, 1.7, CFrame.new(w[1], GROUND + 1.8, w[2]) * CFrame.Angles(0, math.pi / 2, 0), silver, Enum.Material.Metal, yard)
+	end
+	deco(map, "Bogie", 65.2, GROUND + 1.45, -20.35, 70.2, GROUND + 2.15, -19.65, STEEL, Enum.Material.Metal, yard).CastShadow = true
+	cable(map, "Oleo", Vector3.new(67.7, GROUND + 2.1, -20), Vector3.new(68.8, GROUND + 6.2, -18.4), 0.7, Color3.fromRGB(226, 228, 232), Enum.Material.Metal, yard)
+
+	-- SNOWCAT: road wheels in the tracks, cab pillars, the plough blade, a light bar, the exhaust
+	for _, z in { 19.32, 26.68 } do
+		for _, x in { -56.6, -54, -51.4 } do
+			decoTube(map, "RoadWheel", 0.12, 1.6, CFrame.new(x, GROUND + 1, z) * CFrame.Angles(0, math.pi / 2, 0), DARK_METAL, Enum.Material.Metal)
+		end
+	end
+	for _, c in { { -55, 20.5 }, { -55, 25.2 }, { -50.8, 20.5 }, { -50.8, 25.2 } } do
+		deco(map, "CabPillar", c[1], GROUND + 4.4, c[2], c[1] + 0.3, GROUND + 7.6, c[2] + 0.3, SAFETY_ORANGE, Enum.Material.Metal)
+	end
+	deco(map, "CabRoof", -55.2, GROUND + 7.6, 20.3, -50.3, GROUND + 7.9, 25.7, SAFETY_ORANGE, Enum.Material.Metal)
+	snowCap(map, -55, 20.5, -50.5, 25.5, GROUND + 7.9, 0.3)
+	deco(map, "LightBar", -53.5, GROUND + 7.9, 22.4, -52, GROUND + 8.2, 23.6, Color3.fromRGB(255, 170, 40), Enum.Material.Neon)
+	deco(map, "Blade", -49.3, GROUND + 0.2, 18.6, -48.8, GROUND + 2.6, 27.4, Color3.fromRGB(60, 62, 66), Enum.Material.Metal)
+	for _, z in { 21, 25 } do
+		deco(map, "Headlight", -50.42, GROUND + 6.6, z - 0.3, -50.36, GROUND + 7.1, z + 0.3, Color3.fromRGB(255, 246, 220), Enum.Material.Neon)
+	end
+	cable(map, "Exhaust", Vector3.new(-56.6, GROUND + 4.4, 21), Vector3.new(-56.6, GROUND + 8.4, 21), 0.35, DARK_METAL, Enum.Material.Metal)
+
+	-- GENERATOR YARD: radiators, louvres, skids, control panels, rain caps, snow on the lids; fuel
+	-- lines from the tanks; placards; snow on the tanks and the drums
+	for _, z in { -38.5, -31.5 } do
+		deco(map, "Radiator", -47.05, GROUND + 0.8, z + 0.5, -46.9, GROUND + 4.4, z + 4, DARK_METAL, Enum.Material.DiamondPlate)
+		deco(map, "Louvres", -54, GROUND + 1.6, z - 0.05, -49, GROUND + 3.8, z + 4.55, Color3.fromRGB(64, 72, 50), Enum.Material.DiamondPlate)
+		deco(map, "Skid", -55.3, GROUND, z - 0.25, -46.7, GROUND + 0.5, z + 4.75, DARK_METAL, Enum.Material.Metal)
+		deco(map, "ControlPanel", -55.5, GROUND + 2.4, z + 1.4, -55, GROUND + 4, z + 3.1, Color3.fromRGB(70, 76, 60), Enum.Material.Metal)
+		glow(map, -55.56, GROUND + 3.2, z + 1.7, -55.5, GROUND + 3.7, z + 2.4, Color3.fromRGB(110, 255, 120))
+		deco(map, "RainCap", -48.7, GROUND + 8.3, z + 0.5, -47.7, GROUND + 8.45, z + 1.5, DARK_METAL, Enum.Material.Metal)
+		snowCap(map, -54.8, z + 0.2, -48.9, z + 4.3, GROUND + 5, 0.3)
+		cable(map, "FuelLine", Vector3.new(-58.2, GROUND + 1.2, z + 2.5), Vector3.new(-55.3, GROUND + 0.6, z + 2.2), 0.25, CABLE)
+	end
+	for _, z in { -36, -28 } do
+		deco(map, "SnowCap", -69.5, GROUND + 5.25, z - 0.9, -58.5, GROUND + 5.55, z + 0.9, SNOW, Enum.Material.Snow)
+		decoPart(map, "Placard", Vector3.new(0.06, 1.2, 1.2), CFrame.new(-57.97, GROUND + 3, z) * CFrame.Angles(math.pi / 4, 0, 0), LIVERY_RED, Enum.Material.SmoothPlastic)
+	end
+	for _, d in { { -45, -38 }, { -45, -35.5 }, { -42.5, -38 } } do
+		cosmetic(drum(map, "SnowCap", d[1], d[2], GROUND + 3.2, 0.2, 2, SNOW, Enum.Material.Snow), map.geometry)
+	end
+	postSign(map, "DANGER · AVIATION FUEL · NO NAKED FLAMES", Vector3.new(-64, GROUND + 3.6, -41.5), -Vector3.zAxis, Vector2.new(9, 1.4), LIVERY_RED, WHITE)
+	postSign(map, "HARD HATS · HIGH-VIS BEYOND THIS POINT", Vector3.new(-47, GROUND + 3.2, 16), -Vector3.xAxis, Vector2.new(7, 1.4), SAFETY_YELLOW, BLACK)
+	wallSign(map, "DANGER · 415 V", Vector3.new(-55, GROUND + 4.4, -29.2), -Vector3.xAxis, Vector2.new(2.4, 0.8), SAFETY_YELLOW, BLACK)
+
+	-- Power out to the buildings: cables lying on the snow, a ramp where they cross the track
+	local function run(points: { Vector3 })
+		for i = 1, #points - 1 do
+			cable(map, "PowerCable", points[i], points[i + 1], 0.32, CABLE)
+		end
+	end
+	local y = GROUND + 0.16
+	run({ Vector3.new(-47, y, -36), Vector3.new(-40.7, y, -37.5), Vector3.new(-40.7, 10, -37.5) })
+	run({ Vector3.new(-47, y, -33), Vector3.new(-41, y, -44), Vector3.new(-5, y, -44) })
+	run({ Vector3.new(11, y, -44), Vector3.new(13.3, y, -38), Vector3.new(13.3, 8, -38) })
+	run({ Vector3.new(13.3, y, -24.4), Vector3.new(9, y, -18) })
+	run({ Vector3.new(11, y, 17.6), Vector3.new(13.3, y, 21.3) })
+	deco(map, "CableRamp", -5, GROUND, -44.7, 11, GROUND + 0.35, -43.3, SAFETY_YELLOW, Enum.Material.Rubber)
+
+	-- CHECKPOINT: the road's markings, the boom's red bands, the booth's door and beacon, snow
+	-- ploughed up both sides of the road, sandbags by the booth (solid: low cover)
+	for z = -128, -100, 8 do
+		deco(map, "RoadLine", -0.15, 0.3, z, 0.15, 0.32, z + 4, WHITE, Enum.Material.SmoothPlastic)
+	end
+	deco(map, "StopLine", 0.3, 0.3, -95, 7.7, 0.32, -94.4, WHITE, Enum.Material.SmoothPlastic)
+	local boom = math.rad(110)
+	local pivot = Vector3.new(9.1, GROUND + 3.4, -93.1)
+	local reach = Vector3.new(math.cos(boom), math.sin(boom), 0)
+	for _, along in { 3.5, 12.5 } do
+		decoPart(map, "BoomBand", Vector3.new(1.8, 0.56, 0.56), CFrame.new(pivot + reach * along) * CFrame.Angles(0, 0, boom), LIVERY_RED, Enum.Material.SmoothPlastic)
+	end
+	deco(map, "BoothDoor", 10.85, GROUND, -100.2, 10.95, GROUND + 6.4, -98.2, DARK_METAL, Enum.Material.Metal)
+	deco(map, "Beacon", 13.6, GROUND + 8.2, -99.4, 14.4, GROUND + 8.7, -98.6, Color3.fromRGB(255, 160, 40), Enum.Material.Neon)
+	snowCap(map, 10.6, -102.4, 17.4, -95.6, GROUND + 8.2, 0.3)
+	for _, side in { -1, 1 } do
+		drift(map, Vector3.new(side * 8.1, GROUND, -111), Vector3.new(side, 0, 0), 38, 1.5, 3.6)
+	end
+	drift(map, Vector3.new(-4.1, GROUND, -66.5), -Vector3.xAxis, 49, 1.1, 3)
+	drift(map, Vector3.new(10.1, GROUND, -66.5), Vector3.xAxis, 49, 1.1, 3)
+	for i, b in { { 18.2, -98.6, 0 }, { 20, -98.6, 0 }, { 21.8, -98.6, 0 }, { 19.1, -98.6, 0.85 }, { 20.9, -98.6, 0.85 } } do
+		map:Part("Sandbag", Vector3.new(1.75, 0.85, 1.15), CFrame.new(b[1], GROUND + 0.42 + b[3], b[2]) * CFrame.Angles(0, (noise(i) - 0.5) * 0.2, 0), Color3.fromRGB(150, 136, 104), Enum.Material.Fabric)
+	end
+
+	-- HELIPAD: its white perimeter ring
+	for k = 0, 7 do
+		local a = (k + 0.5) * math.pi / 4
+		decoPart(map, "PadRing", Vector3.new(0.4, 0.04, 9.6), CFrame.new(66 + math.cos(a) * 12.2, GROUND + 0.27, 64 + math.sin(a) * 12.2) * CFrame.Angles(0, -a, 0), Color3.fromRGB(232, 232, 226), Enum.Material.SmoothPlastic)
+	end
+end
+
+-- Panel joints down an outside wall's face every `step` studs, clear of its openings (`gaps`).
+-- The wall runs along x at `fixed` (alongX) or along z; `out` is the outside (±1).
+local function joints(map: MapBuilder.Builder, alongX: boolean, fixed: number, out: number, a: number, b: number, base: number, top: number, step: number, gaps: { { number } })
+	local face = fixed + out * 0.5
+	local at = a + step / 2
+	while at < b - 0.5 do
+		local clear = true
+		for _, gap in gaps do
+			if at > gap[1] - 0.8 and at < gap[2] + 0.8 then
+				clear = false
+			end
+		end
+		if clear then
+			if alongX then
+				deco(map, "Joint", at - 0.08, base + 0.2, face, at + 0.08, top - 0.2, face + out * 0.06, SEAM, Enum.Material.Metal, map:Folder("Trim"))
+			else
+				deco(map, "Joint", face, base + 0.2, at - 0.08, face + out * 0.06, top - 0.2, at + 0.08, SEAM, Enum.Material.Metal, map:Folder("Trim"))
+			end
+		end
+		at += step
+	end
+end
+
+-- The research site finished off: the tent's frame, guy ropes and snow; the buildings' panel
+-- joints, AC units, door canopies and container hardware; snow on every roof, drifted against
+-- every wall and hanging off the eaves; trodden paths; the snowfield's own variety
+local function buildSiteDetail(map: MapBuilder.Builder)
+	local trim = map:Folder("Trim")
+
+	-- TENT: an arch between each pair, snow along the crown, guy ropes out to the snow
+	local third = (TENT_E - TENT_W) / 3
+	for _, x in { TENT_W + third / 2, TENT_W + third * 1.5, TENT_W + third * 2.5 } do
+		for _, part in archPanels(map, "TentRib", x - 0.3, x + 0.3, TENT_R + 1.25, 0.5, TENT_RIB, Enum.Material.Metal) do
+			cosmetic(part, map.geometry)
+		end
+	end
+	for i, span in { [3] = { 10, 44, 0.18 }, [4] = { TENT_W - 0.3, TENT_E + 0.3, 0.32 }, [5] = { TENT_W - 0.3, TENT_E + 0.3, 0.32 }, [6] = { 12, 40, 0.18 } } do
+		local angle = (i - 0.5) * math.pi / 8
+		local r = TENT_R + 1 + span[3] / 2
+		local chord = 2 * r * math.sin(math.pi / 16) + 0.2
+		decoPart(map, "SnowCap", Vector3.new(span[2] - span[1], span[3], chord), CFrame.new((span[1] + span[2]) / 2, TENT_SPRING + r * math.sin(angle), r * math.cos(angle)) * CFrame.Angles(math.pi / 2 - angle, 0, 0), SNOW, Enum.Material.Snow)
+	end
+	-- (not where a rope would cross a doorway: the ribs at the doors are left out)
+	local function ribAt(k: number): number
+		return TENT_W + k * third / 2
+	end
+	for _, g in { { ribAt(0), -1, -22 }, { ribAt(1), -1, -22 }, { ribAt(3), -1, -22 }, { ribAt(4), -1, -22 }, { ribAt(0), 1, 21.2 }, { ribAt(1), 1, 21.2 }, { ribAt(3), 1, 21.2 }, { ribAt(5), 1, 21.2 } } do
+		local x, side = g[1], g[2]
+		local spring = Vector3.new(x, TENT_SPRING + 3, side * math.sqrt((TENT_R + 0.6) ^ 2 - 9))
+		cable(map, "GuyRope", spring, Vector3.new(x, GROUND, g[3]), 0.1, Color3.fromRGB(70, 74, 60), Enum.Material.Fabric)
+		deco(map, "Stake", x - 0.15, GROUND, g[3] - 0.15, x + 0.15, GROUND + 0.5, g[3] + 0.15, SAFETY_YELLOW, Enum.Material.Metal)
+	end
+
+	-- BUILDINGS: panel joints on the prefab walls (trailers, module, the labs upstairs)
+	joints(map, true, -40, -1, 13.5, 56.5, B, B + GROUND_WALL, 5.4, { { 17, 21 }, { 24, 29 }, { 32, 37 }, { 39, 43 } })
+	joints(map, true, -24, 1, 13.5, 56.5, B, B + GROUND_WALL, 5.4, { { 16, 21 }, { 34, 40 }, { 50, 55 } })
+	joints(map, false, 56, 1, -40, -24, B, B + GROUND_WALL, 5.4, { { -34, -30 } })
+	joints(map, false, 14, -1, -40, -24, B, B + GROUND_WALL, 5.4, { { -35, -29 } })
+	joints(map, true, -40, -1, -40.5, -5.5, B, B + GROUND_WALL, 5.4, { { -38, -34 }, { -26, -21 }, { -14, -9 } })
+	joints(map, false, -40, -1, -40, -22, B, B + GROUND_WALL, 5.4, { { -33, -28 } })
+	joints(map, true, 22, -1, 13.5, 52.5, F2, F2 + UPPER_WALL, 4.8, { { 14.5, 19.5 }, { 23, 28 }, { 31, 34 }, { 40, 46 } })
+	joints(map, true, 40, 1, 13.5, 52.5, F2, F2 + UPPER_WALL, 4.8, { { 18, 24 } })
+	-- Air conditioners on the walls, canopies and steel landings at the outside doors
+	for _, a in { { 45, -41.3, -40.5 }, { -17.5, -41.3, -40.5 } } do
+		deco(map, "AirCon", a[1] - 1.5, B + 5, a[2], a[1] + 1.5, B + 7.4, a[3], Color3.fromRGB(200, 202, 198), Enum.Material.Metal, trim)
+		decoTube(map, "AirConFan", 0.06, 1.8, CFrame.new(a[1], B + 6.2, a[2] - 0.03) * CFrame.Angles(0, math.pi / 2, 0), DARK_METAL, Enum.Material.DiamondPlate, trim)
+	end
+	deco(map, "AirCon", 30, F2 + 5, 40.5, 33, F2 + 7.4, 41.3, Color3.fromRGB(200, 202, 198), Enum.Material.Metal, trim)
+	for _, d in { { 24, 29, -40.5, -1 }, { -26, -21, -40.5, -1 }, { 16, 21, -23.5, 1 }, { 28, 33, 21.5, -1 }, { 28.5, 33.5, 40.5, 1 } } do
+		local z1, z2 = d[3], d[3] + d[4] * 1.8
+		deco(map, "Canopy", d[1] - 0.6, B + 9.1, z1, d[2] + 0.6, B + 9.4, z2, DARK_METAL, Enum.Material.Metal, trim)
+		snowCap(map, d[1] - 0.5, math.min(z1, z2), d[2] + 0.5, math.max(z1, z2), B + 9.4, 0.2, trim)
+		deco(map, "DoorStep", d[1] - 0.4, GROUND, z1, d[2] + 0.4, B - 0.02, z1 + d[4] * 2, DARK_METAL, Enum.Material.DiamondPlate)
+	end
+	-- CONTAINERS: bottom rails, the end's locking bars, ID markings, hazard stripes by the door
+	for _, r in { { 13.5, 27.6, 21.5, -1 }, { 33.8, 52.5, 21.5, -1 }, { 13.5, 28.1, 40.5, 1 }, { 34.3, 52.5, 40.5, 1 } } do
+		deco(map, "BottomRail", r[1], B, r[3], r[2], B + 0.6, r[3] + r[4] * 0.12, DARK_METAL, Enum.Material.Metal)
+	end
+	for _, z in { 22.6, 23.6, 36.4, 38.6 } do
+		cable(map, "LockBar", Vector3.new(52.62, B + 0.4, z), Vector3.new(52.62, F2 - 1.4, z), 0.18, DARK_METAL, Enum.Material.Metal)
+		deco(map, "CamHandle", 52.55, B + 4, z - 0.1, 52.75, B + 4.3, z + 1, DARK_METAL, Enum.Material.Metal)
+	end
+	for _, c in { { "BRLU 402117 2", 19.75, 21.5, -1 }, { "TGHU 880315 7", 32, 40.5, 1 }, { "MSKU 559012 4", 45, 40.5, 1 } } do
+		wallSign(map, c[1], Vector3.new(c[2], B + 9.6, c[3]), Vector3.new(0, 0, c[4]), Vector2.new(6, 1), WHITE, WHITE, false)
+	end
+	for _, x in { 27.1, 33.5 } do
+		deco(map, "HazardStripe", x, B, 21.38, x + 0.4, B + 9, 21.5, SAFETY_YELLOW, Enum.Material.SmoothPlastic)
+	end
+	wallSign(map, "BIOHAZARD · PPE REQUIRED", Vector3.new(30.5, B + 10.3, 21.5), -Vector3.zAxis, Vector2.new(6, 0.9), SAFETY_YELLOW, BLACK)
+
+	-- SNOW on the roofs (round the trailer roof's hatches), drifted against the walls, icicles
+	-- off the eaves
+	snowCap(map, -40.2, -40.2, -5.8, -21.8, F2, 0.4)
+	snowCap(map, 13.8, 21.8, 52.2, 40.2, LAB_ROOF, 0.45)
+	local roofHoles = {}
+	for _, h in UPPER_HOLES do
+		table.insert(roofHoles, { h[1] - 0.6, h[2] - 0.6, h[3] + 0.6, h[4] + 0.6 })
+	end
+	for _, piece in map:FloorWithHoles("SnowCap", 13.8, -40.2, 56.2, -23.8, roofHoles, F2 + 0.35, 0.35, SNOW, Enum.Material.Snow) do
+		cosmetic(piece, map.geometry).CastShadow = false
+	end
+	driftAlong(map, true, -40.5, -40.5, -5.5, -1, { { -26, -21 } })
+	driftAlong(map, false, -40.5, -40.5, -21.5, -1, { { -33, -28 } })
+	driftAlong(map, true, -40.5, 13.5, 56.5, -1, { { 24, 29 }, { 49, 53 } })
+	driftAlong(map, true, -23.5, 13.5, 56.5, 1, { { 16, 21 }, { 50, 55 } }, 0.8)
+	driftAlong(map, false, 56.5, -40.5, -23.5, 1, {})
+	driftAlong(map, false, 13.5, -40.5, -23.5, -1, {}, 0.9)
+	driftAlong(map, true, 21.5, 20, 52.5, -1, { { 28, 33 } }, 0.8)
+	driftAlong(map, true, 40.5, 13.5, 52.5, 1, { { 28.5, 33.5 } })
+	driftAlong(map, false, 52.5, 21.5, 40.5, 1, { { 25, 30 } })
+	driftAlong(map, true, -TENT_R - 0.5, TENT_W, TENT_E, -1, { { 20, 25 }, { 36, 41 } }, 0.8)
+	driftAlong(map, true, TENT_R + 0.5, TENT_W, TENT_E, 1, { { 18, 23 }, { 32, 37 } }, 0.8)
+	driftAlong(map, false, TENT_W - 0.5, -TENT_R, TENT_R, -1, { { -4, 4 } })
+	for _, side in { -1, 1 } do
+		driftAlong(map, true, side * (HULL + 0.5), TENT_E + 0.6, FWD_E + 0.5, side, {}, 1.2)
+	end
+	drift(map, Vector3.new(FWD_E + 9, GROUND, 0), Vector3.xAxis, 14, 1.8, 4)
+	icicles(map, Vector3.new(-40, F2 - 1.05, -40.6), Vector3.new(-6, F2 - 1.05, -40.6), 9)
+	icicles(map, Vector3.new(14, F2 - 1.05, -40.6), Vector3.new(48, F2 - 1.05, -40.6), 9) -- (not over the stairs)
+	icicles(map, Vector3.new(14, LAB_ROOF - 1.05, 40.6), Vector3.new(52, LAB_ROOF - 1.05, 40.6), 10)
+
+	-- PATHS: snow trodden down between the doors, tyre ruts from the track to the generators, the
+	-- snowcat's tracks to the pit ramp
+	local trodden = PACKED
+	for _, p in { { 16.5, -23.4, 24.5, -17.6 }, { 46.6, -23.4, 55, -17.6 }, { 18, 17.6, 37, 21.4 }, { 52.6, 25.5, 64, 29.5 }, { 28.5, 40.6, 33.5, 60 }, { -26, -48, -21, -40.6 }, { -47, -33.5, -40.6, -28 } } do
+		deco(map, "Path", p[1], GROUND, p[2], p[3], GROUND + 0.03, p[4], trodden, Enum.Material.Snow)
+	end
+	for _, z in { -47.4, -44.6 } do
+		deco(map, "Rut", -46, GROUND, z, -4, GROUND + 0.04, z + 0.9, DIRTY_SNOW, Enum.Material.Snow)
+	end
+	for _, d in { -1, 1 } do
+		local a, b = Vector3.new(-49, GROUND + 0.02, 23 + d * 2.4), Vector3.new(-43.6, GROUND + 0.02, 33.5 + d * 2.4)
+		decoPart(map, "Rut", Vector3.new(1.6, 0.04, (b - a).Magnitude), CFrame.lookAt((a + b) / 2, b), DIRTY_SNOW, Enum.Material.Snow)
+	end
+	-- Slush and soot round the generators and the end of the scar, bluer drifts out in the field,
+	-- rock showing through
+	for i, d in { { -58, -33, 24, 18, 0.2 }, { -56, 2, 12, 9, 0.7 }, { -47, -18, 10, 6, 0.3 }, { 64, 2, 10, 14, 0.1 } } do
+		deco(map, "Slush", d[1] - d[3] / 2, GROUND, d[2] - d[4] / 2, d[1] + d[3] / 2, GROUND + 0.02 + i * 0.004, d[2] + d[4] / 2, DIRTY_SNOW, Enum.Material.Snow).CFrame *= CFrame.Angles(0, d[5], 0)
+	end
+	for i, d in { { -100, 60, 50, 34, 0.4 }, { 92, -64, 44, 30, 1.2 }, { 98, 74, 40, 36, 0.8 }, { -94, -74, 46, 28, 2.1 }, { 30, 92, 36, 22, 0.3 } } do
+		deco(map, "Snowdrift", d[1] - d[3] / 2, GROUND, d[2] - d[4] / 2, d[1] + d[3] / 2, GROUND + 0.02 + i * 0.003, d[2] + d[4] / 2, SHADOW_SNOW, Enum.Material.Snow).CFrame *= CFrame.Angles(0, d[5], 0)
+	end
+	for i, r in { { -118, 34, 6 }, { -80, 96, 5 }, { 44, 104, 7 }, { 122, -12, 5 }, { -34, -104, 6 }, { 76, -98, 4 } } do
+		decoPart(map, "Rock", Vector3.new(r[3], 0.5, r[3] * 0.6), CFrame.new(r[1], GROUND + 0.05, r[2]) * CFrame.Angles(0.05, i * 1.1, 0.04), SLATE, Enum.Material.Rock)
+	end
+
+	-- Frost creeping up the outside windows (a child of the pane: it goes when the glass does)
+	for _, glass in map:Folder("Glass"):GetChildren() do
+		if glass:IsA("BasePart") then
+			local size = glass.Size
+			local thin = if size.X < size.Z then Vector3.new(size.X + 0.04, size.Y * 0.3, size.Z) else Vector3.new(size.X, size.Y * 0.3, size.Z + 0.04)
+			local frost = map:Part("Frost", thin, glass.CFrame * CFrame.new(0, -size.Y * 0.35, 0), Color3.fromRGB(226, 238, 246), Enum.Material.Ice)
+			frost.Transparency = 0.55
+			frost.CastShadow = false
+			cosmetic(frost, glass)
+		end
+	end
+end
+
+-- Weathering: neighbouring panels, slabs and walls never quite the same shade (hashed from where
+-- each piece is, so the map looks the same every round)
+local WEATHERED = {
+	ExteriorWall = 0.045, Wall = 0.025, HullShoulder = 0.04, HullCurve = 0.04, HullRoof = 0.035, TentRoof = 0.06,
+	Snow = 0.02, Snowbank = 0.025, Drift = 0.03, SnowCap = 0.025, Crate = 0.08, Barrier = 0.06, Rock = 0.08, Wing = 0.04,
+	HullPanel = 0.05, Generator = 0.05, ULD = 0.05, ModuleRoof = 0.04, TrailerRoof = 0.04, LabRoof = 0.04, Seats = 0.05,
+}
+local function weather(map: MapBuilder.Builder)
+	for _, part in map.model:GetDescendants() do
+		local amount = part:IsA("BasePart") and WEATHERED[part.Name]
+		if amount then
+			local p = part.CFrame.Position
+			local k = 1 + (noise(p.X * 0.37 + p.Y * 0.11, p.Z * 0.53) - 0.5) * 2 * amount
+			local c = part.Color
+			part.Color = Color3.new(math.min(c.R * k, 0.96), math.min(c.G * k, 0.96), math.min(c.B * (k + amount * 0.3 * (noise(p.Z, p.X) - 0.5)), 0.97))
+		end
+	end
+end
+
 -- Container walls get the place's corrugated steel (MaterialService); without the variant (a
 -- code-only build) Roblox just shows plain metal
 local function applyFinishes(map: MapBuilder.Builder)
@@ -1260,8 +2188,12 @@ function Flight9.Build(): Model
 	buildStairs(map)
 	buildPit(map)
 	buildProps(map)
+	buildInteriors(map)
 	buildOutside(map)
+	buildYardDetail(map)
+	buildSiteDetail(map)
 	applyFinishes(map)
+	weather(map)
 
 	-- Sites: four pairs, A and B each; the defenders pick one pair per round
 	local function site(name: string, x1: number, z1: number, x2: number, z2: number, level: number, pair: string, room: string)
