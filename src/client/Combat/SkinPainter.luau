@@ -94,7 +94,8 @@ function SkinPainter.PaintGun(model: Model, skin: Skins.Skin)
 			-- Glowing trim only lights up long thin strips (rails, spines, edges): a few lines, not
 			-- every screw and rail tooth (too much glow right in front of your face); everything
 			-- else matches the body
-			if longest >= big * 0.6 and shortest < big * 0.3 and longest / shortest > 4 then
+			-- (not the gatling's six barrels: a whole cluster of glowing tubes is one big blob of light)
+			if longest >= big * 0.6 and shortest < big * 0.3 and longest / shortest > 4 and string.sub(p.Name, 1, 7) ~= "Barrels" then
 				glow(p, skin, (ref.Position.Z - front) / extents.Z)
 				continue
 			end
