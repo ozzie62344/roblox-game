@@ -38,7 +38,8 @@
         "VoteMap": { "$className": "RemoteEvent" },
         "Cams": { "$className": "RemoteEvent" },
         "Settings": { "$className": "RemoteEvent" },
-        "Shop": { "$className": "RemoteEvent" }
+        "Shop": { "$className": "RemoteEvent" },
+        "Party": { "$className": "RemoteEvent" }
       }
     },
 

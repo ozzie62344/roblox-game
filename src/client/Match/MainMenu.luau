@@ -3,6 +3,9 @@
 --   them (server Matchmaker). The queue panel (bottom right) shows the fullest of your queues:
 --   everyone's faces, Team 1 Vs Team 2, and LEAVE. When it fills: MATCH FOUND → loading screen
 --   → teleported into the match (where MapVote takes over).
+-- In a party (PartyMenu) only the leader picks modes and queues, for the whole party; modes whose
+-- teams the party doesn't fit in are greyed out. The others see "Waiting for <leader>", what the
+-- leader is searching for, and the leader's queue.
 
 local Players = game:GetService("Players")
 local ReplicatedFirst = game:GetService("ReplicatedFirst")
@@ -14,6 +17,7 @@ local LoadingScreen = require(ReplicatedFirst:WaitForChild("LoadingScreen"))
 local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local state = require(script.Parent.Parent.PlayerState)
 local MenuStyle = require(script.Parent.MenuStyle)
+local PartyMenu = require(script.Parent.PartyMenu)
 
 local MatchState = ReplicatedStorage:WaitForChild("MatchState")
 local Queue = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Queue") :: RemoteEvent
@@ -29,6 +33,8 @@ local notice = ""
 
 local gui: ScreenGui
 local playHolder: Frame
+local playButton: TextButton
+local partyLine: TextLabel
 local modesScreen: Frame
 local modesTitle: TextLabel
 local startButton: TextButton
@@ -41,15 +47,27 @@ local statusLabel: TextLabel
 local leaveButton: TextButton
 local noticeLabel: TextLabel
 local shownSlots = "" -- what the slot row was last built for
+local shownParty = "" -- what the PLAY button and mode cards were last set up for
 
 local function teamSize(mode: string): number
 	return tonumber(string.match(mode, "^(%d+)v")) :: number
 end
 
+-- In someone else's party: they pick the modes and queue for all of us
+local function waitingFor(): Player?
+	local leader = PartyMenu.Leader()
+	return if leader and leader ~= player then leader else nil
+end
+
+-- The whole party fits in one of the mode's teams
+local function fits(mode: string): boolean
+	return teamSize(mode) >= PartyMenu.Size()
+end
+
 local function selectedModes(): { string }
 	local list = {}
 	for _, mode in MatchConfig.QueueModes do
-		if selected[mode] then
+		if selected[mode] and fits(mode) then
 			table.insert(list, mode)
 		end
 	end
@@ -65,17 +83,26 @@ local function queuedIds(mode: string): { number }
 end
 
 local function refreshCards()
+	local partySize = PartyMenu.Size()
+	local anyFits = false
 	for mode, card in cards do
-		local on = selected[mode] == true
+		local on = selected[mode] == true and fits(mode)
 		local rim = card:FindFirstChild("Rim") :: UIStroke
 		rim.Color = if on then MenuStyle.Green else Color3.new(1, 1, 1)
 		rim.Thickness = if on then 5 else 2
 		rim.Transparency = if on then 0 else 0.5
 		;(card:FindFirstChild("Tint") :: Frame).Visible = on
 		;(card:FindFirstChild("Check", true) :: Frame).Visible = on
+		-- Too small for the party: greyed out, with why
+		local blocked = card:FindFirstChild("Blocked") :: Frame
+		blocked.Visible = not fits(mode)
+		;(blocked:FindFirstChild("Reason") :: TextLabel).Text = `YOUR PARTY OF {partySize} WON'T FIT`
+		anyFits = anyFits or fits(mode)
 	end
 	local list = selectedModes()
-	modesTitle.Text = if #list > 0 then "Modes: " .. table.concat(list, ", ") else "Pick a mode"
+	modesTitle.Text = if #list > 0 then "Modes: " .. table.concat(list, ", ")
+		elseif anyFits then "Pick a mode"
+		else `No mode fits a party of {partySize}`
 	MenuStyle.SetButtonColor(startButton, if #list > 0 then MenuStyle.Green else MenuStyle.Grey)
 end
 
@@ -132,7 +159,24 @@ local function modeCard(mode: string, order: number): TextButton
 	MenuStyle.Text(strip, mode, UDim2.new(0.5, 0, 0, 42), UDim2.new(0.42, 0, 0.5, 0), Vector2.new(0.5, 0.5))
 	MenuStyle.Check(strip, UDim2.fromScale(0.82, 0.5))
 
+	-- Teams too small for your party: a dark cover with why (made last so it's drawn on top)
+	local blocked = Instance.new("Frame")
+	blocked.Name = "Blocked"
+	blocked.Size = UDim2.fromScale(1, 1)
+	blocked.BackgroundColor3 = Color3.new(0, 0, 0)
+	blocked.BackgroundTransparency = 0.3
+	blocked.Visible = false
+	blocked.Parent = card
+	MenuStyle.Text(blocked, "TOO SMALL", UDim2.new(0.8, 0, 0, 34), UDim2.fromScale(0.5, 0.42), Vector2.new(0.5, 0.5))
+	local reason = MenuStyle.Text(blocked, "", UDim2.new(0.86, 0, 0, 18), UDim2.new(0.5, 0, 0.42, 30), Vector2.new(0.5, 0.5))
+	reason.Name = "Reason"
+	reason.TextColor3 = Color3.fromRGB(255, 225, 120)
+	;(reason:FindFirstChildOfClass("UIStroke") :: UIStroke).Thickness = 1.5
+
 	card.Activated:Connect(function()
+		if not fits(mode) then
+			return
+		end
 		selected[mode] = not selected[mode]
 		refreshCards()
 	end)
@@ -155,11 +199,19 @@ local function build()
 	playHolder.BackgroundTransparency = 1
 	playHolder.Parent = gui
 	MenuStyle.FitToScreen(playHolder, Vector2.new(700, 500))
-	local playButton = MenuStyle.Button(playHolder, "Play Now", MenuStyle.Green, UDim2.fromScale(1, 1), UDim2.new())
+	playButton = MenuStyle.Button(playHolder, "Play Now", MenuStyle.Green, UDim2.fromScale(1, 1), UDim2.new())
 	playButton.Activated:Connect(function()
+		if waitingFor() then
+			return -- (the leader queues for the party)
+		end
 		modesOpen = true
 		refreshCards()
 	end)
+	-- In someone's party: what the leader is searching for, under the (grey) button
+	partyLine = MenuStyle.Text(playHolder, "", UDim2.new(1.4, 0, 0, 22), UDim2.new(0.5, 0, 1, 6), Vector2.new(0.5, 0))
+	partyLine.TextColor3 = Color3.fromRGB(255, 225, 120)
+	;(partyLine:FindFirstChildOfClass("UIStroke") :: UIStroke).Thickness = 1.5
+	partyLine.Visible = false
 	noticeLabel = MenuStyle.Text(gui, "", UDim2.fromOffset(620, 24), UDim2.new(0.5, 0, 1, -140), Vector2.new(0.5, 1))
 	noticeLabel.TextColor3 = Color3.fromRGB(255, 120, 110)
 
@@ -288,12 +340,31 @@ local function update()
 		found = nil -- (Studio plays the match here instead of teleporting; or the teleport never came)
 	end
 	gui.Enabled = inLobby or found ~= nil
-	if not inLobby then
+	local leader = waitingFor()
+	if not inLobby or leader then
 		modesOpen = false
 	end
 	state.modesOpen = modesOpen
 	playHolder.Visible = not modesOpen and not found
 	modesScreen.Visible = modesOpen
+
+	-- Party: the others wait for the leader; modes too small for the party grey out
+	local searching = player:GetAttribute("Queued")
+	if searching then
+		notice = "" -- (searching again)
+	end
+	local partyKey = `{if leader then leader.DisplayName else ""}:{PartyMenu.Size()}`
+	if partyKey ~= shownParty then
+		shownParty = partyKey
+		;(playButton:FindFirstChild("Label") :: TextLabel).Text = if leader then `Waiting for {leader.DisplayName}` else "Play Now"
+		MenuStyle.SetButtonColor(playButton, if leader then MenuStyle.Grey else MenuStyle.Green)
+		refreshCards()
+	end
+	partyLine.Visible = leader ~= nil
+	if leader then
+		partyLine.Text = if searching then `{string.upper(leader.DisplayName)} IS SEARCHING: {(string.gsub(searching, ",", ", "))}`
+			else `{string.upper(leader.DisplayName)} PICKS THE MODES`
+	end
 
 	-- The fullest of my queues (or the match that was found)
 	local mode, ids = nil, {}
@@ -318,7 +389,7 @@ local function update()
 	local needed = teamSize(mode) * 2
 	queueTitle.Text = mode
 	countLabel.Text = `{#ids}/{needed}`
-	leaveButton.Visible = not found
+	leaveButton.Visible = not found and not leader -- (only the leader stops a party's search)
 	statusLabel.Text = if found then "MATCH FOUND!" else "SEARCHING" .. string.rep(".", math.floor(os.clock() * 2) % 4)
 	statusLabel.TextColor3 = if found then Color3.fromRGB(120, 255, 100) else Color3.new(1, 1, 1)
 	local key = mode .. ":" .. table.concat(ids, ",")
@@ -336,16 +407,20 @@ end
 
 function MainMenu.Start()
 	build()
-	Queue.OnClientEvent:Connect(function(event, mode, ids)
+	-- "Found" (mode, ids), "Failed", "Stopped" (why: the party changed while searching)
+	Queue.OnClientEvent:Connect(function(event, a, b)
 		if event == "Found" then
-			found = { mode = mode, ids = ids or {}, at = os.clock() }
+			found = { mode = a, ids = b or {}, at = os.clock() }
 			notice = ""
+			PartyMenu.Close() -- (MATCH FOUND takes the screen)
 			if not RunService:IsStudio() then
-				TeleportService:SetTeleportGui(LoadingScreen.Build(`LOADING {mode} MATCH...`))
+				TeleportService:SetTeleportGui(LoadingScreen.Build(`LOADING {a} MATCH...`))
 			end
 		elseif event == "Failed" then
 			found = nil
-			notice = "COULDN'T START THE MATCH · PRESS PLAY TO TRY AGAIN"
+			notice = if waitingFor() then "COULDN'T START THE MATCH · YOUR LEADER CAN TRY AGAIN" else "COULDN'T START THE MATCH · PRESS PLAY TO TRY AGAIN"
+		elseif event == "Stopped" and typeof(a) == "string" then
+			notice = a
 		end
 	end)
 	RunService.RenderStepped:Connect(update)

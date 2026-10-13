@@ -26,6 +26,7 @@ local DroneService = require(script.Parent.DroneService)
 local LoadoutService = require(script.Parent.LoadoutService)
 local MapService = require(script.Parent.MapService)
 local ObjectiveService = require(script.Parent.ObjectiveService)
+local PartyService = require(script.Parent.PartyService)
 local ShopService = require(script.Parent.ShopService)
 
 local KillFeed = ReplicatedStorage.Remotes.KillFeed :: RemoteEvent
@@ -43,6 +44,9 @@ local matchRunning = false
 local forceStart = false
 local abortMatch = false
 local endRoundNow = false
+-- The teams Matchmaker made (a party always plays together), for the next match: from the
+-- teleport data on a match server, straight from Matchmaker in Studio
+local presetTeams: { [Player]: string } = {}
 
 local function setPhase(newPhase: string, duration: number?, banner: string?)
 	MatchState:SetAttribute("Phase", newPhase)
@@ -205,8 +209,9 @@ local function joinSmaller(player: Player)
 	join(player, if #teams.Blue:GetPlayers() <= #teams.Orange:GetPlayers() then "Blue" else "Orange")
 end
 
--- Players picked onto a team in the dev panel ("TeamPick") go there first (if it has room); the
--- rest are shuffled onto the smaller team. Anyone left over (teams full) sits the match out.
+-- Players picked onto a team in the dev panel ("TeamPick") or by Matchmaker (presetTeams) go there
+-- first (if it has room); the rest are shuffled onto the smaller team. Anyone left over (teams
+-- full) sits the match out.
 local function assignTeams()
 	local players = Players:GetPlayers()
 	-- Shuffle so teams are different each match
@@ -215,7 +220,7 @@ local function assignTeams()
 		players[i], players[j] = players[j], players[i]
 	end
 	for _, player in players do
-		local pick = player:GetAttribute("TeamPick")
+		local pick = player:GetAttribute("TeamPick") or presetTeams[player]
 		if pick and teams[pick] then
 			join(player, pick)
 		end
@@ -444,6 +449,7 @@ local function runMatch()
 	end
 
 	matchRunning = false
+	table.clear(presetTeams) -- (Matchmaker's teams were for this match only)
 	ObjectiveService.EndRound()
 	DroneService.Reset()
 	MatchState:SetAttribute("Round", 0)
@@ -521,14 +527,17 @@ local function readyToStart(waitingSince: number): boolean
 	return arrived >= expected or (arrived >= 2 and os.clock() - waitingSince > MatchConfig.ArrivalTimeout)
 end
 
--- Match over (or it can't go ahead): everyone back to a lobby, i.e. a public server of this place
+-- Match over (or it can't go ahead): everyone back to a lobby, i.e. a public server of this place.
+-- The parties go along in the teleport data so they form again there (PartyService).
 local function sendToLobby()
 	for attempt = 1, 3 do
 		local players = Players:GetPlayers()
 		if #players == 0 then
 			return
 		end
-		local ok, err = pcall(TeleportService.TeleportAsync, TeleportService, game.PlaceId, players)
+		local options = Instance.new("TeleportOptions")
+		options:SetTeleportData({ Parties = PartyService.ForTeleport(players) })
+		local ok, err = pcall(TeleportService.TeleportAsync, TeleportService, game.PlaceId, players, options)
 		if not ok then
 			warn("Teleport back to the lobby failed:", err)
 		end
@@ -607,16 +616,29 @@ local function onPlayerAdded(player: Player)
 		onCharacterAdded(player, character)
 	end)
 
-	-- Match server: Matchmaker's teleport data says the mode and who's coming
+	-- Match server: Matchmaker's teleport data says the mode, who's coming and on which team
 	local data = if IS_MATCH_SERVER then player:GetJoinData().TeleportData else nil
 	if typeof(data) == "table" and typeof(data.Players) == "table" and not MatchState:GetAttribute("Expected") then
 		MatchState:SetAttribute("Expected", math.clamp(#data.Players, 2, MatchConfig.MaxTeamSize * 2))
 		MatchState:SetAttribute("QueueMode", if typeof(data.Mode) == "string" then data.Mode else nil)
 	end
+	if typeof(data) == "table" and typeof(data.Teams) == "table" then
+		for _, name in MatchConfig.TeamOrder do
+			local ids = data.Teams[name]
+			if typeof(ids) == "table" and table.find(ids, player.UserId) then
+				presetTeams[player] = name
+			end
+		end
+	end
 
 	if matchRunning then
-		-- Join the smaller team; you'll spawn at the start of the next round
-		joinSmaller(player)
+		-- Join your team (or the smaller one); you'll spawn at the start of the next round
+		if presetTeams[player] then
+			join(player, presetTeams[player])
+		end
+		if player.Neutral then
+			joinSmaller(player)
+		end
 	else
 		spawnFreeRoam(player)
 	end
@@ -629,8 +651,14 @@ function RoundService.SpawnFreeRoam(player: Player)
 	end
 end
 
-function RoundService.ForceStart()
+-- `picks`: who plays on which team (Matchmaker in Studio, so a party plays together)
+function RoundService.ForceStart(picks: { [Player]: string }?)
 	forceStart = true
+	if picks then
+		for player, name in picks do
+			presetTeams[player] = name
+		end
+	end
 end
 
 function RoundService.IsMatchRunning(): boolean

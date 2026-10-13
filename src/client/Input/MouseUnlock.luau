@@ -36,7 +36,7 @@ local lastYaw: number? = nil
 local lastPitch = 0
 
 local function isFree(): boolean
-	return state.mouseUnlocked or state.devPanelOpen or state.draftOpen or state.voteOpen or state.shopOpen
+	return state.mouseUnlocked or state.devPanelOpen or state.draftOpen or state.voteOpen or state.shopOpen or state.partyOpen
 end
 
 local function yawPitch(look: Vector3): (number, number)
