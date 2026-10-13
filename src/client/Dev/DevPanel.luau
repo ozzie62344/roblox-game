@@ -360,7 +360,7 @@ local function build()
 	choiceGrid(panel, 27, {
 		{ value = "House", label = "House" },
 		{ value = "Warehouse", label = "Warehouse" },
-		{ value = "Chalet", label = "Chalet" },
+		{ value = "Flight9", label = "Flight 9" },
 		{ value = "Bank", label = "Bank" },
 		{ value = "TestArena", label = "Test Arena" },
 	}, function()
