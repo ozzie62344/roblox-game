@@ -73,6 +73,14 @@ function DroneService.Eye(drone: Model): Vector3?
 	return body and (body.CFrame * CFrame.new(0, 0.3, -0.45)).Position
 end
 
+-- Where `player`'s drone camera is, while they're driving it and it isn't jammed (PingService:
+-- team pings from the drone)
+function DroneService.EyeOf(player: Player): Vector3?
+	local drone = drones[player]
+	local eye = drone and player:GetAttribute("Droning") and DroneService.Eye(drone)
+	return if eye and not GadgetService.Jammed(eye, player) then eye else nil
+end
+
 -- A decoration welded onto `to` (offset from it): seen, never hit, no weight. The drone's body is
 -- the only part that collides or can be shot.
 local function attach(to: BasePart, name: string, size: Vector3, offset: CFrame, color: Color3, material: Enum.Material, shape: Enum.PartType?): Part

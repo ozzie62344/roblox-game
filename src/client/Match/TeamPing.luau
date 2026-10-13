@@ -21,6 +21,7 @@ local SoundCache = require(script.Parent.Parent.Audio.SoundCache)
 local Actions = require(script.Parent.Parent.Input.Actions)
 local state = require(script.Parent.Parent.PlayerState)
 local MenuStyle = require(script.Parent.MenuStyle)
+local DroneController = require(script.Parent.Parent.Abilities.DroneController)
 
 local PingRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Ping") :: RemoteEvent
 
@@ -190,6 +191,11 @@ end
 
 -- Ping whatever is under the crosshair
 function TeamPing.Ping()
+	-- (in the drone the ping key does what its click does: spot an enemy or mark the spot)
+	if DroneController.IsDriving() then
+		DroneController.Spot()
+		return
+	end
 	if not canPing() then
 		return
 	end

@@ -3,7 +3,7 @@
 --          (DroneService.SpotFrom: they must really be in view of your eyes), short cooldown.
 --   "Mark" a spot (wall, floor, gadget, objective...): the position goes to your team (and you),
 --          who show a marker there for a few seconds. In free roam it goes to everyone.
--- Not in the lobby, and only while you're alive.
+-- Not in the lobby, and only while you're alive, or driving your drone (marks measured from its camera).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -44,11 +44,12 @@ end
 
 local function mark(player: Player, position: any)
 	local head = eyes(player)
+	local origin = DroneService.EyeOf(player) or (head and head.Position)
 	local now = os.clock()
-	if not head or typeof(position) ~= "Vector3" or not finite(position) or now - (lastMark[player] or 0) < MARK_COOLDOWN then
+	if not origin or typeof(position) ~= "Vector3" or not finite(position) or now - (lastMark[player] or 0) < MARK_COOLDOWN then
 		return
 	end
-	if (position - head.Position).Magnitude > RANGE + SLACK then
+	if (position - origin).Magnitude > RANGE + SLACK then
 		return
 	end
 	lastMark[player] = now

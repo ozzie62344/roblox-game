@@ -25,6 +25,7 @@ local Actions = require(script.Parent.Parent.Input.Actions)
 local MoveInput = require(script.Parent.Parent.Input.MoveInput)
 
 local DroneRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Drone") :: RemoteEvent
+local PingRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Ping") :: RemoteEvent
 
 local player = Players.LocalPlayer
 
@@ -44,6 +45,7 @@ local MAX_PITCH = math.rad(70)
 local FOV = 85 -- wide-angle lens
 local EYE = CFrame.new(0, 0.3, -0.45) -- matches DroneService.Eye
 local SPOT_RANGE = 70
+local MARK_RANGE = 300 -- (team pings reach further than spotting: PingService)
 local JAM_RADIUS = Abilities.SignalJammer.Radius or 10
 
 local yaw, pitch = 0, 0
@@ -253,8 +255,8 @@ local function update(dt: number)
 	countLabel.Text = if typeof(left) == "number" then `{left} MORE DRONE{if left == 1 then "" else "S"} THIS ROUND` else ""
 	local alive = humanoid ~= nil and humanoid.Health > 0
 	hintLabel.Text = if state.touchControls
-		then "STICK DRIVES (ALL THE WAY: SPRINT)  ·  DRAG TO LOOK  ·  JUMP HOPS  ·  SPOT"
-		else `WASD DRIVE  ·  SHIFT SPRINT  ·  SPACE HOP  ·  CLICK SPOT AN ENEMY  ·  Z {if alive then "BACK TO YOUR BODY" else "BACK TO SPECTATING"}`
+		then "STICK DRIVES (ALL THE WAY: SPRINT)  ·  DRAG TO LOOK  ·  JUMP HOPS  ·  SPOT / PING"
+		else `WASD DRIVE  ·  SHIFT SPRINT  ·  SPACE HOP  ·  CLICK SPOT / PING  ·  Z {if alive then "BACK TO YOUR BODY" else "BACK TO SPECTATING"}`
 end
 
 local function hop()
@@ -270,17 +272,24 @@ local function hop()
 	end
 end
 
--- Click: if there's an enemy under the crosshair, the server checks the drone can see them
+-- Click (or the ping key): an enemy under the crosshair gets spotted (the server checks the drone
+-- can see them); anywhere else gets a team ping marker, like pinging on foot (TeamPing)
 local function spot()
 	local drone = driving
 	if not drone or jam > 0.05 then
 		return
 	end
 	local camera = Workspace.CurrentCamera.CFrame
-	local hit = Workspace:Raycast(camera.Position, camera.LookVector * SPOT_RANGE, ignoring(drone))
-	local model = hit and hit.Instance:FindFirstAncestorOfClass("Model")
-	if model and model:FindFirstChildOfClass("Humanoid") then
+	local hit = Workspace:Raycast(camera.Position, camera.LookVector * MARK_RANGE, ignoring(drone))
+	if not hit then
+		return
+	end
+	local model = hit.Instance:FindFirstAncestorOfClass("Model")
+	local humanoid = model and model:FindFirstChildOfClass("Humanoid")
+	if humanoid and humanoid.Health > 0 and (hit.Position - camera.Position).Magnitude <= SPOT_RANGE then
 		DroneRemote:FireServer("Spot", model)
+	elseif not humanoid or humanoid.Health <= 0 then
+		PingRemote:FireServer("Mark", hit.Position + hit.Normal * 0.3)
 	end
 end
 

@@ -167,25 +167,29 @@ local DEFAULT = {
 	Saturation = 0.05,
 	Tint = Color3.fromRGB(255, 248, 238),
 	SunRays = 0.08,
+	Exposure = 0,
 }
 local PROFILES: { [string]: { [string]: any } } = {
-	-- A cold, overcast mountain plateau: grey sky, flat cool light, a little more haze
+	-- A cold, overcast mountain plateau late in the day: grey sky, dim flat cool light, a little
+	-- more haze. Darker than the others on purpose: all that white snow made it glare (the camera
+	-- is turned down a little too, so the snow reads grey-white rather than blown out).
 	Flight9 = {
-		ClockTime = 13,
-		Brightness = 2,
-		Ambient = Color3.fromRGB(78, 82, 90),
-		OutdoorAmbient = Color3.fromRGB(140, 146, 158),
-		HazeDensity = 0.38,
-		HazeColor = Color3.fromRGB(200, 208, 220),
-		HazeDecay = Color3.fromRGB(150, 158, 172),
+		ClockTime = 16.2,
+		Brightness = 1.2,
+		Ambient = Color3.fromRGB(76, 80, 90), -- (indoors stays about as bright as before: enemies in corners still show)
+		OutdoorAmbient = Color3.fromRGB(104, 110, 124),
+		HazeDensity = 0.36,
+		HazeColor = Color3.fromRGB(150, 158, 172),
+		HazeDecay = Color3.fromRGB(104, 112, 128),
 		Glare = 0,
-		CloudCover = 0.85,
-		CloudDensity = 0.75,
-		CloudColor = Color3.fromRGB(205, 210, 218),
-		Contrast = 0.12,
-		Saturation = -0.08,
-		Tint = Color3.fromRGB(236, 243, 255),
-		SunRays = 0.02,
+		CloudCover = 0.92,
+		CloudDensity = 0.85,
+		CloudColor = Color3.fromRGB(150, 156, 166),
+		Contrast = 0.16,
+		Saturation = -0.1,
+		Tint = Color3.fromRGB(228, 236, 250),
+		SunRays = 0,
+		Exposure = -0.35,
 	},
 	-- A clear city midday: the sun higher and whiter, less of the suburban gold
 	Bank = {
@@ -208,6 +212,7 @@ function LightingService.Apply(mapName: string)
 	Lighting.Brightness = get("Brightness")
 	Lighting.Ambient = get("Ambient")
 	Lighting.OutdoorAmbient = get("OutdoorAmbient")
+	Lighting.ExposureCompensation = get("Exposure")
 	local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
 	if atmosphere then
 		atmosphere.Density = get("HazeDensity")
