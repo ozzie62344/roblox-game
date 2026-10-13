@@ -360,6 +360,7 @@ local function build()
 	choiceGrid(panel, 27, {
 		{ value = "House", label = "House" },
 		{ value = "Warehouse", label = "Warehouse" },
+		{ value = "Chalet", label = "Chalet" },
 		{ value = "TestArena", label = "Test Arena" },
 	}, function()
 		return MatchState:GetAttribute("Map") or "House"

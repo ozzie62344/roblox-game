@@ -47,6 +47,18 @@ local SPOTS: { [string]: { { any } } } = {
 		{ "OPEN PLAN", Vector3.new(54, 21.9, -8.5), Vector3.new(0, 0, -1), Vector3.new(12, 13.4, -36) },
 		{ "LOADING TUNNEL", Vector3.new(-36, -2.6, -39.5), Vector3.new(0, 0, 1), Vector3.new(-36, -11.6, 30) },
 	},
+	Chalet = {
+		{ "FRONT DRIVE", Vector3.new(-18, 9.4, -40.5), Vector3.new(0, 0, -1), Vector3.new(-4, 0.3, -86) },
+		{ "WEST WOODS", Vector3.new(-56.5, 9.4, -20), Vector3.new(-1, 0, 0), Vector3.new(-104, 0.2, -6) },
+		{ "LAKESIDE", Vector3.new(-40, 9.4, 40.5), Vector3.new(0, 0, 1), Vector3.new(-6, 0.4, 72) },
+		{ "GARAGE RAMP", Vector3.new(56.5, 9.4, 14), Vector3.new(1, 0, 0), Vector3.new(82, -2, -14) },
+		{ "FOYER", Vector3.new(3, 10.4, -20.5), Vector3.new(0, 0, -1), Vector3.new(0, 0.4, -38) },
+		{ "HALL", Vector3.new(15, 9.4, -0.5), Vector3.new(0, 0, -1), Vector3.new(-6, 0.4, -14) },
+		{ "LIBRARY", Vector3.new(-20.5, 9.4, -18), Vector3.new(-1, 0, 0), Vector3.new(-48, 0.4, -34) },
+		{ "GREAT ROOM", Vector3.new(0, 18.4, 36), Vector3.new(0, 0, -1), Vector3.new(0, 0.4, 4) },
+		{ "GALLERY", Vector3.new(-16, 21.9, -13.5), Vector3.new(0, 0, 1), Vector3.new(4, 13.4, 8) },
+		{ "CELLAR HALL", Vector3.new(16, -2.6, -0.5), Vector3.new(0, 0, -1), Vector3.new(-6, -11.6, -17) },
+	},
 }
 
 -- Where the lens is (CamsController looks out of the same point)
