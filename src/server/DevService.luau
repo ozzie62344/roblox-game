@@ -57,6 +57,21 @@ local actions: { [string]: (player: Player, arg: any) -> () } = {
 		ShopService.Award(player, 1000, "DEV")
 	end,
 
+	-- Give anyone in the server coins (a negative amount takes some away, down to 0)
+	GiveCoins = function(_, arg)
+		if typeof(arg) ~= "table" then
+			return
+		end
+		local target, amount = arg.Player, arg.Amount
+		if typeof(target) ~= "Instance" or not target:IsA("Player") or target.Parent ~= Players then
+			return
+		end
+		if typeof(amount) ~= "number" or amount ~= math.floor(amount) or math.abs(amount) > 1000000 then
+			return
+		end
+		ShopService.Adjust(target, amount, "GIFT")
+	end,
+
 	RefillAmmo = function(player)
 		WeaponService.Refill(player)
 		AbilityService.ResetCharges(player)

@@ -19,11 +19,12 @@ local HALF_X, HALF_Z = 45, 35
 
 local CARPET = Color3.fromRGB(58, 62, 74)
 local PANEL = Color3.fromRGB(110, 78, 52)
-local PLASTER = Color3.fromRGB(214, 208, 196)
+local PLASTER = Color3.fromRGB(184, 178, 168) -- (a pale plaster bounced so much light the room glared)
 local TRIM = Color3.fromRGB(40, 42, 48)
 local FABRIC = Color3.fromRGB(70, 80, 105)
 local SCREEN = Color3.fromRGB(14, 16, 20)
 local ACCENT = Color3.fromRGB(255, 170, 60)
+local LIGHT_BRIGHTNESS = 0.7 -- the ceiling lights overlap a lot; at full strength the room was too bright
 
 local function screen(map: MapBuilder.Builder, center: Vector3, width: number, title: string, subtitle: string)
 	map:Box("ScreenFrame", center - Vector3.new(width / 2 + 0.3, 3.3, 0.5), center + Vector3.new(width / 2 + 0.3, 3.3, 0), TRIM, Enum.Material.Metal)
@@ -97,7 +98,7 @@ function Lobby.Build(): Model
 	-- Ceiling lights in a grid
 	for x = -30, 30, 20 do
 		for z = -20, 20, 20 do
-			map:Light(at(x, WALL - 0.2, z), 32)
+			map:Light(at(x, WALL - 0.2, z), 28, LIGHT_BRIGHTNESS)
 		end
 	end
 
@@ -122,14 +123,15 @@ function Lobby.Build(): Model
 	local rampLength = 16
 	map:Part("Ramp", Vector3.new(8, 0.6, rampLength), CFrame.new(at(30, 2.4, 10)) * CFrame.Angles(math.rad(17), 0, 0), Color3.fromRGB(120, 125, 130), Enum.Material.DiamondPlate)
 	map:Box("RampTop", at(26, 0, -6), at(34, 4.8, 2.6), Color3.fromRGB(120, 125, 130), Enum.Material.DiamondPlate)
-	map:Box("SlideLane", at(-40, 0.02, 4), at(-4, 0.06, 10), ACCENT, Enum.Material.Neon).CanCollide = false
+	-- (painted, not neon: a long glowing strip bloomed across half the room)
+	map:Box("SlideLane", at(-40, 0.02, 4), at(-4, 0.06, 10), Color3.fromRGB(205, 130, 50), Enum.Material.SmoothPlastic).CanCollide = false
 	map:Box("WallJumpWall", at(-42, 0, 14), at(-41, WALL, 30), PLASTER, Enum.Material.Concrete)
 	map:Box("WallJumpWall", at(-27, 0, 14), at(-26, WALL, 30), PLASTER, Enum.Material.Concrete)
 
 	-- Where players appear (RoundService moves them here)
 	local spawn = map:Box("LobbySpawn", at(-4, 0, 20), at(4, 0.08, 28), ACCENT, Enum.Material.Neon)
 	spawn.CanCollide = false
-	spawn.Transparency = 0.5
+	spawn.Transparency = 0.7
 
 	return map.model
 end

@@ -34,6 +34,17 @@ function ShopService.Award(player: Player, amount: number, reason: string)
 	end
 end
 
+-- Adds (or with a negative amount, takes away, never below 0) credits: the dev panel's gifts
+function ShopService.Adjust(player: Player, amount: number, reason: string)
+	if amount > 0 then
+		ShopService.Award(player, amount, reason)
+	elseif amount < 0 then
+		PlayerData.Update(player, function(data)
+			data.Credits = math.max(0, data.Credits + amount)
+		end)
+	end
+end
+
 local function buy(player: Player, id: any, item: any)
 	local skin = typeof(id) == "string" and Skins.ById[id]
 	local data = PlayerData.Get(player)

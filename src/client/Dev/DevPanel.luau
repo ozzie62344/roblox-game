@@ -276,9 +276,85 @@ local function build()
 		DevAction:FireServer("RefillAmmo")
 		WeaponController.Refill()
 	end)
-	button(panel, "+1000 credits (shop)", 16).Activated:Connect(function()
-		DevAction:FireServer("GiveCredits")
+	-- Coins: pick anyone in the server (◀ ▶, starts on you), then give or take some
+	local coins = Instance.new("Frame")
+	coins.Size = UDim2.new(1, 0, 0, 0)
+	coins.AutomaticSize = Enum.AutomaticSize.Y
+	coins.LayoutOrder = 16
+	coins.BackgroundTransparency = 1
+	coins.Parent = panel
+	local coinsLayout = Instance.new("UIListLayout")
+	coinsLayout.Padding = UDim.new(0, 4)
+	coinsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	coinsLayout.Parent = coins
+	heading(coins, "COINS (shop credits)", 1)
+	local target: Player = player
+	local pickRow = Instance.new("Frame")
+	pickRow.Size = UDim2.new(1, 0, 0, 30)
+	pickRow.LayoutOrder = 2
+	pickRow.BackgroundTransparency = 1
+	pickRow.Parent = coins
+	local previous = Instance.new("TextButton")
+	previous.Size = UDim2.new(0, 30, 1, 0)
+	styleButton(previous, "◀")
+	previous.Parent = pickRow
+	local nextButton = Instance.new("TextButton")
+	nextButton.AnchorPoint = Vector2.new(1, 0)
+	nextButton.Position = UDim2.fromScale(1, 0)
+	nextButton.Size = UDim2.new(0, 30, 1, 0)
+	styleButton(nextButton, "▶")
+	nextButton.Parent = pickRow
+	local targetLabel = Instance.new("TextLabel")
+	targetLabel.Position = UDim2.fromOffset(34, 0)
+	targetLabel.Size = UDim2.new(1, -68, 1, 0)
+	targetLabel.BackgroundTransparency = 1
+	targetLabel.Font = Enum.Font.GothamMedium
+	targetLabel.TextSize = 13
+	targetLabel.TextColor3 = Color3.new(1, 1, 1)
+	targetLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	targetLabel.Parent = pickRow
+	local function showTarget()
+		if target.Parent ~= Players then
+			target = player -- (they left)
+		end
+		local credits = target:GetAttribute("Credits")
+		targetLabel.Text = `{target.DisplayName} · {if typeof(credits) == "number" then credits else "?"} coins`
+	end
+	local function step(by: number)
+		local list = Players:GetPlayers()
+		local index = table.find(list, target) or 1
+		target = list[(index - 1 + by) % #list + 1]
+		showTarget()
+	end
+	previous.Activated:Connect(function()
+		step(-1)
 	end)
+	nextButton.Activated:Connect(function()
+		step(1)
+	end)
+	table.insert(refreshers, showTarget)
+	local amounts = Instance.new("Frame")
+	amounts.Size = UDim2.new(1, 0, 0, 0)
+	amounts.AutomaticSize = Enum.AutomaticSize.Y
+	amounts.LayoutOrder = 3
+	amounts.BackgroundTransparency = 1
+	amounts.Parent = coins
+	local amountGrid = Instance.new("UIGridLayout")
+	amountGrid.CellSize = UDim2.new(0.25, -5, 0, 28)
+	amountGrid.CellPadding = UDim2.fromOffset(6, 6)
+	amountGrid.SortOrder = Enum.SortOrder.LayoutOrder
+	amountGrid.Parent = amounts
+	for i, amount in { 100, 1000, 10000, -1000 } do
+		local b = Instance.new("TextButton")
+		b.LayoutOrder = i
+		styleButton(b, if amount > 0 then `+{amount}` else tostring(amount))
+		b.Activated:Connect(function()
+			DevAction:FireServer("GiveCoins", { Player = target, Amount = amount })
+			task.delay(0.5, showTarget) -- (once the server has updated their total)
+		end)
+		b.Parent = amounts
+	end
+	showTarget()
 
 	heading(panel, "MAP (ends any match)", 26)
 	choiceGrid(panel, 27, {

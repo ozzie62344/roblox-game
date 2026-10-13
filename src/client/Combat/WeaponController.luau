@@ -374,7 +374,10 @@ function WeaponController.Start()
 			if inputState == Enum.UserInputState.Begin then
 				Actions.Call("Melee", Enum.UserInputState.Begin)
 			end
-			return Enum.ContextActionResult.Sink
+			-- Passed on like a gun's click: the drone and the cameras spot with the same click (a
+			-- sunk click never reached them, so nobody could spot in Knives Only). Melee itself
+			-- doesn't swing while you're droning or on cams.
+			return Enum.ContextActionResult.Pass
 		end
 		triggerHeld = inputState == Enum.UserInputState.Begin
 		return Enum.ContextActionResult.Pass
