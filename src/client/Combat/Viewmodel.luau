@@ -357,8 +357,8 @@ end
 
 -- Builds the gun for this weapon (GunModels, in the given skin), its moving pieces, the hands and
 -- the arms
-function Viewmodel.new(weapon: Weapons.Weapon, skin: Skins.Skin?)
-	local model = GunModels.Build(weapon.Name, weapon.Look.Color, skin)
+function Viewmodel.new(weapon: Weapons.Weapon, skin: Skins.Skin?, attachments: { [string]: string }?)
+	local model = GunModels.Build(weapon.Name, weapon.Look.Color, skin, attachments)
 	model.Name = "Viewmodel"
 	local body = model.PrimaryPart :: Part
 

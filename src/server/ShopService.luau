@@ -4,6 +4,8 @@
 --   Shop:FireServer("Equip", item, skinId?)     wear an owned skin on "Rifle", "Knife"... (nil =
 --                                               the factory look)
 --   Shop:FireServer("EquipAll", skinId?)        the same on every gun and the knife
+--   Shop:FireServer("Attach", gun, slot, id?)   put an attachment on a gun ("Rifle", "Optic",
+--                                               "Scope"; nil id = take it off). Attachments are free
 --   Shop:FireClient(player, "Reward", amount, reason)   credits earned (toast on screen)
 --   Shop:FireClient(player, "Bought", skinId)           a purchase went through
 -- Credits are earned in matches (RoundService, ObjectiveService call Award; amounts in
@@ -12,6 +14,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Attachments = require(ReplicatedStorage.Shared.Attachments)
 local Skins = require(ReplicatedStorage.Shared.Skins)
 local PlayerData = require(script.Parent.PlayerData)
 
@@ -80,8 +83,24 @@ local function equip(player: Player, items: { string }, id: any)
 	end, true)
 end
 
+-- Attachments: anything that fits, any time (they're free); nil takes the slot's one off
+local function attach(player: Player, weaponName: any, slot: any, id: any)
+	local slots = typeof(weaponName) == "string" and Attachments.SlotsFor[weaponName]
+	if not slots or typeof(slot) ~= "string" or not slots[slot] then
+		return
+	end
+	if id ~= nil and (typeof(id) ~= "string" or not Attachments.Fits(weaponName, id) or Attachments.ById[id].Slot ~= slot) then
+		return
+	end
+	PlayerData.Update(player, function(d)
+		local onGun = d.Attachments[weaponName] or {}
+		onGun[slot] = id
+		d.Attachments[weaponName] = if next(onGun) then onGun else nil
+	end, true)
+end
+
 function ShopService.Start()
-	Shop.OnServerEvent:Connect(function(player, action, a, b)
+	Shop.OnServerEvent:Connect(function(player, action, a, b, c)
 		-- (a few requests a second is plenty for clicking around a menu)
 		local now = os.clock()
 		if now - (lastRequest[player] or 0) < 0.1 then
@@ -94,6 +113,8 @@ function ShopService.Start()
 			equip(player, { a }, b)
 		elseif action == "EquipAll" then
 			equip(player, Skins.Items, a)
+		elseif action == "Attach" then
+			attach(player, a, b, c)
 		end
 	end)
 	Players.PlayerRemoving:Connect(function(player)

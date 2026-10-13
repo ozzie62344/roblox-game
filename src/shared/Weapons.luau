@@ -4,7 +4,10 @@
 -- Balance (100 health, Siege rule: a headshot kills with anything but shotgun pellets). Body
 -- shots to kill up close / time to kill: SMG 5 / 0.27 s, Rifle 4 / 0.28 s, LMG 4 / 0.30 s,
 -- Autopistol 7 / 0.33 s, Marksman 3 / 0.40 s, Revolver 2 / 0.46 s, Sniper 2 / 1.2 s, Shotgun
--- one shot inside ~8 studs, Gatling 7 / 0.26 s once its barrels have spun up (0.55 s first). Range is the trade-off: SMG / Autopistol / Shotgun fall off fast,
+-- one shot inside ~8 studs, Gatling 8 / 0.3 s once its barrels have spun up (0.7 s first).
+-- The gatling pays for that: you carry it at 60% speed (about 40% while it's spinning), it sprays,
+-- and its headshots don't kill outright (a stray one out of 23 bullets a second would be a free
+-- kill). Range is the trade-off: SMG / Autopistol / Shotgun fall off fast,
 -- Rifle / LMG hold up to mid range, Marksman / Sniper barely fall off at all.
 --
 -- Sounds: FireSound / TailSound / ReloadSound name a set in Sounds.luau (Sets); a random one from the set plays.
@@ -59,6 +62,7 @@ export type Weapon = {
 	FireVolume: number,
 
 	SpinUp: number?, -- seconds the barrels take to spin up before it fires (the gatling)
+	SpinSlow: number?, -- with the barrels spinning you're this much slower again (0..1)
 	MoveSpeedScale: number?, -- heavy guns slow you down (walking and sprinting), 1 = not at all
 }
 
@@ -431,13 +435,13 @@ local Weapons: { [string]: Weapon } = {
 
 	Gatling = {
 		Name = "Gatling",
-		Description = "Six spinning barrels. Spins up, then shreds. Heavy.",
+		Description = "Six spinning barrels. Spins up, then shreds. Very heavy.",
 		Automatic = true,
 		RPM = 1400,
-		Damage = 16, -- 7 to kill, a fifth of a second of fire...
+		Damage = 14, -- 8 to kill, a third of a second of fire...
 		Pellets = 1,
 		PelletSpread = 0,
-		HeadshotDamage = 102,
+		HeadshotDamage = 35, -- (not a one-shot: see the top)
 		FalloffStart = 30,
 		FalloffEnd = 90,
 		MinDamageScale = 0.55,
@@ -473,8 +477,9 @@ local Weapons: { [string]: Weapon } = {
 		FireVolume = 0.7,
 		ReloadSound = "GunFoley",
 
-		SpinUp = 0.55,
-		MoveSpeedScale = 0.8,
+		SpinUp = 0.7,
+		SpinSlow = 0.35,
+		MoveSpeedScale = 0.6,
 	},
 }
 

@@ -1,7 +1,8 @@
 -- The SHOP (lobby): skins for your guns and knife, bought with credits earned in matches.
 --   Left:   what you're dressing (each gun, the knife); the dot is the skin it wears now
 --   Middle: a 3D preview (drag it to turn it) with BUY / EQUIP / EQUIP ON ALL
---   Right:  every skin as a paint chip, with its price, OWNED or EQUIPPED
+--   Right:  every skin as a paint chip, with its price, OWNED or EQUIPPED; or (MODS) the gun's
+--           attachment slots: optic, muzzle, under barrel (shared/Attachments, free)
 -- A bought skin works on every gun and the knife; buying one puts it on the selected item.
 -- Dev-only skins (Skins.luau) only show up for devs, already unlocked.
 -- Also: your credits next to the SHOP button in the lobby, and a toast whenever you earn some
@@ -14,6 +15,7 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
+local Attachments = require(ReplicatedStorage.Shared.Attachments)
 local Skins = require(ReplicatedStorage.Shared.Skins)
 local Sounds = require(ReplicatedStorage.Shared.Sounds)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
@@ -55,9 +57,13 @@ local actionButton: TextButton
 local allButton: TextButton
 local unlockedLabel: TextLabel
 local toastList: Frame
+local skinGrid: ScrollingFrame
+local modsPanel: ScrollingFrame
+local viewButtons: { [string]: TextButton } = {}
 
 local selectedItem = "Rifle"
 local selectedSkin = "" -- "" = the factory look
+local view = "Skins" -- the right side: "Skins" or "Mods" (attachments)
 local previewModel: Model? = nil
 local previewKey = ""
 local previewCenter = CFrame.identity -- moves the model's middle onto the origin
@@ -229,7 +235,8 @@ end
 
 -- Builds the selected item in the selected skin and frames the camera on it
 local function rebuildPreview()
-	local key = selectedItem .. ":" .. selectedSkin
+	local mods = if Weapons[selectedItem] then Attachments.For(player, selectedItem) else {}
+	local key = selectedItem .. ":" .. selectedSkin .. ":" .. Attachments.Key(mods)
 	if key == previewKey then
 		return
 	end
@@ -240,7 +247,7 @@ local function rebuildPreview()
 	local skin = Skins.ById[selectedSkin]
 	local model = if selectedItem == "Knife"
 		then GunModels.BuildKnife(skin)
-		else GunModels.Build(selectedItem, Weapons[selectedItem].Look.Color, skin)
+		else GunModels.Build(selectedItem, Weapons[selectedItem].Look.Color, skin, mods)
 	local box, size = model:GetBoundingBox()
 	previewCenter = CFrame.new(-box.Position) * model:GetPivot()
 
@@ -265,6 +272,91 @@ local function turnPreview(dt: number)
 	end
 	local yaw = dragYaw + math.sin(swayTime * 0.7) * 0.35
 	previewModel:PivotTo(CFrame.Angles(0, yaw, 0) * previewCenter)
+end
+
+-- ─── Mods ──────────────────────────────────────────────────────────────────────
+
+-- One choice in a slot: its name and what it does; gold-rimmed when it's on the gun
+local function modButton(parent: Instance, order: number, name: string, description: string, on: boolean, pick: () -> ())
+	local button = Instance.new("TextButton")
+	button.LayoutOrder = order
+	button.AutoButtonColor = true
+	button.Text = ""
+	button.BackgroundColor3 = if on then Color3.fromRGB(58, 52, 36) else CARD
+	MenuStyle.Corner(button, UDim.new(0, 10))
+	MenuStyle.Rim(button, if on then GOLD else Color3.fromRGB(60, 64, 76), if on then 3 else 2)
+	local title = MenuStyle.Text(button, string.upper(name), UDim2.new(1, -16, 0, 24), UDim2.fromOffset(8, 6))
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.TextColor3 = if on then GOLD else Color3.new(1, 1, 1)
+	local info = Instance.new("TextLabel")
+	info.Position = UDim2.fromOffset(8, 32)
+	info.Size = UDim2.new(1, -16, 1, -36)
+	info.BackgroundTransparency = 1
+	info.FontFace = MenuStyle.Font
+	info.TextScaled = true
+	info.TextWrapped = true
+	info.TextXAlignment = Enum.TextXAlignment.Left
+	info.TextYAlignment = Enum.TextYAlignment.Top
+	info.TextColor3 = Color3.fromRGB(170, 176, 190)
+	info.Text = description
+	info.Parent = button
+	local limit = Instance.new("UITextSizeConstraint")
+	limit.MaxTextSize = 15
+	limit.Parent = info
+	button.Activated:Connect(pick)
+	button.Parent = parent
+end
+
+-- The selected gun's slots, each with FACTORY and every attachment that goes in it
+local function fillMods()
+	for _, child in modsPanel:GetChildren() do
+		if child:IsA("GuiObject") then
+			child:Destroy()
+		end
+	end
+	local slots = Attachments.SlotsFor[selectedItem]
+	if not slots then
+		local none = MenuStyle.Text(modsPanel, "NOTHING GOES ON THE KNIFE", UDim2.new(1, -10, 0, 30), UDim2.new())
+		none.LayoutOrder = 1
+		return
+	end
+	local chosen = Attachments.For(player, selectedItem)
+	local order = 0
+	for _, slot in Attachments.Slots do
+		if not slots[slot] then
+			continue
+		end
+		order += 1
+		local heading = MenuStyle.Text(modsPanel, Attachments.SlotNames[slot], UDim2.new(1, -10, 0, 26), UDim2.new())
+		heading.TextXAlignment = Enum.TextXAlignment.Left
+		heading.LayoutOrder = order
+		order += 1
+		local row = Instance.new("Frame")
+		row.LayoutOrder = order
+		row.Size = UDim2.new(1, -10, 0, 0)
+		row.AutomaticSize = Enum.AutomaticSize.Y
+		row.BackgroundTransparency = 1
+		row.Parent = modsPanel
+		local rowGrid = Instance.new("UIGridLayout")
+		rowGrid.CellSize = UDim2.fromOffset(200, 70)
+		rowGrid.CellPadding = UDim2.fromOffset(8, 8)
+		rowGrid.SortOrder = Enum.SortOrder.LayoutOrder
+		rowGrid.Parent = row
+		local function put(id: string?)
+			Shop:FireServer("Attach", selectedItem, slot, id)
+			Effects.Sound(Sounds.Pick("GunFoley"), nil, 0.6, 1.1)
+		end
+		modButton(row, 0, "Factory", "What the gun comes with.", chosen[slot] == nil, function()
+			put(nil)
+		end)
+		for i, attachment in Attachments.List do
+			if attachment.Slot == slot then
+				modButton(row, i, attachment.Name, attachment.Description, chosen[slot] == attachment.Id, function()
+					put(attachment.Id)
+				end)
+			end
+		end
+	end
 end
 
 -- ─── Refresh ───────────────────────────────────────────────────────────────────
@@ -355,6 +447,18 @@ local function refresh()
 	else
 		setButtonText(actionButton, "Equip")
 		MenuStyle.SetButtonColor(actionButton, MenuStyle.Blue)
+	end
+	-- SKINS or MODS on the right; the buy / equip buttons are for skins
+	skinGrid.Visible = view == "Skins"
+	modsPanel.Visible = view == "Mods"
+	for name, button in viewButtons do
+		MenuStyle.SetButtonColor(button, if name == view then MenuStyle.Gold else MenuStyle.Grey)
+	end
+	actionButton.Visible = view == "Skins"
+	if view == "Mods" then
+		allButton.Visible = false
+		hintLabel.Text = if Attachments.SlotsFor[selectedItem] then "Attachments are free · tap one to put it on" else ""
+		fillMods()
 	end
 	if screen.Visible then
 		rebuildPreview()
@@ -576,10 +680,39 @@ local function build()
 
 	buildPreviewPanel(content)
 
-	-- Right: skins
+	-- Right: SKINS / MODS, then the skins or the attachment slots
+	for i, name in { "Skins", "Mods" } do
+		local button = MenuStyle.Button(content, name, MenuStyle.Grey, UDim2.fromOffset(206, 38), UDim2.fromOffset(672 + (i - 1) * 216, 84))
+		button.Activated:Connect(function()
+			view = name
+			refresh()
+		end)
+		viewButtons[name] = button
+	end
+	modsPanel = Instance.new("ScrollingFrame")
+	modsPanel.Position = UDim2.fromOffset(672, 130)
+	modsPanel.Size = UDim2.fromOffset(428, 424)
+	modsPanel.BackgroundTransparency = 1
+	modsPanel.BorderSizePixel = 0
+	modsPanel.ScrollBarThickness = 6
+	modsPanel.ScrollBarImageColor3 = Color3.fromRGB(120, 124, 135)
+	modsPanel.CanvasSize = UDim2.new()
+	modsPanel.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	modsPanel.Visible = false
+	modsPanel.Parent = content
+	local modsLayout = Instance.new("UIListLayout")
+	modsLayout.Padding = UDim.new(0, 6)
+	modsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	modsLayout.Parent = modsPanel
+	local modsPadding = Instance.new("UIPadding")
+	modsPadding.PaddingTop = UDim.new(0, 4)
+	modsPadding.PaddingLeft = UDim.new(0, 5)
+	modsPadding.Parent = modsPanel
+
 	local grid = Instance.new("ScrollingFrame")
-	grid.Position = UDim2.fromOffset(672, 84)
-	grid.Size = UDim2.fromOffset(428, 470)
+	skinGrid = grid
+	grid.Position = UDim2.fromOffset(672, 130)
+	grid.Size = UDim2.fromOffset(428, 424)
 	grid.BackgroundTransparency = 1
 	grid.BorderSizePixel = 0
 	grid.ScrollBarThickness = 6
@@ -713,7 +846,7 @@ end
 function ShopMenu.Start()
 	build()
 	refresh()
-	for _, attribute in { "Credits", "OwnedSkins", "EquippedSkins", "DataOffline", "IsDev" } do
+	for _, attribute in { "Credits", "OwnedSkins", "EquippedSkins", "DataOffline", "IsDev", "Attachments" } do
 		player:GetAttributeChangedSignal(attribute):Connect(refresh)
 	end
 	Shop.OnClientEvent:Connect(function(event, a, b)

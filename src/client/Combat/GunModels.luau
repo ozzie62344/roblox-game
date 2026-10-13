@@ -1250,6 +1250,191 @@ local function buildGatling(gun: Model, color: Color3): Part
 	return body
 end
 
+---------------------------------------------------------------------------------------------
+-- Attachments (shared/Attachments): an optic in place of the gun's own sight, a device on the
+-- muzzle, a laser on the side of the handguard. Black, and left alone by skins.
+---------------------------------------------------------------------------------------------
+local MOUNT = fixed(GunModels.Finish(Color3.fromRGB(34, 35, 38), Enum.Material.Metal))
+local MOUNT_DARK = fixed(GunModels.Finish(Color3.fromRGB(22, 22, 24), Enum.Material.SmoothPlastic))
+local LASER_GLOW = fixed(GunModels.Finish(Color3.fromRGB(255, 60, 50), Enum.Material.Neon))
+
+-- Where an optic goes on each gun: the top of the receiver / rail it clamps to, where its base sits
+-- (higher than the top on a riser, to clear a front sight), the parts of the gun's own sight that
+-- come off for it, and a name prefix for its parts (the LMG's rides on the feed cover, so it
+-- swings open with it on reloads)
+type Mount = { top: number, base: Vector3, remove: { string }, prefix: string? }
+local OPTIC_MOUNTS: { [string]: Mount } = {
+	Rifle = { top = 0.065, base = Vector3.new(0, 0.065, 0.075), remove = { "^Optic", "^Reticle" } },
+	SMG = { top = 0.0875, base = Vector3.new(0, 0.115, 0.06), remove = { "^RearSight" } },
+	LMG = { top = 0.13, base = Vector3.new(0, 0.13, -0.06), remove = { "^FeedCoverSight" }, prefix = "FeedCover" },
+	Marksman = {
+		top = 0.0675,
+		base = Vector3.new(0, 0.0675, 0),
+		remove = { "^Scope", "^Objective", "^Eyepiece", "^Ocular", "^Reticle", "^FiberOptic", "Turret$" },
+	},
+	Shotgun = { top = 0.098, base = Vector3.new(0, 0.098, 0.06), remove = {} },
+	Gatling = { top = 0.1, base = Vector3.new(0, 0.1, -0.03), remove = { "^Sight" } },
+}
+-- Lasers that can't go on the side of the barrel end (the gatling's barrels spin)
+local LASER_SPOTS: { [string]: Vector3 } = {
+	Gatling = Vector3.new(-0.125, 0.03, -0.12),
+}
+
+-- A hollow tube along Z that you look through: a ring of thin slats
+local function sleeve(parent: Instance, name: string, center: Vector3, length: number, radius: number, thickness: number, look: Finish)
+	local sides = 10
+	local slat = 2 * math.pi * radius / sides * 1.08
+	for i = 0, sides - 1 do
+		local cframe = CFrame.new(center) * CFrame.Angles(0, 0, i * 2 * math.pi / sides) * CFrame.new(0, radius, 0)
+		box(parent, name, Vector3.new(slat, thickness, length), cframe, look)
+	end
+end
+
+-- Ring-and-dot reticle (like `reticle`, under any name)
+local function ringReticle(parent: Instance, name: string, center: Vector3, ringRadius: number)
+	GunModels.Ball(parent, `{name}Dot`, 0.007, center, RED_DOT)
+	local segment = 2 * math.pi * ringRadius / 8
+	for i = 0, 7 do
+		local cframe = CFrame.new(center) * CFrame.Angles(0, 0, i * math.pi / 4) * CFrame.new(ringRadius, 0, 0)
+		box(parent, `{name}Ring`, Vector3.new(0.0028, segment, 0.002), cframe, RED_DOT)
+	end
+end
+
+-- Each optic builds itself on `b` (the middle of its base) and returns its aim point and eye relief
+local OPTICS: { [string]: (gun: Model, p: string, b: Vector3) -> (Vector3, number) } = {
+	-- Micro red dot: a short tube on a riser
+	RedDot = function(gun, p, b)
+		local axis = b + Vector3.new(0, 0.085, 0)
+		box(gun, `{p}OpticMount`, Vector3.new(0.07, 0.035, 0.09), CFrame.new(b + Vector3.new(0, 0.0175, 0)), MOUNT)
+		box(gun, `{p}OpticRiser`, Vector3.new(0.045, 0.022, 0.07), CFrame.new(b + Vector3.new(0, 0.045, 0)), MOUNT)
+		sleeve(gun, `{p}OpticTube`, axis, 0.11, 0.032, 0.008, MOUNT_DARK)
+		sleeve(gun, `{p}OpticHood`, axis + Vector3.new(0, 0, -0.065), 0.02, 0.037, 0.008, MOUNT_DARK)
+		pin(gun, `{p}OpticTurret`, 0.022, 0.026, axis + Vector3.new(0.043, 0, 0.01), MOUNT)
+		post(gun, `{p}OpticTurret`, 0.022, 0.026, axis + Vector3.new(0, 0.043, 0.01), MOUNT)
+		box(gun, `{p}OpticLens`, Vector3.new(0.05, 0.05, 0.003), CFrame.new(axis + Vector3.new(0, 0, -0.05)), LENS)
+		GunModels.Ball(gun, `{p}OpticDot`, 0.006, axis + Vector3.new(0, 0, -0.045), RED_DOT)
+		return axis, 0.72
+	end,
+	-- Holographic sight: housing, two walls and a hood round two glass windows, ring and dot
+	Holo = function(gun, p, b)
+		box(gun, `{p}OpticMount`, Vector3.new(0.12, 0.04, 0.3), CFrame.new(b + Vector3.new(0, 0.02, 0)), MOUNT)
+		box(gun, `{p}OpticBody`, Vector3.new(0.13, 0.035, 0.3), CFrame.new(b + Vector3.new(0, 0.0575, 0)), MOUNT)
+		for _, side in { -1, 1 } do
+			box(gun, `{p}OpticWall`, Vector3.new(0.022, 0.12, 0.15), CFrame.new(b + Vector3.new(side * 0.066, 0.135, -0.075)), MOUNT)
+		end
+		box(gun, `{p}OpticHood`, Vector3.new(0.154, 0.022, 0.15), CFrame.new(b + Vector3.new(0, 0.184, -0.075)), MOUNT)
+		box(gun, `{p}OpticFrontGlass`, Vector3.new(0.11, 0.098, 0.005), CFrame.new(b + Vector3.new(0, 0.124, -0.14)), LENS)
+		box(gun, `{p}OpticRearGlass`, Vector3.new(0.11, 0.098, 0.005), CFrame.new(b + Vector3.new(0, 0.124, -0.01)), LENS)
+		ringReticle(gun, `{p}OpticReticle`, b + Vector3.new(0, 0.125, -0.005), 0.018)
+		return b + Vector3.new(0, 0.125, 0), 0.62
+	end,
+	-- 2.5x scope: a tube in two rings, a wider objective bell, an eyepiece, a crosshair and a dot
+	Scope = function(gun, p, b)
+		local axis = b + Vector3.new(0, 0.095, 0)
+		for _, z in { -0.06, 0.06 } do
+			box(gun, `{p}OpticRing`, Vector3.new(0.05, 0.06, 0.03), CFrame.new(b + Vector3.new(0, 0.03, z)), MOUNT)
+		end
+		sleeve(gun, `{p}OpticTube`, axis, 0.24, 0.036, 0.009, MOUNT_DARK)
+		sleeve(gun, `{p}OpticBell`, axis + Vector3.new(0, 0, -0.14), 0.05, 0.047, 0.009, MOUNT_DARK)
+		sleeve(gun, `{p}OpticEyepiece`, axis + Vector3.new(0, 0, 0.13), 0.04, 0.041, 0.008, MOUNT_DARK)
+		post(gun, `{p}OpticTurret`, 0.025, 0.03, axis + Vector3.new(0, 0.05, 0), MOUNT)
+		pin(gun, `{p}OpticTurret`, 0.025, 0.03, axis + Vector3.new(0.05, 0, 0), MOUNT)
+		box(gun, `{p}OpticLens`, Vector3.new(0.06, 0.06, 0.003), CFrame.new(axis + Vector3.new(0, 0, -0.16)), LENS)
+		local cross = axis + Vector3.new(0, 0, -0.1)
+		box(gun, `{p}OpticCrosshair`, Vector3.new(0.0012, 0.064, 0.001), CFrame.new(cross), HOLE)
+		box(gun, `{p}OpticCrosshair`, Vector3.new(0.064, 0.0012, 0.001), CFrame.new(cross), HOLE)
+		GunModels.Ball(gun, `{p}OpticDot`, 0.0045, cross + Vector3.new(0, 0, 0.002), RED_DOT)
+		return axis, 0.42
+	end,
+}
+
+-- Puts a gun's attachments on its freshly built model (before edges are rounded and it's painted)
+local function fitAttachments(model: Model, weaponName: string, chosen: { [string]: string })
+	local body = model.PrimaryPart :: Part
+
+	local mount = OPTIC_MOUNTS[weaponName]
+	local buildOptic = chosen.Optic and OPTICS[chosen.Optic]
+	if mount and buildOptic then
+		for _, part in model:GetChildren() do
+			for _, pattern in mount.remove do
+				if part:IsA("BasePart") and string.find(part.Name, pattern) then
+					part:Destroy()
+					break
+				end
+			end
+		end
+		local p = mount.prefix or ""
+		local b = mount.base
+		if b.Y - mount.top > 0.002 then
+			-- Riser from the receiver up to the optic's base
+			box(model, `{p}OpticRiserBlock`, Vector3.new(0.06, b.Y - mount.top, 0.12), CFrame.new(b.X, (mount.top + b.Y) / 2, b.Z), MOUNT)
+		end
+		local aim, eyeRelief = buildOptic(model, p, b)
+		local aimPoint = body:FindFirstChild("AimPoint") :: Attachment?
+		if aimPoint then
+			aimPoint.CFrame = CFrame.new(aim)
+			aimPoint:SetAttribute("EyeRelief", eyeRelief)
+		end
+	end
+
+	local muzzle = body:FindFirstChild("Muzzle") :: Attachment?
+	local barrel = model:FindFirstChild("Barrel") :: BasePart?
+	local m = if muzzle then muzzle.Position else Vector3.new(0, 0, -1.5)
+	local barrelSize = if barrel then math.min(barrel.Size.Y, barrel.Size.Z) else 0.05
+	if muzzle and chosen.Muzzle == "Suppressor" then
+		-- A can over the end of the barrel (the old muzzle hides inside it)
+		local diameter = barrelSize + 0.035
+		tube(model, "Suppressor", 0.34, diameter, m + Vector3.new(0, 0, -0.12), MOUNT_DARK)
+		tube(model, "SuppressorCap", 0.02, diameter + 0.006, m + Vector3.new(0, 0, -0.28), MOUNT)
+		tube(model, "SuppressorBore", 0.006, barrelSize * 0.5, m + Vector3.new(0, 0, -0.292), HOLE)
+		muzzle.Position = m + Vector3.new(0, 0, -0.295)
+	elseif muzzle and chosen.Muzzle == "Compensator" then
+		local diameter = barrelSize + 0.015
+		tube(model, "Compensator", 0.11, diameter, m + Vector3.new(0, 0, -0.04), MOUNT)
+		for _, side in { -1, 1 } do
+			for i = 0, 2 do
+				box(model, "CompensatorPort", Vector3.new(0.004, diameter * 0.45, 0.018), CFrame.new(m + Vector3.new(side * diameter / 2, 0, -0.005 - i * 0.03)), HOLE)
+			end
+		end
+		box(model, "CompensatorPort", Vector3.new(diameter * 0.4, 0.004, 0.05), CFrame.new(m + Vector3.new(0, diameter / 2, -0.04)), HOLE)
+		tube(model, "CompensatorBore", 0.006, barrelSize * 0.5, m + Vector3.new(0, 0, -0.096), HOLE)
+		muzzle.Position = m + Vector3.new(0, 0, -0.1)
+	end
+
+	if chosen.Under == "Laser" then
+		-- On the right of the gun a little way back from the muzzle (under the barrel on a
+		-- pistol), against whatever's widest there
+		local extents = model:GetExtentsSize()
+		local pistol = extents.Z < 1.2
+		local spot = LASER_SPOTS[weaponName]
+		if not spot then
+			local z = m.Z + (if pistol then 0.14 else 0.55)
+			local right, bottom = 0.04, m.Y - 0.03
+			for _, part in model:GetChildren() do
+				if not part:IsA("BasePart") or part.Transparency > 0.5 or string.sub(part.Name, 1, 5) == "Slide" then
+					continue
+				end
+				local size = part.Size
+				local half = Vector3.new(
+					math.abs(part.CFrame.XVector.X) * size.X + math.abs(part.CFrame.YVector.X) * size.Y + math.abs(part.CFrame.ZVector.X) * size.Z,
+					math.abs(part.CFrame.XVector.Y) * size.X + math.abs(part.CFrame.YVector.Y) * size.Y + math.abs(part.CFrame.ZVector.Y) * size.Z,
+					math.abs(part.CFrame.XVector.Z) * size.X + math.abs(part.CFrame.YVector.Z) * size.Y + math.abs(part.CFrame.ZVector.Z) * size.Z
+				) / 2
+				local at = part.Position
+				if math.abs(at.Z - z) < half.Z and math.abs(at.Y - m.Y) < half.Y + 0.08 then
+					right = math.max(right, at.X + half.X)
+					bottom = math.min(bottom, at.Y - half.Y)
+				end
+			end
+			spot = if pistol then Vector3.new(0, bottom - 0.024, z) else Vector3.new(right + 0.022, m.Y - 0.01, z)
+		end
+		local laser = spot :: Vector3
+		box(model, "Laser", Vector3.new(0.036, 0.04, 0.11), CFrame.new(laser), MOUNT_DARK)
+		box(model, "LaserMount", Vector3.new(0.02, 0.026, 0.06), CFrame.new(laser + Vector3.new(if laser.X < 0 then 0.024 elseif laser.X > 0 then -0.024 else 0, if laser.X == 0 then 0.026 else 0, 0.01)), MOUNT)
+		GunModels.Ball(model, "LaserLens", 0.014, laser + Vector3.new(0.006, 0, -0.056), LASER_GLOW)
+	end
+end
+
 local BUILDERS: { [string]: (Model, Color3) -> Part } = {
 	Rifle = buildRifle,
 	SMG = buildSmg,
@@ -1264,13 +1449,16 @@ local BUILDERS: { [string]: (Model, Color3) -> Part } = {
 
 -- Builds the named gun (unknown names get the rifle). `finishColor` is the main finish
 -- (Weapons Look.Color): receiver, wood, stock or stainless depending on the gun. A `skin`
--- (shared/Skins) repaints it.
-function GunModels.Build(weaponName: string, finishColor: Color3?, skin: Skins.Skin?): Model
+-- (shared/Skins) repaints it; `attachments` (shared/Attachments: slot → id) go on it.
+function GunModels.Build(weaponName: string, finishColor: Color3?, skin: Skins.Skin?, attachments: { [string]: string }?): Model
 	local model = Instance.new("Model")
 	model.Name = weaponName
 	pieceCount = 0 -- (same numbers every build, so a camo skin looks the same everywhere)
 	local builder = BUILDERS[weaponName] or buildRifle
 	model.PrimaryPart = builder(model, finishColor or Color3.fromRGB(45, 47, 52))
+	if attachments and next(attachments) then
+		fitAttachments(model, weaponName, attachments)
+	end
 	smoothEdges(model)
 	if skin then
 		SkinPainter.PaintGun(model, skin)

@@ -11,6 +11,7 @@ local SoundService = game:GetService("SoundService")
 local Workspace = game:GetService("Workspace")
 
 local Abilities = require(ReplicatedStorage.Shared.Abilities)
+local Attachments = require(ReplicatedStorage.Shared.Attachments)
 local Config = require(ReplicatedStorage.Shared.MovementConfig)
 local GameRules = require(ReplicatedStorage.Shared.GameRules)
 local Skins = require(ReplicatedStorage.Shared.Skins)
@@ -49,6 +50,7 @@ local nextFireTime = 0
 local currentSpread = weapon.HipSpread
 local viewmodel = nil
 local viewmodelSkin: Skins.Skin? = nil -- the skin `viewmodel` was built in
+local viewmodelMods = "" -- and its attachments (Attachments.Key)
 local unarmed = false -- Knives Only: no gun (`weapon` keeps the last one so nothing breaks)
 -- The gatling: how far its barrels are spun up (0..1), where they've turned to, and their whir
 local spin = 0
@@ -131,7 +133,9 @@ local function buildViewmodel()
 		viewmodel:Destroy()
 	end
 	viewmodelSkin = Skins.EquippedFor(player, weapon.Name)
-	viewmodel = Viewmodel.new(weapon, viewmodelSkin)
+	local mods = Attachments.For(player, weapon.Name)
+	viewmodelMods = Attachments.Key(mods)
+	viewmodel = Viewmodel.new(weapon, viewmodelSkin, mods)
 	-- Reload sounds play at the matching moments of the animation (mag out, mag in, bolt...)
 	viewmodel.OnAnimationEvent = function(_eventName: string)
 		Effects.Sound(Sounds.Pick(weapon.ReloadSound), nil, Sounds.Guns.ReloadVolume, 0.95 + random:NextNumber() * 0.15)
@@ -156,7 +160,7 @@ local function setWeapon(weaponName: string)
 		return
 	end
 	unarmed = false
-	weapon = newWeapon
+	weapon = Attachments.Apply(newWeapon, Attachments.For(player, weaponName)) -- (scope zoom, quieter shots...)
 	reloadToken += 1
 	reloading = false
 	ammo = weapon.MagazineSize
@@ -306,6 +310,7 @@ local function update(dt: number)
 			viewmodel:SetVisible(false)
 		end
 		spin = 0
+		state.weaponSpin = 0
 		whir(0)
 		state.aiming = false
 		state.aimAlpha = 0
@@ -347,12 +352,14 @@ local function update(dt: number)
 		local wantSpin = triggerHeld and not frozen and not uiOpen and not handsBusy and not reloading
 		spin = math.clamp(spin + (if wantSpin then dt / weapon.SpinUp else -dt / (weapon.SpinUp * 1.8)), 0, 1)
 		spinAngle = (spinAngle + spin * SPIN_SPEED * dt) % (math.pi * 2)
+		state.weaponSpin = spin -- (MovementController slows you down with it)
 		if viewmodel then
 			viewmodel:SetSpin(spinAngle)
 		end
 		whir(spin)
 	elseif spin > 0 then
 		spin = 0
+		state.weaponSpin = 0
 		whir(0)
 	end
 	local spunUp = not weapon.SpinUp or spin >= 1
@@ -414,6 +421,15 @@ function WeaponController.Start()
 			viewmodel:PlayDraw()
 		end
 	end)
+	-- Changed the attachments on the gun you're holding (shop): new stats and model, keep the ammo
+	player:GetAttributeChangedSignal("Attachments"):Connect(function()
+		local mods = Attachments.For(player, weapon.Name)
+		if not unarmed and Attachments.Key(mods) ~= viewmodelMods and Weapons[weapon.Name] then
+			weapon = Attachments.Apply(Weapons[weapon.Name], mods)
+			buildViewmodel()
+			viewmodel:PlayDraw()
+		end
+	end)
 	player:GetAttributeChangedSignal("Ability"):Connect(updateLoadoutHud)
 	player:GetAttributeChangedSignal("AbilityCharges"):Connect(updateLoadoutHud)
 
@@ -465,10 +481,13 @@ function WeaponController.Start()
 			end
 			local shooterWeapon = Weapons[weaponName]
 			if shooterWeapon then
+				-- (their attachments: a suppressor is quieter and carries less far)
+				local mods = Attachments.For(shooter, weaponName)
+				shooterWeapon = Attachments.Apply(shooterWeapon, mods)
 				local volume = Sounds.Guns.OtherVolume * shooterWeapon.FireVolume
 				Sound3D.Play(Sounds.Pick(shooterWeapon.FireSound), origin, {
 					volume = volume,
-					range = Sounds.GunshotRange,
+					range = Sounds.GunshotRange * (if mods.Muzzle == "Suppressor" then 0.4 else 1),
 					pitch = shooterWeapon.FirePitch * randomPitch(),
 				})
 				if shooterWeapon.TailSound then

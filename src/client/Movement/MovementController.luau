@@ -406,10 +406,10 @@ local function step(dt: number)
 			end
 			targetSpeed *= stickScale
 		end
-		-- Heavy guns (the gatling) slow you down, sprinting too
+		-- Heavy guns (the gatling) slow you down, sprinting too, and more again while it's spinning
 		local held = Weapons[player:GetAttribute("Weapon") or ""]
 		if held and held.MoveSpeedScale then
-			targetSpeed *= held.MoveSpeedScale
+			targetSpeed *= held.MoveSpeedScale * (1 - (held.SpinSlow or 0) * state.weaponSpin)
 		end
 		local speed = velocity.Magnitude
 

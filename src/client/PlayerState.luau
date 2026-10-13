@@ -54,6 +54,7 @@ return {
 	partyOpen = false, -- lobby: the PARTY screen is up (cursor free)
 	touchControls = false, -- playing on a touch screen: MobileControls' buttons are showing
 	lookDrag = Vector2.zero, -- pixels the finger holding FIRE moved since last frame (MouseUnlock turns the camera)
+	weaponSpin = 0, -- how far the gatling's barrels are spun up, 0..1 (WeaponController; you move slower)
 	interactAction = nil :: string?, -- what HOLD [G] would do right now (ObjectiveController)
 	loadoutWindow = false, -- you can still change your loadout (until the round starts)
 	spectating = false,

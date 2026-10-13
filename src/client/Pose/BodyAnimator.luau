@@ -26,6 +26,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
+local Attachments = require(ReplicatedStorage.Shared.Attachments)
 local Config = require(ReplicatedStorage.Shared.MovementConfig)
 local Skins = require(ReplicatedStorage.Shared.Skins)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
@@ -61,7 +62,7 @@ type Side = {
 	upperArm: number, lowerArm: number, upperLeg: number, lowerLeg: number,
 	ankleHeight: number,
 }
-type Gun = { name: string, skin: Skins.Skin?, model: Model, parts: { BasePart }, offsets: { CFrame }, rightGrip: Vector3, leftGrip: Vector3, handgun: boolean }
+type Gun = { name: string, skin: Skins.Skin?, mods: string, model: Model, parts: { BasePart }, offsets: { CFrame }, rightGrip: Vector3, leftGrip: Vector3, handgun: boolean }
 type Rig = {
 	character: Model,
 	humanoid: Humanoid,
@@ -191,13 +192,14 @@ end
 
 -- A world-sized copy of the gun this player holds, in their skin. Its parts are moved every frame
 -- (anchored), so they never collide; they cast shadows like real objects.
-local function ensureGun(rig: Rig, weaponName: string, skin: Skins.Skin?)
-	if rig.gun and rig.gun.name == weaponName and rig.gun.skin == skin then
+local function ensureGun(rig: Rig, weaponName: string, skin: Skins.Skin?, attachments: Attachments.Chosen)
+	local mods = Attachments.Key(attachments)
+	if rig.gun and rig.gun.name == weaponName and rig.gun.skin == skin and rig.gun.mods == mods then
 		return
 	end
 	destroyGun(rig)
 	local weapon = Weapons[weaponName]
-	local model = GunModels.Build(weaponName, weapon and weapon.Look.Color or nil, skin)
+	local model = GunModels.Build(weaponName, weapon and weapon.Look.Color or nil, skin, attachments)
 	model:ScaleTo(GUN_SCALE)
 	local body = model.PrimaryPart :: BasePart
 	local parts, offsets = {}, {}
@@ -219,6 +221,7 @@ local function ensureGun(rig: Rig, weaponName: string, skin: Skins.Skin?)
 	rig.gun = {
 		name = weaponName,
 		skin = skin,
+		mods = mods,
 		model = model,
 		parts = parts,
 		offsets = offsets,
@@ -435,7 +438,7 @@ local function animate(rig: Rig, other: Player, dt: number)
 		destroyGun(rig)
 		return
 	end
-	ensureGun(rig, weaponName, Skins.EquippedFor(other, weaponName))
+	ensureGun(rig, weaponName, Skins.EquippedFor(other, weaponName), Attachments.For(other, weaponName))
 	local gun = rig.gun :: Gun
 
 	local now = os.clock()

@@ -11,7 +11,8 @@
 -- shop to say so.
 --
 -- Clients see the data as player attributes (Skins.luau): Credits, OwnedSkins, EquippedSkins,
--- plus TouchLayout (where they moved their phone buttons: SettingsService, MobileControls).
+-- plus TouchLayout (where they moved their phone buttons: SettingsService, MobileControls) and
+-- Attachments (what's on each gun: shared/Attachments, ShopService).
 
 local DataStoreService = game:GetService("DataStoreService")
 local HttpService = game:GetService("HttpService")
@@ -19,6 +20,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
+local Attachments = require(ReplicatedStorage.Shared.Attachments)
 local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local Skins = require(ReplicatedStorage.Shared.Skins)
 
@@ -27,6 +29,7 @@ export type Data = {
 	Skins: { [string]: boolean }, -- owned
 	Equipped: { [string]: string }, -- item ("Rifle", "Knife") → skin id
 	TouchLayout: string, -- JSON: moved phone buttons (SettingsService checks it), "" = the defaults
+	Attachments: { [string]: { [string]: string } }, -- gun → slot → attachment id
 }
 
 local PlayerData = {}
@@ -57,7 +60,7 @@ do
 end
 
 local function newData(): Data
-	return { Credits = MatchConfig.Credits.Starting, Skins = {}, Equipped = {}, TouchLayout = "" }
+	return { Credits = MatchConfig.Credits.Starting, Skins = {}, Equipped = {}, TouchLayout = "", Attachments = {} }
 end
 
 -- Whatever came out of the store, cleaned up (unknown skins dropped, missing fields filled)
@@ -90,6 +93,19 @@ local function fromStored(stored: any): Data
 	if typeof(stored.TouchLayout) == "string" and #stored.TouchLayout <= 4000 then
 		data.TouchLayout = stored.TouchLayout
 	end
+	if typeof(stored.Attachments) == "table" then
+		for weaponName, onGun in stored.Attachments do
+			if typeof(weaponName) ~= "string" or typeof(onGun) ~= "table" then
+				continue
+			end
+			for slot, id in onGun do
+				if typeof(id) == "string" and Attachments.Fits(weaponName, id) and Attachments.ById[id].Slot == slot then
+					data.Attachments[weaponName] = data.Attachments[weaponName] or {}
+					data.Attachments[weaponName][slot] = id
+				end
+			end
+		end
+	end
 	return data
 end
 
@@ -109,6 +125,7 @@ local function publish(player: Player, data: Data)
 	player:SetAttribute("OwnedSkins", table.concat(owned, ","))
 	player:SetAttribute("EquippedSkins", HttpService:JSONEncode(data.Equipped))
 	player:SetAttribute("TouchLayout", data.TouchLayout)
+	player:SetAttribute("Attachments", HttpService:JSONEncode(data.Attachments))
 end
 
 -- Claims the player's data. Returns it, or nil if the DataStore can't be reached.
@@ -174,6 +191,7 @@ local function save(player: Player, release: boolean)
 				Skins = data.Skins,
 				Equipped = data.Equipped,
 				TouchLayout = data.TouchLayout,
+				Attachments = data.Attachments,
 				Lock = if USE_LOCKS and not release then { Job = game.JobId, At = os.time() } else nil,
 			}
 		end)
