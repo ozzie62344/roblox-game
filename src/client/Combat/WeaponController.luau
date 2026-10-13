@@ -320,7 +320,7 @@ local function update(dt: number)
 		return
 	end
 
-	local uiOpen = state.devPanelOpen or state.mouseUnlocked or state.draftOpen or state.voteOpen
+	local uiOpen = state.devPanelOpen or state.mouseUnlocked or state.draftOpen or state.voteOpen or state.modsOpen
 	-- cover / plant / disable / fortify / knife / gadget moves / driving a drone
 	local handsBusy = state.deploying or state.interacting or state.meleeing or state.gesturing or state.droning
 	state.aiming = aimHeld and not reloading and not uiOpen and not handsBusy

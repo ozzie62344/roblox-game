@@ -35,6 +35,7 @@ local Hud = require(script.Parent.Parent.Combat.Hud)
 local CamsController = require(script.Parent.Parent.Abilities.CamsController)
 local DroneController = require(script.Parent.Parent.Abilities.DroneController)
 local MenuStyle = require(script.Parent.Parent.Match.MenuStyle)
+local ModsMenu = require(script.Parent.Parent.Match.ModsMenu)
 local Spectate = require(script.Parent.Parent.Match.Spectate)
 local MovementController = require(script.Parent.Parent.Movement.MovementController)
 local RappelController = require(script.Parent.Parent.Movement.RappelController)
@@ -316,6 +317,15 @@ local SPECS: { Spec } = {
 		color = Color3.fromRGB(110, 40, 140),
 	},
 
+	-- Swap attachments mid-match (ModsMenu)
+	{
+		id = "Mods", label = "MODS", side = "TopRight", x = 1.3, y = 1.0, size = 0.95, modes = { "Play" },
+		press = function()
+			ModsMenu.Toggle()
+		end,
+		visible = hasGun,
+	},
+
 	-- Lobby: move the buttons around
 	{
 		id = "EditButtons", label = "EDIT\nBUTTONS", side = "TopRight", x = 1.4, y = 1.0, size = 1.1, modes = { "Other" },
@@ -336,7 +346,7 @@ local function currentModeNow(): Mode?
 	if editing then
 		return "Edit"
 	end
-	if state.devPanelOpen or state.draftOpen or state.voteOpen or state.shopOpen or state.inLobby then
+	if state.devPanelOpen or state.draftOpen or state.voteOpen or state.shopOpen or state.modsOpen or state.inLobby then
 		return "Other" -- menus are tapped directly
 	end
 	if state.droning then

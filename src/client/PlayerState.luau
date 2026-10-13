@@ -52,6 +52,7 @@ return {
 	modesOpen = false, -- lobby: the PLAY → MODES screen is up
 	shopOpen = false, -- lobby: the SHOP is up (cursor free)
 	partyOpen = false, -- lobby: the PARTY screen is up (cursor free)
+	modsOpen = false, -- the MODS menu (attachments) is up, any time (cursor free, no shooting)
 	touchControls = false, -- playing on a touch screen: MobileControls' buttons are showing
 	lookDrag = Vector2.zero, -- pixels the finger holding FIRE moved since last frame (MouseUnlock turns the camera)
 	weaponSpin = 0, -- how far the gatling's barrels are spun up, 0..1 (WeaponController; you move slower)
