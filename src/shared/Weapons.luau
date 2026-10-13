@@ -4,7 +4,7 @@
 -- Balance (100 health, Siege rule: a headshot kills with anything but shotgun pellets). Body
 -- shots to kill up close / time to kill: SMG 5 / 0.27 s, Rifle 4 / 0.28 s, LMG 4 / 0.30 s,
 -- Autopistol 7 / 0.33 s, Marksman 3 / 0.40 s, Revolver 2 / 0.46 s, Sniper 2 / 1.2 s, Shotgun
--- one shot inside ~8 studs. Range is the trade-off: SMG / Autopistol / Shotgun fall off fast,
+-- one shot inside ~8 studs, Gatling 7 / 0.26 s once its barrels have spun up (0.55 s first). Range is the trade-off: SMG / Autopistol / Shotgun fall off fast,
 -- Rifle / LMG hold up to mid range, Marksman / Sniper barely fall off at all.
 --
 -- Sounds: FireSound / TailSound / ReloadSound name a set in Sounds.luau (Sets); a random one from the set plays.
@@ -57,6 +57,9 @@ export type Weapon = {
 	ReloadSound: string, -- sound set for reloads (plays at the start and near the end)
 	FirePitch: number, -- lower = deeper, heavier gun
 	FireVolume: number,
+
+	SpinUp: number?, -- seconds the barrels take to spin up before it fires (the gatling)
+	MoveSpeedScale: number?, -- heavy guns slow you down (walking and sprinting), 1 = not at all
 }
 
 local DARK = Color3.fromRGB(45, 47, 52)
@@ -424,6 +427,54 @@ local Weapons: { [string]: Weapon } = {
 		FirePitch = 1.35, -- small and snappy
 		FireVolume = 0.7,
 		ReloadSound = "GunFoley",
+	},
+
+	Gatling = {
+		Name = "Gatling",
+		Description = "Six spinning barrels. Spins up, then shreds. Heavy.",
+		Automatic = true,
+		RPM = 1400,
+		Damage = 16, -- 7 to kill, a fifth of a second of fire...
+		Pellets = 1,
+		PelletSpread = 0,
+		HeadshotDamage = 102,
+		FalloffStart = 30,
+		FalloffEnd = 90,
+		MinDamageScale = 0.55,
+		Range = 400,
+		MagazineSize = 150,
+		ReloadTime = 5.5,
+
+		HipSpread = 2.6, -- ...but it sprays, and you can't aim it fine
+		AdsSpread = 1.1,
+		MoveSpreadBonus = 2.5,
+		AirSpreadBonus = 6,
+		CrouchSpreadScale = 0.6, -- brace it and it tightens up
+		AdsFovScale = 0.85,
+		AdsTime = 0.6,
+		Scope = false,
+
+		-- A constant shake rather than a climb
+		RecoilUp = 0.06,
+		RecoilSide = 0.12,
+		RecoilDrift = 0.02,
+		RecoilMax = 2.5,
+		RecoilRecover = 8,
+		RecoilRoll = 0.15,
+		ViewKick = 0.012,
+
+		AdsSensitivity = 0.7,
+
+		Look = {
+			Color = Color3.fromRGB(62, 64, 68), -- gunmetal housing
+		},
+		FireSound = "GunShot",
+		FirePitch = 1.15,
+		FireVolume = 0.7,
+		ReloadSound = "GunFoley",
+
+		SpinUp = 0.55,
+		MoveSpeedScale = 0.8,
 	},
 }
 

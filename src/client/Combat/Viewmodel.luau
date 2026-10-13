@@ -102,12 +102,13 @@ local function memberOf(groupName: string, partName: string): boolean
 		return partName == "ChargingHandle" or partName == "ChargingLatch"
 	elseif groupName == "CockingHandle" then
 		return partName == "CockingHandle" or partName == "CockingKnob"
-	elseif groupName == "FeedCover" or groupName == "Slide" then
-		return string.sub(partName, 1, #groupName) == groupName -- the LMG's cover (with its sight), the pistol's slide
+	elseif groupName == "FeedCover" or groupName == "Slide" or groupName == "Barrels" then
+		-- the LMG's cover (with its sight), the pistol's slide, the gatling's spinning cluster
+		return string.sub(partName, 1, #groupName) == groupName
 	end
 	return false
 end
-local GROUP_NAMES = { "Magazine", "Bolt", "Pump", "Cylinder", "ChargingHandle", "CockingHandle", "FeedCover", "Slide" }
+local GROUP_NAMES = { "Magazine", "Bolt", "Pump", "Cylinder", "ChargingHandle", "CockingHandle", "FeedCover", "Slide", "Barrels" }
 -- Named gun parts whose positions animations use as targets
 local POINT_NAMES = { "BoltCatch", "BoltShroud", "BoltKnob", "Shell", "CylinderLatch", "ChargingHandle", "Magwell" }
 
@@ -486,6 +487,7 @@ function Viewmodel.new(weapon: Weapons.Weapon, skin: Skins.Skin?)
 		arms = arms,
 		points = points,
 		kick = 0,
+		spin = 0,
 		bobTime = 0,
 		sprintAlpha = 0,
 		crawlAlpha = 0,
@@ -782,7 +784,11 @@ function Viewmodel:Update(dt: number, cameraCFrame: CFrame, pose: Pose)
 				part.Transparency = if shouldHide then 1 else group.transparency[i]
 			end
 		end
-		place(group.parts, group.offsets, groupWorld[name] or gunCF * group.rest)
+		local frame = groupWorld[name] or gunCF * group.rest
+		if name == "Barrels" then
+			frame *= CFrame.Angles(0, 0, self.spin) -- (the gatling's cluster turns round the bore line)
+		end
+		place(group.parts, group.offsets, frame)
 	end
 
 	for side, hand in self.hands do
@@ -834,6 +840,11 @@ function Viewmodel:Update(dt: number, cameraCFrame: CFrame, pose: Pose)
 	end
 
 	Workspace:BulkMoveTo(parts, cframes, Enum.BulkMoveMode.FireCFrameChanged)
+end
+
+-- The gatling's barrels: how far round they've turned (radians; WeaponController spins them)
+function Viewmodel:SetSpin(angle: number)
+	self.spin = angle
 end
 
 function Viewmodel:Destroy()

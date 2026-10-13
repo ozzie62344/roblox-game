@@ -10,6 +10,7 @@ local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage.Shared.MovementConfig)
+local Weapons = require(ReplicatedStorage.Shared.Weapons)
 
 local SetCrouch = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("SetCrouch") :: RemoteEvent
 
@@ -404,6 +405,11 @@ local function step(dt: number)
 				targetSpeed = math.min(targetSpeed, Config.ProneSpeed)
 			end
 			targetSpeed *= stickScale
+		end
+		-- Heavy guns (the gatling) slow you down, sprinting too
+		local held = Weapons[player:GetAttribute("Weapon") or ""]
+		if held and held.MoveSpeedScale then
+			targetSpeed *= held.MoveSpeedScale
 		end
 		local speed = velocity.Magnitude
 

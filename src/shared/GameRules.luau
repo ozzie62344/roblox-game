@@ -39,6 +39,7 @@ GameRules.List = {
 	rules("Snipers", "Snipers Only", "Everyone gets a sniper", { rgb(30, 55, 40), rgb(110, 170, 100) }, { Weapons = { "Sniper" } }),
 	rules("Shotguns", "Shotguns Only", "Close quarters, big pellets", { rgb(70, 35, 25), rgb(210, 110, 60) }, { Weapons = { "Shotgun" } }),
 	rules("Pistols", "Pistols Only", "Revolvers and autopistols", { rgb(45, 40, 70), rgb(150, 120, 220) }, { Weapons = { "Revolver", "Autopistol" } }),
+	rules("Gatlings", "Gatlings Only", "Everyone spins up a minigun", { rgb(50, 52, 58), rgb(230, 150, 50) }, { Weapons = { "Gatling" } }),
 	rules("Knives", "Knives Only", "No guns. One stab kills", { rgb(70, 20, 30), rgb(220, 70, 80) }, { Weapons = {}, MeleeCooldown = 0.6 }),
 	rules("Headshots", "Headshots Only", "Body shots do nothing", { rgb(60, 50, 15), rgb(230, 190, 60) }, { HeadshotsOnly = true }),
 }

@@ -54,6 +54,13 @@ local Sounds = {
 		Pitch = 1.6,
 	},
 
+	-- The gatling's barrels whirring (WeaponController): the pitch climbs as they spin up
+	GatlingSpin = {
+		Id = "rbxassetid://9118377325", -- Robot Servo 4 (Pro Sound Effects), like the drone
+		Volume = 0.4,
+		Pitch = 1.2,
+	},
+
 	Jump = {
 		Id = "rbxasset://sounds/action_jump.mp3",
 		Range = 60,

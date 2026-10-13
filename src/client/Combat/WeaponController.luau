@@ -7,6 +7,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local SoundService = game:GetService("SoundService")
 local Workspace = game:GetService("Workspace")
 
 local Abilities = require(ReplicatedStorage.Shared.Abilities)
@@ -16,6 +17,7 @@ local Skins = require(ReplicatedStorage.Shared.Skins)
 local Sounds = require(ReplicatedStorage.Shared.Sounds)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 local Sound3D = require(script.Parent.Parent.Audio.Sound3D)
+local SoundCache = require(script.Parent.Parent.Audio.SoundCache)
 local state = require(script.Parent.Parent.PlayerState)
 local Effects = require(script.Parent.Effects)
 local Hud = require(script.Parent.Hud)
@@ -33,6 +35,7 @@ local player = Players.LocalPlayer
 local random = Random.new()
 
 local MAX_PENETRATIONS = 4 -- same as WeaponService
+local SPIN_SPEED = math.pi * 2 * 4 -- the gatling's barrels at full speed: turns per second (radians)
 
 local WeaponController = {}
 
@@ -47,6 +50,10 @@ local currentSpread = weapon.HipSpread
 local viewmodel = nil
 local viewmodelSkin: Skins.Skin? = nil -- the skin `viewmodel` was built in
 local unarmed = false -- Knives Only: no gun (`weapon` keeps the last one so nothing breaks)
+-- The gatling: how far its barrels are spun up (0..1), where they've turned to, and their whir
+local spin = 0
+local spinAngle = 0
+local spinSound: Sound? = nil
 
 local function getAliveCharacter(): (Model?, Humanoid?)
 	local character = player.Character
@@ -184,6 +191,30 @@ local function reload()
 	end)
 end
 
+-- The barrels' whir: silent when they're still, louder and higher as they spin up
+local function whir(level: number)
+	local config = Sounds.GatlingSpin
+	if level <= 0.01 then
+		if spinSound and spinSound.IsPlaying then
+			spinSound:Stop()
+		end
+		return
+	end
+	if not spinSound then
+		local sound = SoundCache.New(config.Id)
+		sound.Name = "GatlingSpin"
+		sound.Looped = true
+		sound.Parent = SoundService
+		spinSound = sound
+	end
+	local sound = spinSound :: Sound
+	sound.Volume = config.Volume * (0.35 + 0.65 * level)
+	sound.PlaybackSpeed = config.Pitch * (0.5 + 0.6 * level)
+	if not sound.IsPlaying then
+		sound:Play()
+	end
+end
+
 local function fire(character: Model)
 	local now = os.clock()
 	nextFireTime = now + 60 / weapon.RPM
@@ -274,6 +305,8 @@ local function update(dt: number)
 		if viewmodel then
 			viewmodel:SetVisible(false)
 		end
+		spin = 0
+		whir(0)
 		state.aiming = false
 		state.aimAlpha = 0
 		state.aimSensitivity = 1
@@ -308,7 +341,23 @@ local function update(dt: number)
 	local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	local frozen = root ~= nil and root.Anchored
 
-	if triggerHeld and not frozen and not uiOpen and not handsBusy and not reloading and now >= nextFireTime then
+	-- The gatling: its barrels spin up while the trigger's held and it only fires once they're up
+	-- to speed; let go and they wind down (a quick second burst doesn't start from nothing)
+	if weapon.SpinUp then
+		local wantSpin = triggerHeld and not frozen and not uiOpen and not handsBusy and not reloading
+		spin = math.clamp(spin + (if wantSpin then dt / weapon.SpinUp else -dt / (weapon.SpinUp * 1.8)), 0, 1)
+		spinAngle = (spinAngle + spin * SPIN_SPEED * dt) % (math.pi * 2)
+		if viewmodel then
+			viewmodel:SetSpin(spinAngle)
+		end
+		whir(spin)
+	elseif spin > 0 then
+		spin = 0
+		whir(0)
+	end
+	local spunUp = not weapon.SpinUp or spin >= 1
+
+	if triggerHeld and spunUp and not frozen and not uiOpen and not handsBusy and not reloading and now >= nextFireTime then
 		if ammo > 0 then
 			fire(character)
 		else

@@ -59,7 +59,7 @@ Skins.Rarities = {
 }
 
 -- What can wear a skin, in the order the shop lists them
-Skins.Items = { "Rifle", "SMG", "LMG", "Marksman", "Sniper", "Shotgun", "Revolver", "Autopistol", "Knife" }
+Skins.Items = { "Rifle", "SMG", "LMG", "Gatling", "Marksman", "Sniper", "Shotgun", "Revolver", "Autopistol", "Knife" }
 
 local function rgb(r: number, g: number, b: number): Color3
 	return Color3.fromRGB(r, g, b)

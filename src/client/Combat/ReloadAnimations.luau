@@ -282,6 +282,16 @@ CLIPS.LMG = function(info)
 	return keys
 end
 
+-- Gatling: tip it a little, swap the ammo box underneath (the belt comes out with it)
+CLIPS.Gatling = function(info)
+	local tilt = CFrame.new(-0.03, -0.02, 0.02) * deg(6, -8, -12)
+	local box = pieceSize(info, "Magazine")
+	local keys: { Keyframe } = { { t = 0, gun = CFrame.new(), left = { "grip" }, groups = { Magazine = { "rest" } } } }
+	append(keys, magSwap(info, 0.04, 0.9, tilt, Vector3.new(-box.X / 2 - 0.04, -box.Y * 0.15, 0)))
+	table.insert(keys, { t = 1, ease = "inOut", gun = CFrame.new(), left = { "grip" } })
+	return keys
+end
+
 -- Glock 18: the left hand lets go, the extended mag drops out down the grip, a fresh one goes
 -- in with a slap; if it ran empty, the slide is racked to chamber a round
 CLIPS.Autopistol = function(info)

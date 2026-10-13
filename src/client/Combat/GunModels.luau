@@ -1154,6 +1154,102 @@ local function buildAutopistol(gun: Model, color: Color3): Part
 	return body
 end
 
+---------------------------------------------------------------------------------------------
+-- Gatling: a hand-held six-barrel minigun. Everything named Barrels... (the rotor drum, the six
+-- barrels, their clamps and muzzles) spins as one around the bore line (Viewmodel); the drive
+-- housing, a motor at the back, a belt-fed ammo box underneath (the Magazine), a pistol grip, a
+-- vertical foregrip on a fixed rail under the barrels and a reflex sight on top stay put.
+---------------------------------------------------------------------------------------------
+local GATLING_RING = 0.075 -- the barrels' distance from the spin axis
+local function buildGatling(gun: Model, color: Color3): Part
+	local housing = GunModels.Finish(color, Enum.Material.Metal)
+	local housingDark = GunModels.Finish(color:Lerp(Color3.new(0, 0, 0), 0.3), Enum.Material.Metal)
+	local optic = fixed(GunModels.Finish(Color3.fromRGB(40, 41, 44), Enum.Material.SmoothPlastic)) -- (skins leave sights alone)
+
+	-- Drive housing (the Body), with the motor and its cooling rings behind it
+	local body = box(gun, "Body", Vector3.new(0.2, 0.2, 0.46), CFrame.new(), housing)
+	for _, side in { -1, 1 } do
+		box(gun, "HousingPanel", Vector3.new(0.006, 0.12, 0.3), CFrame.new(side * 0.1, 0.01, -0.02), housingDark)
+		for i = 0, 2 do
+			pin(gun, "HousingBolt", 0.21, 0.018, Vector3.new(0, side * 0.07, -0.16 + i * 0.13), DARK_STEEL)
+		end
+	end
+	tube(gun, "Motor", 0.18, 0.15, Vector3.new(0, 0.01, 0.32), housingDark)
+	for i = 0, 2 do
+		tube(gun, "MotorFin", 0.012, 0.165, Vector3.new(0, 0.01, 0.26 + i * 0.05), DARK_STEEL)
+	end
+	tube(gun, "MotorCap", 0.03, 0.12, Vector3.new(0, 0.01, 0.425), STEEL)
+
+	-- The spinning cluster: rotor drum, six barrels round a spindle, two clamps, a muzzle each
+	tube(gun, "BarrelsDrum", 0.16, 0.21, Vector3.new(0, 0, -0.31), STEEL)
+	tube(gun, "BarrelsSpindle", 1.12, 0.03, Vector3.new(0, 0, -0.95), DARK_STEEL)
+	for i = 0, 5 do
+		local angle = i * math.pi / 3
+		local x, y = math.cos(angle) * GATLING_RING, math.sin(angle) * GATLING_RING
+		tube(gun, "Barrels", 1.2, 0.042, Vector3.new(x, y, -0.99), STEEL)
+		tube(gun, "BarrelsBore", 0.006, 0.022, Vector3.new(x, y, -1.593), HOLE)
+	end
+	tube(gun, "BarrelsClamp", 0.035, 0.2, Vector3.new(0, 0, -0.85), DARK_STEEL)
+	tube(gun, "BarrelsClamp", 0.05, 0.205, Vector3.new(0, 0, -1.5), DARK_STEEL)
+	attach(body, "Muzzle", CFrame.new(0, 0, -1.6))
+
+	-- Reflex sight on top of the housing
+	local dotY = 0.19
+	box(gun, "SightBase", Vector3.new(0.08, 0.03, 0.14), CFrame.new(0, 0.115, -0.03), optic)
+	for _, side in { -1, 1 } do
+		box(gun, "SightPost", Vector3.new(0.016, 0.08, 0.04), CFrame.new(side * 0.045, dotY - 0.01, -0.06), optic)
+	end
+	box(gun, "SightHood", Vector3.new(0.106, 0.016, 0.05), CFrame.new(0, dotY + 0.043, -0.06), optic)
+	box(gun, "SightGlass", Vector3.new(0.074, 0.08, 0.004), CFrame.new(0, dotY, -0.07), LENS)
+	GunModels.Ball(gun, "SightDot", 0.008, Vector3.new(0, dotY, -0.065), RED_DOT)
+	addSight(body, Vector3.new(0, dotY, -0.06), 0.85)
+
+	-- Fixed rail under the barrels carrying the vertical foregrip (the barrels spin above it)
+	box(gun, "LowerRail", Vector3.new(0.06, 0.03, 0.5), CFrame.new(0, -0.125, -0.45), housingDark)
+	box(gun, "ForegripClamp", Vector3.new(0.075, 0.045, 0.11), CFrame.new(0, -0.16, -0.6), POLYMER)
+	post(gun, "Foregrip", 0.3, 0.1, Vector3.new(0, -0.33, -0.6), POLYMER)
+	post(gun, "ForegripCap", 0.025, 0.108, Vector3.new(0, -0.485, -0.6), RUBBER)
+
+	-- Ammo box (the Magazine) under the front of the housing; the belt (Mag1..4) climbs into its
+	-- left side, so it leaves with the box on reloads
+	box(gun, "Magwell", Vector3.new(0.16, 0.03, 0.26), CFrame.new(0, -0.115, -0.27), STEEL)
+	box(gun, "Magazine", Vector3.new(0.24, 0.26, 0.28), CFrame.new(-0.02, -0.26, -0.27), housing)
+	box(gun, "MagBase", Vector3.new(0.248, 0.025, 0.288), CFrame.new(-0.02, -0.4, -0.27), housingDark)
+	for i = 1, 4 do
+		local at = Vector3.new(-0.15, -0.13, -0.27):Lerp(Vector3.new(-0.105, 0.0, -0.27), (i - 1) / 3)
+		box(gun, `Mag{i}`, Vector3.new(0.032, 0.03, 0.14), CFrame.new(at) * CFrame.Angles(0, 0, math.rad(-55)), BRASS)
+	end
+
+	-- Trigger housing, trigger guard, trigger and pistol grip at the back
+	box(gun, "TriggerHousing", Vector3.new(0.1, 0.07, 0.24), CFrame.new(0, -0.13, 0.12), housingDark)
+	box(gun, "TriggerGuardFront", Vector3.new(0.03, 0.08, 0.022), CFrame.new(0, -0.2, 0.01), STEEL)
+	box(gun, "TriggerGuard", Vector3.new(0.03, 0.02, 0.17), CFrame.new(0, -0.245, 0.09), STEEL)
+	local triggerCFrame = CFrame.new(0, -0.195, 0.085) * CFrame.Angles(math.rad(12), 0, 0)
+	box(gun, "Trigger", Vector3.new(0.02, 0.06, 0.022), triggerCFrame, STEEL)
+	attach(body, "Trigger", CFrame.new(0, -0.212, 0.073))
+	local gripTop = CFrame.new(0, -0.165, 0.2) * CFrame.Angles(math.rad(-15), 0, 0)
+	box(gun, "Grip", Vector3.new(0.1, 0.32, 0.15), gripTop * CFrame.new(0, -0.16, 0), POLYMER)
+	box(gun, "GripBase", Vector3.new(0.104, 0.02, 0.155), gripTop * CFrame.new(0, -0.32, 0), POLYMER_DARK)
+
+	-- Hands: right on the pistol grip, left wrapped around the foregrip
+	addGrip(body, "RightGrip", gripTop * CFrame.new(0, -0.155, 0), {
+		RadiusX = 0.05,
+		RadiusZ = 0.075,
+		ThumbAngle = 190,
+		ThumbLift = 0.04,
+		PalmAngle = 25,
+		TriggerFinger = true,
+	})
+	addGrip(body, "LeftGrip", CFrame.new(0, -0.33, -0.6), {
+		RadiusX = 0.05,
+		RadiusZ = 0.05,
+		ThumbAngle = 120,
+		ThumbLift = 0.05,
+		PalmAngle = 15,
+	})
+	return body
+end
+
 local BUILDERS: { [string]: (Model, Color3) -> Part } = {
 	Rifle = buildRifle,
 	SMG = buildSmg,
@@ -1163,6 +1259,7 @@ local BUILDERS: { [string]: (Model, Color3) -> Part } = {
 	LMG = buildLmg,
 	Marksman = buildMarksman,
 	Autopistol = buildAutopistol,
+	Gatling = buildGatling,
 }
 
 -- Builds the named gun (unknown names get the rifle). `finishColor` is the main finish
