@@ -4,22 +4,21 @@
 -- Rainbow skins: their glowing pieces are tagged and Start() cycles their color every frame, the
 -- hue running along the gun so the colors flow from the stock to the muzzle.
 -- Sticker skins: once painted, the big pieces (blade and handle on a knife) get covered in
--- stickers (CatStickers).
+-- stickers (Stickers).
 
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Skins = require(ReplicatedStorage.Shared.Skins)
-local CatStickers = require(script.Parent.CatStickers)
 local GunMaterials = require(script.Parent.GunMaterials)
+local Stickers = require(script.Parent.Stickers)
 
 local SkinPainter = {}
 
 local RAINBOW_TAG = "SkinRainbow"
 local RAINBOW_SPEED = 0.12 -- trips around the color wheel per second
 local RAINBOW_VALUE = 0.62 -- kept dim like the other neon trims
-local KNIFE_CAT = 0.1 -- sticker size on a knife (studs; a gun's goes by its length)
 
 local KEEP = {
 	[Enum.Material.Glass] = true,
@@ -112,8 +111,8 @@ function SkinPainter.PaintGun(model: Model, skin: Skins.Skin)
 		paint(p, shade(color, key), skin.Material, skin.Reflectance)
 		table.insert(body, p)
 	end
-	if skin.Stickers == "Cat" then
-		CatStickers.Cover(model, body)
+	if skin.Stickers then
+		Stickers.Cover(model, body, skin.Stickers)
 	end
 end
 
@@ -144,8 +143,8 @@ function SkinPainter.PaintKnife(model: Model, skin: Skins.Skin)
 			table.insert(body, part)
 		end
 	end
-	if skin.Stickers == "Cat" then
-		CatStickers.Cover(model, body, KNIFE_CAT)
+	if skin.Stickers then
+		Stickers.Cover(model, body, skin.Stickers, true)
 	end
 end
 

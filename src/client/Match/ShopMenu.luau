@@ -17,9 +17,9 @@ local UserInputService = game:GetService("UserInputService")
 local Skins = require(ReplicatedStorage.Shared.Skins)
 local Sounds = require(ReplicatedStorage.Shared.Sounds)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
-local CatStickers = require(script.Parent.Parent.Combat.CatStickers)
 local Effects = require(script.Parent.Parent.Combat.Effects)
 local GunModels = require(script.Parent.Parent.Combat.GunModels)
+local Stickers = require(script.Parent.Parent.Combat.Stickers)
 local state = require(script.Parent.Parent.PlayerState)
 local MenuStyle = require(script.Parent.MenuStyle)
 
@@ -177,10 +177,10 @@ local function chip(parent: GuiObject, skin: Skins.Skin?)
 			blot.Parent = swatch
 		end
 	end
-	if skin and skin.Stickers == "Cat" then
-		-- A few of its cats, in two interlocking rows
-		for _, spot in { { 0.2, 22 }, { 0.5, 22 }, { 0.8, 22 }, { 0.35, 50 }, { 0.65, 50 } } do
-			CatStickers.Icon(swatch, 24, UDim2.new(spot[1], 0, 0, spot[2]))
+	if skin and skin.Stickers then
+		-- A few of its stickers, in two interlocking rows
+		for i, spot in { { 0.2, 22 }, { 0.5, 22 }, { 0.8, 22 }, { 0.35, 50 }, { 0.65, 50 } } do
+			Stickers.Icon(swatch, skin.Stickers, 24, UDim2.new(spot[1], 0, 0, spot[2]), i)
 		end
 	end
 	if skin and skin.Material == Enum.Material.ForceField then

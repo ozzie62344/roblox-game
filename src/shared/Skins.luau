@@ -17,7 +17,7 @@
 -- game's owner, everyone in a Studio test) has them, nobody else can see or wear them. Exclusive
 -- skins (OnlyFor) work the same way for the players on their list (and devs). A Rainbow skin's
 -- glowing trim slowly cycles through the colors (SkinPainter); a Stickers skin is covered in
--- little pictures on top of its paint (Stickers = "Cat": Combat/CatStickers).
+-- little pictures on top of its paint (Combat/Stickers: "Cat", "Cheeto", "Holds").
 --
 -- The server keeps what you own and wear in player attributes:
 --   Credits        number
@@ -43,7 +43,7 @@ export type Skin = {
 	OnlyFor: { number }?, -- UserIds of the only players (besides devs) who get it
 	Note: string?, -- shown in the shop under a dev / exclusive skin
 	Rainbow: boolean?, -- glowing trim cycles through the rainbow
-	Stickers: "Cat"?,
+	Stickers: ("Cat" | "Cheeto" | "Holds")?,
 }
 
 local Skins = {}
@@ -88,21 +88,30 @@ Skins.List = {
 	skin("Arctic", "Arctic White", "Common", "Solid", { rgb(226, 229, 233) }, M.Plastic, rgb(70, 74, 80), M.Metal),
 	skin("Olive", "Olive Drab", "Common", "Solid", { rgb(88, 98, 62) }, M.Plastic, rgb(40, 42, 36), M.Metal),
 	skin("Cobalt", "Cobalt", "Common", "Solid", { rgb(40, 82, 175) }, M.Metal, rgb(26, 27, 31), M.Metal, 0.05),
+	skin("Midnight", "Midnight", "Common", "Solid", { rgb(28, 34, 58) }, M.Plastic, rgb(150, 156, 170), M.Metal),
+	skin("Mint", "Mint", "Common", "Solid", { rgb(150, 220, 190) }, M.SmoothPlastic, rgb(245, 245, 240), M.SmoothPlastic),
 
 	skin("Woodland", "Woodland Camo", "Rare", "Camo", { rgb(74, 92, 52), rgb(52, 62, 38), rgb(112, 96, 64), rgb(32, 34, 28) }, M.Plastic, rgb(30, 32, 28), M.Metal),
 	skin("Urban", "Urban Camo", "Rare", "Camo", { rgb(152, 154, 158), rgb(96, 99, 105), rgb(60, 62, 68), rgb(205, 205, 202) }, M.Plastic, rgb(34, 35, 38), M.Metal),
 	skin("Crimson", "Crimson", "Rare", "Solid", { rgb(150, 22, 30) }, M.Metal, rgb(22, 22, 24), M.Metal, 0.08),
 	skin("Carbon", "Carbon Fiber", "Rare", "Stripes", { rgb(30, 30, 33), rgb(44, 45, 50) }, M.Fabric, rgb(120, 124, 132), M.Metal),
+	skin("Zebra", "Zebra", "Rare", "Stripes", { rgb(235, 235, 232), rgb(24, 24, 26) }, M.Plastic, rgb(24, 24, 26), M.Metal),
+	skin("CandyCane", "Candy Cane", "Rare", "Stripes", { rgb(215, 30, 45), rgb(245, 242, 238) }, M.SmoothPlastic, rgb(40, 140, 70), M.SmoothPlastic),
+	skin("Ocean", "Ocean Camo", "Rare", "Camo", { rgb(30, 80, 140), rgb(50, 130, 180), rgb(20, 50, 90), rgb(110, 180, 210) }, M.Plastic, rgb(20, 30, 45), M.Metal),
 
 	skin("Tiger", "Tiger", "Epic", "Stripes", { rgb(235, 120, 20), rgb(22, 20, 18), rgb(235, 120, 20), rgb(250, 190, 90) }, M.Plastic, rgb(22, 20, 18), M.Metal),
 	skin("Frost", "Frost", "Epic", "Camo", { rgb(170, 215, 240), rgb(225, 242, 255), rgb(120, 170, 215) }, M.Glacier, rgb(235, 245, 255), M.SmoothPlastic),
 	skin("Toxic", "Toxic", "Epic", "Solid", { rgb(36, 40, 35) }, M.Metal, rgb(55, 140, 30), M.Neon),
 	skin("Magma", "Magma", "Epic", "Solid", { rgb(215, 80, 30) }, M.CrackedLava, rgb(28, 22, 20), M.Basalt),
+	skin("Jungle", "Jungle", "Epic", "Camo", { rgb(40, 95, 45), rgb(70, 130, 50), rgb(25, 60, 30), rgb(120, 150, 60) }, M.Fabric, rgb(90, 60, 35), M.Wood),
+	skin("Galaxy", "Galaxy", "Epic", "Camo", { rgb(40, 20, 70), rgb(70, 30, 110), rgb(20, 15, 45), rgb(100, 50, 140) }, M.SmoothPlastic, rgb(110, 60, 170), M.Neon),
 
 	skin("Gold", "Solid Gold", "Legendary", "Solid", { rgb(255, 196, 64) }, M.Metal, rgb(32, 30, 26), M.Metal, 0.25),
 	skin("Phantom", "Phantom", "Legendary", "Solid", { rgb(150, 100, 255) }, M.ForceField, rgb(105, 80, 160), M.Neon),
 	skin("Cyber", "Neon Cyber", "Legendary", "Solid", { rgb(18, 18, 26) }, M.SmoothPlastic, rgb(0, 120, 145), M.Neon),
 	skin("Dragon", "Dragon Scale", "Legendary", "Camo", { rgb(140, 20, 22), rgb(95, 12, 16), rgb(175, 40, 30) }, M.Slate, rgb(225, 175, 65), M.Metal, 0.15),
+	skin("Chrome", "Chrome", "Legendary", "Solid", { rgb(215, 218, 224) }, M.Metal, rgb(40, 42, 46), M.Metal, 0.4),
+	skin("Diamond", "Diamond", "Legendary", "Camo", { rgb(185, 230, 245), rgb(150, 210, 235), rgb(225, 245, 252) }, M.Ice, rgb(240, 250, 255), M.Glass, 0.2),
 }
 
 -- Black chrome with rainbow lines, for devs only
@@ -117,6 +126,20 @@ kitty.OnlyFor = { 406566030 } -- kittenloveeeeeeeeeee
 kitty.Note = "Made just for @kittenloveeeeeeeeeee"
 kitty.Stickers = "Cat"
 table.insert(Skins.List, kitty)
+
+-- Ginger orange covered in Cheetos, just for @raycerTy (and devs)
+local bigRed = skin("BigRed", "Big Red", "Exclusive", "Solid", { rgb(196, 78, 26), rgb(235, 140, 60) }, M.SmoothPlastic, rgb(255, 165, 45), M.SmoothPlastic)
+bigRed.OnlyFor = { 1341360115 } -- raycerTy
+bigRed.Note = "Made just for @raycerTy"
+bigRed.Stickers = "Cheeto"
+table.insert(Skins.List, bigRed)
+
+-- Rock climbing: grey crag covered in colourful holds, rope-blue trim, just for @trashcan648 (and devs)
+local crag = skin("Crag", "Crag", "Exclusive", "Camo", { rgb(128, 124, 118), rgb(104, 101, 96), rgb(146, 141, 133), rgb(90, 88, 84) }, M.Slate, rgb(40, 170, 210), M.Fabric)
+crag.OnlyFor = { 2630899223 } -- trashcan648
+crag.Note = "Made just for @trashcan648"
+crag.Stickers = "Holds"
+table.insert(Skins.List, crag)
 
 Skins.ById = {} :: { [string]: Skin }
 for _, s in Skins.List do
