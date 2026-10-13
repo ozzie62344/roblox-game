@@ -15,7 +15,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
+local Sounds = require(ReplicatedStorage.Shared.Sounds)
 local state = require(script.Parent.Parent.PlayerState)
+local Sound3D = require(script.Parent.Parent.Audio.Sound3D)
 local Effects = require(script.Parent.Parent.Combat.Effects)
 local Actions = require(script.Parent.Parent.Input.Actions)
 
@@ -232,6 +234,26 @@ end
 -- Everyone's ropes (anyone with a "RappelTop" attribute): from where it's tied down to their left
 -- hand (BodyAnimator puts it on the rope). Yours hangs off to your left so it doesn't run through
 -- the middle of your view.
+-- Someone hooking onto a rope (clip, then the rope zips through) or letting go (a lower zip).
+-- Your own play right in your ears; everyone else's from where they are, muffled through walls.
+local function ropeSound(character: Model, at: Vector3, hookingOn: boolean)
+	local config = Sounds.Rappel
+	local mine = character == player.Character
+	local function play(id: string, volume: number, pitch: number)
+		if mine then
+			Effects.Sound(id, nil, volume, pitch)
+		else
+			Sound3D.Play(id, at, { volume = volume, range = config.Range, pitch = pitch })
+		end
+	end
+	if hookingOn then
+		play(config.Clip, config.Volume, 1.3)
+		task.delay(0.12, play, config.Zip, config.Volume * 0.8, 0.9)
+	else
+		play(config.Zip, config.Volume * 0.7, 0.7)
+	end
+end
+
 local function drawRopes()
 	local seen = {}
 	for _, other in Players:GetPlayers() do
@@ -256,6 +278,7 @@ local function drawRopes()
 			rope.CastShadow = false
 			rope.Parent = Effects.GetFolder()
 			ropes[character] = rope
+			ropeSound(character, root.Position, true)
 		end
 		local hands = if other == player
 			then root.Position + root.CFrame.LookVector * 0.9 - root.CFrame.RightVector * 0.9 + Vector3.new(0, 1.2, 0)
@@ -266,6 +289,7 @@ local function drawRopes()
 	end
 	for character, rope in ropes do
 		if not seen[character] then
+			ropeSound(character, rope.Position, false)
 			rope:Destroy()
 			ropes[character] = nil
 		end

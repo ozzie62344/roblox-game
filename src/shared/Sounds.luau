@@ -61,6 +61,15 @@ local Sounds = {
 		Pitch = 1.2,
 	},
 
+	-- Rappelling (RappelController): the carabiner clipping onto the rope, and the rope zipping
+	-- through it as you hook up and let go. Everyone near hears it (through walls, muffled).
+	Rappel = {
+		Clip = "rbxassetid://9118138519", -- Relay Clicks 10 (Pro Sound Effects)
+		Zip = "rbxassetid://9113828720", -- Cloth Rip Rapid 7 (Pro Sound Effects)
+		Range = 70,
+		Volume = 0.7,
+	},
+
 	Jump = {
 		Id = "rbxasset://sounds/action_jump.mp3",
 		Range = 60,
