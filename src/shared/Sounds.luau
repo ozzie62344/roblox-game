@@ -107,6 +107,14 @@ local Sounds = {
 		Volume = 0.5,
 	},
 
+	-- A teammate's ping (TeamPing): the same beep, softer and pitched up so it isn't mistaken for
+	-- the defuser. Plays flat (not from the spot), like a radio blip.
+	Ping = {
+		Id = "rbxasset://sounds/electronicpingshort.wav",
+		Volume = 0.3,
+		Pitch = 1.6,
+	},
+
 	-- Sets of interchangeable sounds: one is picked at random each time so repeats don't sound copy-pasted.
 	-- Weapons.luau refers to these by name (FireSound / TailSound / ReloadSound).
 	-- These are Audioscape's licensed weapon sounds from the Creator Store (free to use).

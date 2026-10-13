@@ -6,6 +6,9 @@
 -- damage (anyone who hurt a victim and didn't get the kill gets an assist); ObjectiveService
 -- reports plants and disables. Nothing counts outside a match (free roam).
 -- Also works out the details of a kill for the victim's KILL CAM (KillDetails, sent with the kill feed).
+-- The in-match scoreboard (client Scoreboard) reads everyone's kills / deaths / assists live from
+-- player attributes (MatchKills / MatchDeaths / MatchAssists: set as they change, cleared when the
+-- match is over) and their Ping (ms, every couple of seconds, free roam too).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -22,6 +25,7 @@ local MatchStats = {}
 -- defuser as much as a kill)
 local SCORE = { Kill = 100, Headshot = 25, Assist = 50, Objective = 100, RoundWin = 40 }
 local ASSIST_DAMAGE = 10 -- damage you must have done to a victim for an assist
+local PING_EVERY = 2 -- seconds between Ping updates
 local BODY_NAME = "MvpBody"
 
 -- The results screen: the "X WINS THE MATCH" banner shows on its own this long first, then the
@@ -47,6 +51,24 @@ local lines: { [number]: Line } = {} -- by UserId (kept if they leave, so the sc
 -- Damage each attacker did to a victim this life (for assists), forgotten when the body goes
 local damageTo: { [Humanoid]: { [Player]: number } } = setmetatable({}, { __mode = "k" }) :: any
 
+-- The live numbers on the player (for the scoreboard), if they're here
+local function publish(line: Line)
+	local player = Players:GetPlayerByUserId(line.userId)
+	if player then
+		player:SetAttribute("MatchKills", line.kills)
+		player:SetAttribute("MatchDeaths", line.deaths)
+		player:SetAttribute("MatchAssists", line.assists)
+	end
+end
+
+local function clearPublished()
+	for _, player in Players:GetPlayers() do
+		player:SetAttribute("MatchKills", nil)
+		player:SetAttribute("MatchDeaths", nil)
+		player:SetAttribute("MatchAssists", nil)
+	end
+end
+
 -- Only players on a team count
 local function lineFor(player: Player?): Line?
 	if not active or not player or player.Neutral or not player.Team then
@@ -59,6 +81,7 @@ local function lineFor(player: Player?): Line?
 			kills = 0, deaths = 0, assists = 0, headshots = 0, objectives = 0, rounds = 0,
 		}
 		lines[player.UserId] = line
+		publish(line)
 	end
 	line.team = player.Team.Name
 	return line
@@ -73,6 +96,7 @@ end
 function MatchStats.Begin()
 	table.clear(lines)
 	table.clear(damageTo)
+	clearPublished()
 	active = true
 	local old = ReplicatedStorage:FindFirstChild(BODY_NAME)
 	if old then
@@ -86,6 +110,7 @@ end
 -- The match is over (finished or stopped): stop counting
 function MatchStats.Stop()
 	active = false
+	clearPublished()
 end
 
 -- WeaponService, before the damage is dealt (only what the victim still had counts)
@@ -108,15 +133,18 @@ function MatchStats.Death(victim: Player, humanoid: Humanoid, killer: Player?, h
 		return
 	end
 	victimLine.deaths += 1
+	publish(victimLine)
 	local killerLine = if killer and killer ~= victim and killer.Team ~= victim.Team then lineFor(killer) else nil
 	if killerLine then
 		killerLine.kills += 1
 		killerLine.headshots += if headshot then 1 else 0
+		publish(killerLine)
 	end
 	for attacker, amount in hurtBy or {} do
 		local line = if attacker ~= killer and attacker.Parent and amount >= ASSIST_DAMAGE then lineFor(attacker) else nil
 		if line and line.team ~= victimLine.team then
 			line.assists += 1
+			publish(line)
 		end
 	end
 end
@@ -232,6 +260,33 @@ function MatchStats.Finish(winner: string, scores: { [string]: number }, bodyOf:
 		delay = MatchStats.ResultsDelay,
 	})
 	active = false
+end
+
+-- Everyone's ping on them as "Ping" (ms), roughly what Roblox's own player list shows:
+-- GetNetworkPing is the one-way latency in seconds, so twice it is the round trip
+local function publishPings()
+	for _, player in Players:GetPlayers() do
+		local ok, seconds = pcall(player.GetNetworkPing, player)
+		if ok and typeof(seconds) == "number" then
+			player:SetAttribute("Ping", math.floor(seconds * 2000 + 0.5))
+		end
+	end
+end
+
+function MatchStats.Start()
+	-- Back mid-match (left and rejoined): their line is still here
+	Players.PlayerAdded:Connect(function(player)
+		local line = lines[player.UserId]
+		if active and line then
+			publish(line)
+		end
+	end)
+	task.spawn(function()
+		while true do
+			publishPings()
+			task.wait(PING_EVERY)
+		end
+	end)
 end
 
 return MatchStats

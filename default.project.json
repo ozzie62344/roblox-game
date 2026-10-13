@@ -41,7 +41,8 @@
         "Settings": { "$className": "RemoteEvent" },
         "Shop": { "$className": "RemoteEvent" },
         "Progress": { "$className": "RemoteEvent" },
-        "Party": { "$className": "RemoteEvent" }
+        "Party": { "$className": "RemoteEvent" },
+        "Ping": { "$className": "RemoteEvent" }
       }
     },
 

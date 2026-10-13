@@ -6,7 +6,7 @@
 --               hold while sprinting to slide), KNIFE, your ability (or DASH),
 --               LEAN LEFT / RIGHT, DRONE / CAMS, RAPPEL, USE (hold: shows up when there's
 --               something to plant, disable, barricade or reinforce), LOADOUT while you can
---               still change it
+--               still change it, MODS, SCORE (the scoreboard), PING (mark for your team)
 --   Drone:      the thumbstick drives, dragging looks (TouchLook), HOP, SPOT, EXIT (Roblox hides its
 --               jump button while you're in the drone: your body's jumping is switched off)
 --   Cameras:    < > switch camera, dragging looks, SPOT, EXIT
@@ -36,7 +36,9 @@ local CamsController = require(script.Parent.Parent.Abilities.CamsController)
 local DroneController = require(script.Parent.Parent.Abilities.DroneController)
 local MenuStyle = require(script.Parent.Parent.Match.MenuStyle)
 local ModsMenu = require(script.Parent.Parent.Match.ModsMenu)
+local Scoreboard = require(script.Parent.Parent.Match.Scoreboard)
 local Spectate = require(script.Parent.Parent.Match.Spectate)
+local TeamPing = require(script.Parent.Parent.Match.TeamPing)
 local MovementController = require(script.Parent.Parent.Movement.MovementController)
 local RappelController = require(script.Parent.Parent.Movement.RappelController)
 local Actions = require(script.Parent.Actions)
@@ -324,6 +326,23 @@ local SPECS: { Spec } = {
 			ModsMenu.Toggle()
 		end,
 		visible = hasGun,
+	},
+
+	-- The scoreboard (Tab): tap to show, tap again (or the board) to hide. Left of MODS.
+	{
+		id = "Score", label = "SCORE", side = "TopRight", x = 2.45, y = 1.0, size = 0.8, modes = { "Play", "Spectate" },
+		press = function()
+			Scoreboard.Toggle()
+		end,
+		on = Scoreboard.IsOpen,
+	},
+	-- Ping what's under the crosshair for your team (middle mouse / T). Left of SCORE.
+	{
+		id = "Ping", label = "PING", side = "TopRight", x = 3.55, y = 1.0, size = 0.8, modes = { "Play" },
+		press = function()
+			TeamPing.Ping()
+		end,
+		color = Color3.fromRGB(40, 110, 90),
 	},
 
 	-- Lobby: move the buttons around
