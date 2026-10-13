@@ -18,6 +18,9 @@
 -- wouldn't move you).
 -- Showing on touch screens until a key or mouse button is used (a laptop with a touch screen
 -- swaps back and forth; moving the mouse alone doesn't count).
+-- EDIT BUTTONS (top right in the lobby): drag any button anywhere, SMALLER / BIGGER the one you
+-- last touched, RESET for the defaults, DONE saves it with your data (SettingsService), so it
+-- follows you to every server. The drone's HOP and SPOT sit where you put AIM and FIRE.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -37,14 +40,19 @@ local MovementController = require(script.Parent.Parent.Movement.MovementControl
 local RappelController = require(script.Parent.Parent.Movement.RappelController)
 local Actions = require(script.Parent.Actions)
 
+local HttpService = game:GetService("HttpService")
+local SettingsRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Settings") :: RemoteEvent
+
 local player = Players.LocalPlayer
 
 local MobileControls = {}
 
-type Mode = "Play" | "Drone" | "Cams" | "Spectate" | "Other"
-type Side = "Right" | "Left" | "Center" | "TopLeft" | "TopCenter"
+type Mode = "Play" | "Drone" | "Cams" | "Spectate" | "Other" | "Edit"
+type Side = "Right" | "Left" | "Center" | "TopLeft" | "TopCenter" | "TopRight"
 
 type Spec = {
+	id: string, -- where its moved spot is kept (EDIT BUTTONS)
+	follows: string?, -- sits where this other button was moved (the drone's HOP / SPOT: AIM / FIRE)
 	label: string | () -> string,
 	side: Side,
 	x: number, -- in units (see unit()): the button's center from that side...
@@ -79,6 +87,16 @@ local fireHolds = 0
 local lastJump = 0
 local currentMode: Mode? = nil
 local touchMode = UserInputService.TouchEnabled
+
+-- EDIT BUTTONS: where buttons were moved ({ x, y } the middle as a share of the screen, s their
+-- size), the one last touched, and the fingers dragging them
+type Spot = { x: number, y: number, s: number }
+local moved: { [string]: Spot } = {}
+local editing = false
+local selected: string? = nil
+local drags: { [InputObject]: { id: string, button: TextButton, last: Vector3 } } = {}
+local editBar: Frame
+local dim: Frame
 
 -- Roughly a fingertip: everything is sized in these
 local function unit(): number
@@ -156,9 +174,9 @@ local usePress, useRelease = hold("Interact")
 
 local SPECS: { Spec } = {
 	-- Playing: right thumb
-	{ label = fireLabel, side = "Right", x = 3.3, y = 1.75, size = 1.9, modes = { "Play" }, press = firePress, release = fireRelease, color = FIRE },
+	{ id = "Fire", label = fireLabel, side = "Right", x = 2.4, y = 2.0, size = 1.9, modes = { "Play" }, press = firePress, release = fireRelease, color = FIRE },
 	{
-		label = "AIM", side = "Right", x = 5.05, y = 1.0, size = 1.15, modes = { "Play" },
+		id = "Aim", label = "AIM", side = "Right", x = 4.75, y = 1.1, size = 1.2, modes = { "Play" },
 		press = function()
 			setAim(not aimOn)
 		end,
@@ -167,14 +185,14 @@ local SPECS: { Spec } = {
 		end,
 		visible = hasGun,
 	},
-	{ label = "RELOAD", side = "Right", x = 1.35, y = 2.95, size = 1.05, modes = { "Play" }, press = tap("Reload"), visible = hasGun },
+	{ id = "Reload", label = "RELOAD", side = "Right", x = 1.0, y = 4.0, size = 1.05, modes = { "Play" }, press = tap("Reload"), visible = hasGun },
 	{
-		label = "CROUCH", side = "Right", x = 2.6, y = 3.85, size = 1.05, modes = { "Play" }, press = crouchPress, release = crouchRelease,
+		id = "Crouch", label = "CROUCH", side = "Right", x = 2.6, y = 4.35, size = 1.1, modes = { "Play" }, press = crouchPress, release = crouchRelease,
 		on = function()
 			return state.crouching or state.prone or state.sliding
 		end,
 	},
-	{ label = "KNIFE", side = "Right", x = 3.95, y = 3.75, size = 1.0, modes = { "Play" }, press = tap("Melee") },
+	{ id = "Knife", label = "KNIFE", side = "Right", x = 4.3, y = 3.6, size = 1.0, modes = { "Play" }, press = tap("Melee") },
 	{
 		label = function()
 			local ability = Abilities[player:GetAttribute("Ability") or ""]
@@ -184,7 +202,7 @@ local SPECS: { Spec } = {
 			local charges = player:GetAttribute("AbilityCharges")
 			return string.upper(ability.Name) .. (if typeof(charges) == "number" then `\n{charges}` else "")
 		end,
-		side = "Right", x = 5.2, y = 2.6, size = 1.1, modes = { "Play" },
+		id = "Ability", side = "Right", x = 6.0, y = 2.7, size = 1.1, modes = { "Play" },
 		press = function()
 			local ability = Abilities[player:GetAttribute("Ability") or ""]
 			act(if ability and ability.Kind == "Active" then "UseAbility" else "Dash", true)
@@ -194,33 +212,33 @@ local SPECS: { Spec } = {
 		label = function()
 			return "HOLD\n" .. (INTERACT_LABELS[state.interactAction or ""] or "USE")
 		end,
-		side = "Right", x = 5.45, y = 4.3, size = 1.3, modes = { "Play" }, press = usePress, release = useRelease,
+		id = "Use", side = "Right", x = 6.2, y = 4.6, size = 1.3, modes = { "Play" }, press = usePress, release = useRelease,
 		visible = function()
 			return state.interactAction ~= nil or state.interacting
 		end,
 		color = Color3.fromRGB(200, 120, 30),
 	},
 	{
-		label = "LEAN\nLEFT", side = "Right", x = 2.6, y = 5.25, size = 0.95, modes = { "Play" }, press = leanLeftPress, release = leanLeftRelease,
+		id = "LeanLeft", label = "LEAN\nLEFT", side = "Right", x = 3.15, y = 6.0, size = 0.95, modes = { "Play" }, press = leanLeftPress, release = leanLeftRelease,
 		on = function()
 			return state.lean < -0.3
 		end,
 	},
 	{
-		label = "LEAN\nRIGHT", side = "Right", x = 1.35, y = 5.25, size = 0.95, modes = { "Play" }, press = leanRightPress, release = leanRightRelease,
+		id = "LeanRight", label = "LEAN\nRIGHT", side = "Right", x = 1.6, y = 6.0, size = 0.95, modes = { "Play" }, press = leanRightPress, release = leanRightRelease,
 		on = function()
 			return state.lean > 0.3
 		end,
 	},
 	{
-		label = "RAPPEL", side = "Right", x = 2.6, y = 6.5, size = 0.95, modes = { "Play" }, press = tap("Rappel"),
+		id = "Rappel", label = "RAPPEL", side = "Right", x = 4.6, y = 5.7, size = 0.95, modes = { "Play" }, press = tap("Rappel"),
 		on = function()
 			return state.rappelling
 		end,
 	},
 
 	{
-		label = "LOADOUT", side = "TopCenter", x = 0, y = 2.6, size = 1.1, modes = { "Play", "Drone" },
+		id = "Loadout", label = "LOADOUT", side = "TopCenter", x = 0, y = 2.6, size = 1.1, modes = { "Play", "Drone" },
 		press = function()
 			state.draftOpen = true
 		end,
@@ -230,7 +248,7 @@ local SPECS: { Spec } = {
 	},
 
 	{
-		label = "HIDE\nCARDS", side = "Center", x = 1.4, y = 0.75, size = 1.0, modes = { "Other" },
+		id = "HideCards", label = "HIDE\nCARDS", side = "Center", x = 1.4, y = 0.75, size = 1.0, modes = { "Other" },
 		press = function()
 			state.draftOpen = false -- (look around during the setup; LOADOUT brings them back)
 		end,
@@ -247,17 +265,17 @@ local SPECS: { Spec } = {
 			end
 			return if CamsController.Allowed() then "CAMS" else "DRONE"
 		end,
-		side = "Right", x = 1.35, y = 6.5, size = 0.95, modes = { "Play", "Drone", "Cams", "Spectate" }, press = droneOrCams,
+		id = "Drone", side = "Right", x = 6.2, y = 6.4, size = 0.95, modes = { "Play", "Drone", "Cams", "Spectate" }, press = droneOrCams,
 		visible = inMatch,
 	},
 	{
-		label = "HOP", side = "Right", x = 1.35, y = 1.4, size = 1.3, modes = { "Drone" },
+		id = "Hop", follows = "Aim", label = "HOP", side = "Right", x = 4.75, y = 1.1, size = 1.3, modes = { "Drone" },
 		press = function()
 			DroneController.Hop()
 		end,
 	},
 	{
-		label = "SPOT", side = "Right", x = 3.3, y = 1.75, size = 1.6, modes = { "Drone", "Cams" },
+		id = "Spot", follows = "Fire", label = "SPOT", side = "Right", x = 2.4, y = 2.0, size = 1.6, modes = { "Drone", "Cams" },
 		press = function()
 			if CamsController.IsWatching() then
 				CamsController.Spot()
@@ -268,7 +286,7 @@ local SPECS: { Spec } = {
 		color = FIRE,
 	},
 	{
-		label = "<", side = "Center", x = 1.3, y = 1.4, size = 1.1, modes = { "Cams", "Spectate" },
+		id = "Previous", label = "<", side = "Center", x = 1.3, y = 1.4, size = 1.1, modes = { "Cams", "Spectate" },
 		press = function()
 			if state.droning then
 				CamsController.Cycle(-1)
@@ -278,7 +296,7 @@ local SPECS: { Spec } = {
 		end,
 	},
 	{
-		label = ">", side = "Center", x = 2.7, y = 1.4, size = 1.1, modes = { "Cams", "Spectate" },
+		id = "Next", label = ">", side = "Center", x = 2.7, y = 1.4, size = 1.1, modes = { "Cams", "Spectate" },
 		press = function()
 			if state.droning then
 				CamsController.Cycle(1)
@@ -290,18 +308,33 @@ local SPECS: { Spec } = {
 
 	-- Devs: the dev panel (P)
 	{
-		label = "DEV", side = "Right", x = 5.15, y = 6.5, size = 0.8, modes = { "Play", "Drone", "Cams", "Spectate", "Other" },
+		id = "Dev", label = "DEV", side = "Right", x = 6.6, y = 0.9, size = 0.8, modes = { "Play", "Drone", "Cams", "Spectate", "Other" },
 		press = tap("ToggleDevPanel"),
 		visible = function()
 			return player:GetAttribute("IsDev") == true
 		end,
 		color = Color3.fromRGB(110, 40, 140),
 	},
+
+	-- Lobby: move the buttons around
+	{
+		id = "EditButtons", label = "EDIT\nBUTTONS", side = "TopRight", x = 1.4, y = 1.0, size = 1.1, modes = { "Other" },
+		press = function()
+			editing = true
+		end,
+		visible = function()
+			return state.inLobby and not (state.shopOpen or state.modesOpen or state.devPanelOpen or (state :: any).partyOpen)
+		end,
+		color = Color3.fromRGB(40, 90, 160),
+	},
 }
 
 local function currentModeNow(): Mode?
 	if not touchActive() then
 		return nil
+	end
+	if editing then
+		return "Edit"
 	end
 	if state.devPanelOpen or state.draftOpen or state.voteOpen or state.shopOpen or state.inLobby then
 		return "Other" -- menus are tapped directly
@@ -321,13 +354,19 @@ end
 
 local function layout(entry, u: number)
 	local spec = entry.spec
-	local size = spec.size * u
+	local spot = moved[spec.follows or spec.id]
+	local size = spec.size * u * (if spot then spot.s else 1)
 	entry.button.Size = UDim2.fromOffset(size, size)
+	if spot then
+		entry.button.Position = UDim2.fromScale(spot.x, spot.y)
+		return
+	end
 	local x, y = spec.x * u, spec.y * u
 	entry.button.Position = if spec.side == "Right" then UDim2.new(1, -x, 1, -y)
 		elseif spec.side == "Left" then UDim2.new(0, x, 1, -y)
 		elseif spec.side == "Center" then UDim2.new(0.5, x, 1, -y)
 		elseif spec.side == "TopLeft" then UDim2.new(0, x, 0, y)
+		elseif spec.side == "TopRight" then UDim2.new(1, -x, 0, y)
 		else UDim2.new(0.5, x, 0, y)
 end
 
@@ -382,6 +421,11 @@ local function makeButton(spec: Spec, index: number)
 		if not (touch or click) or held[input] then
 			return
 		end
+		if editing then
+			selected = spec.id
+			drags[input] = { id = spec.id, button = button, last = input.Position }
+			return
+		end
 		held[input] = { spec = spec, button = button }
 		if spec.press == firePress then
 			fireDrags[input] = input.Position -- (sliding this finger aims while you shoot)
@@ -390,6 +434,120 @@ local function makeButton(spec: Spec, index: number)
 		spec.press(input)
 	end)
 	table.insert(buttons, { spec = spec, button = button, label = label, stroke = stroke, scale = scale })
+end
+
+-- Where a button is now, as a moved spot (the middle as a share of the screen)
+local function spotOf(button: TextButton): Spot
+	local middle = button.AbsolutePosition + button.AbsoluteSize / 2 - gui.AbsolutePosition
+	return { x = middle.X / gui.AbsoluteSize.X, y = middle.Y / gui.AbsoluteSize.Y, s = 1 }
+end
+
+-- The saved layout (PlayerData's TouchLayout attribute), unless you're in the middle of editing
+local function loadLayout()
+	if editing then
+		return
+	end
+	table.clear(moved)
+	local json = player:GetAttribute("TouchLayout")
+	if typeof(json) ~= "string" or json == "" then
+		return
+	end
+	local ok, decoded = pcall(HttpService.JSONDecode, HttpService, json)
+	if not ok or typeof(decoded) ~= "table" then
+		return
+	end
+	for id, spot in decoded do
+		if typeof(spot) == "table" and typeof(spot.x) == "number" and typeof(spot.y) == "number" then
+			moved[id] = { x = spot.x, y = spot.y, s = if typeof(spot.s) == "number" then spot.s else 1 }
+		end
+	end
+end
+
+local function finishEditing()
+	editing = false
+	selected = nil
+	table.clear(drags)
+	SettingsRemote:FireServer("TouchLayout", if next(moved) then HttpService:JSONEncode(moved) else "")
+end
+
+-- SMALLER / BIGGER: the button last touched
+local function resizeSelected(by: number)
+	for _, entry in buttons do
+		if entry.spec.id == selected and entry.button.Visible then
+			local spot = moved[entry.spec.id] or spotOf(entry.button)
+			spot.s = math.clamp(spot.s + by, 0.5, 2)
+			moved[entry.spec.id] = spot
+			return
+		end
+	end
+end
+
+-- The bar of controls on top while editing, over a dimmed screen (so nothing under it takes taps)
+local function buildEditBar()
+	dim = Instance.new("Frame")
+	dim.Name = "EditDim"
+	dim.Size = UDim2.fromScale(1, 1)
+	dim.BackgroundColor3 = Color3.new(0, 0, 0)
+	dim.BackgroundTransparency = 0.55
+	dim.BorderSizePixel = 0
+	dim.Active = true
+	dim.ZIndex = 0
+	dim.Visible = false
+	dim.Parent = gui
+
+	editBar = Instance.new("Frame")
+	editBar.Name = "EditBar"
+	editBar.AnchorPoint = Vector2.new(0.5, 0)
+	editBar.Position = UDim2.new(0.5, 0, 0, 6)
+	editBar.Size = UDim2.fromOffset(470, 84)
+	editBar.BackgroundTransparency = 1
+	editBar.ZIndex = 5
+	editBar.Visible = false
+	editBar.Parent = gui
+	local hint = Instance.new("TextLabel")
+	hint.Size = UDim2.new(1, 0, 0, 26)
+	hint.BackgroundTransparency = 1
+	hint.FontFace = MenuStyle.Font
+	hint.TextScaled = true
+	hint.TextColor3 = Color3.new(1, 1, 1)
+	hint.Text = "Drag a button to move it · SMALLER / BIGGER: the last one you touched"
+	hint.ZIndex = 5
+	hint.Parent = editBar
+	local row = Instance.new("Frame")
+	row.Position = UDim2.fromOffset(0, 34)
+	row.Size = UDim2.new(1, 0, 0, 46)
+	row.BackgroundTransparency = 1
+	row.ZIndex = 5
+	row.Parent = editBar
+	local list = Instance.new("UIListLayout")
+	list.FillDirection = Enum.FillDirection.Horizontal
+	list.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	list.Padding = UDim.new(0, 10)
+	list.Parent = row
+	for _, control in {
+		{ "SMALLER", function() resizeSelected(-0.1) end },
+		{ "BIGGER", function() resizeSelected(0.1) end },
+		{ "RESET", function() table.clear(moved) end },
+		{ "DONE", finishEditing },
+	} do
+		local b = Instance.new("TextButton")
+		b.Size = UDim2.fromOffset(104, 46)
+		b.BackgroundColor3 = if control[1] == "DONE" then Color3.fromRGB(50, 150, 70) else BUTTON
+		b.BackgroundTransparency = 0.1
+		b.AutoButtonColor = true
+		b.FontFace = MenuStyle.Font
+		b.TextScaled = true
+		b.TextColor3 = Color3.new(1, 1, 1)
+		b.Text = control[1]
+		b.ZIndex = 5
+		MenuStyle.Corner(b, UDim.new(0, 10))
+		local padding = Instance.new("UIPadding")
+		padding.PaddingTop = UDim.new(0, 10)
+		padding.PaddingBottom = UDim.new(0, 10)
+		padding.Parent = b
+		b.Activated:Connect(control[2])
+		b.Parent = row
+	end
 end
 
 local function update()
@@ -420,14 +578,25 @@ local function update()
 		currentMode = mode
 	end
 	gui.Enabled = mode ~= nil
+	-- Editing: above the lobby menus, everything else dimmed
+	gui.DisplayOrder = if mode == "Edit" then 40 else 4
+	dim.Visible = mode == "Edit"
+	editBar.Visible = mode == "Edit"
 	if not mode then
 		return
+	end
+	for input in drags do
+		if input.UserInputState == Enum.UserInputState.End or input.UserInputState == Enum.UserInputState.Cancel then
+			drags[input] = nil
+		end
 	end
 
 	local u = unit()
 	for _, entry in buttons do
 		local spec = entry.spec
-		local visible = table.find(spec.modes, mode) ~= nil and (spec.visible == nil or spec.visible())
+		local visible = if mode == "Edit"
+			then table.find(spec.modes, "Play") ~= nil and (spec.id ~= "Dev" or player:GetAttribute("IsDev") == true)
+			else table.find(spec.modes, mode) ~= nil and (spec.visible == nil or spec.visible())
 		entry.button.Visible = visible
 		if not visible then
 			continue
@@ -436,8 +605,17 @@ local function update()
 		if typeof(spec.label) == "function" then
 			entry.label.Text = spec.label()
 		end
+		if mode == "Edit" then
+			-- (the one SMALLER / BIGGER changes is outlined)
+			local picked = spec.id == selected
+			entry.button.BackgroundColor3 = spec.color or BUTTON
+			entry.stroke.Color = if picked then Color3.fromRGB(255, 210, 60) else Color3.new(1, 1, 1)
+			entry.stroke.Transparency = if picked then 0 else 0.45
+			continue
+		end
 		local on = spec.on ~= nil and spec.on()
 		entry.button.BackgroundColor3 = if on then LIT else spec.color or BUTTON
+		entry.stroke.Color = Color3.new(1, 1, 1)
 		entry.stroke.Transparency = if on then 0 else 0.45
 	end
 end
@@ -452,6 +630,9 @@ function MobileControls.Start()
 	for index, spec in SPECS do
 		makeButton(spec, index)
 	end
+	buildEditBar()
+	loadLayout()
+	player:GetAttributeChangedSignal("TouchLayout"):Connect(loadLayout)
 
 	UserInputService.LastInputTypeChanged:Connect(function(kind)
 		if kind == Enum.UserInputType.Touch then
@@ -469,11 +650,25 @@ function MobileControls.Start()
 			fireDrags[touch] = touch.Position
 			state.lookDrag += Vector2.new(delta.X, delta.Y)
 		end
+		-- EDIT BUTTONS: the button under this finger follows it (kept on screen)
+		local drag = drags[touch]
+		if drag then
+			local delta = touch.Position - drag.last
+			drag.last = touch.Position
+			local spot = moved[drag.id] or spotOf(drag.button)
+			spot.x = math.clamp(spot.x + delta.X / gui.AbsoluteSize.X, 0.02, 0.98)
+			spot.y = math.clamp(spot.y + delta.Y / gui.AbsoluteSize.Y, 0.02, 0.98)
+			moved[drag.id] = spot
+		end
 	end)
 
 	-- Letting go anywhere (the finger may slide off the button first)
-	UserInputService.InputEnded:Connect(release)
-	UserInputService.TouchEnded:Connect(release)
+	local function letGo(input: InputObject)
+		drags[input] = nil
+		release(input)
+	end
+	UserInputService.InputEnded:Connect(letGo)
+	UserInputService.TouchEnded:Connect(letGo)
 
 	-- Roblox's jump button: wall jumps, getting up, pushing off while rappelling, drone hops. A
 	-- held button asks every frame, so only the first ask after a pause counts as a press.

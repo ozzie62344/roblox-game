@@ -37,6 +37,7 @@
         "Queue": { "$className": "RemoteEvent" },
         "VoteMap": { "$className": "RemoteEvent" },
         "Cams": { "$className": "RemoteEvent" },
+        "Settings": { "$className": "RemoteEvent" },
         "Shop": { "$className": "RemoteEvent" }
       }
     },

@@ -10,7 +10,8 @@
 -- outage): everyone gets fresh data that isn't saved, and the "DataOffline" attribute tells the
 -- shop to say so.
 --
--- Clients see the data as player attributes (Skins.luau): Credits, OwnedSkins, EquippedSkins.
+-- Clients see the data as player attributes (Skins.luau): Credits, OwnedSkins, EquippedSkins,
+-- plus TouchLayout (where they moved their phone buttons: SettingsService, MobileControls).
 
 local DataStoreService = game:GetService("DataStoreService")
 local HttpService = game:GetService("HttpService")
@@ -25,6 +26,7 @@ export type Data = {
 	Credits: number,
 	Skins: { [string]: boolean }, -- owned
 	Equipped: { [string]: string }, -- item ("Rifle", "Knife") → skin id
+	TouchLayout: string, -- JSON: moved phone buttons (SettingsService checks it), "" = the defaults
 }
 
 local PlayerData = {}
@@ -55,7 +57,7 @@ do
 end
 
 local function newData(): Data
-	return { Credits = MatchConfig.Credits.Starting, Skins = {}, Equipped = {} }
+	return { Credits = MatchConfig.Credits.Starting, Skins = {}, Equipped = {}, TouchLayout = "" }
 end
 
 -- Whatever came out of the store, cleaned up (unknown skins dropped, missing fields filled)
@@ -85,6 +87,9 @@ local function fromStored(stored: any): Data
 			end
 		end
 	end
+	if typeof(stored.TouchLayout) == "string" and #stored.TouchLayout <= 4000 then
+		data.TouchLayout = stored.TouchLayout
+	end
 	return data
 end
 
@@ -103,6 +108,7 @@ local function publish(player: Player, data: Data)
 	player:SetAttribute("Credits", data.Credits)
 	player:SetAttribute("OwnedSkins", table.concat(owned, ","))
 	player:SetAttribute("EquippedSkins", HttpService:JSONEncode(data.Equipped))
+	player:SetAttribute("TouchLayout", data.TouchLayout)
 end
 
 -- Claims the player's data. Returns it, or nil if the DataStore can't be reached.
@@ -167,6 +173,7 @@ local function save(player: Player, release: boolean)
 				Credits = data.Credits,
 				Skins = data.Skins,
 				Equipped = data.Equipped,
+				TouchLayout = data.TouchLayout,
 				Lock = if USE_LOCKS and not release then { Job = game.JobId, At = os.time() } else nil,
 			}
 		end)
