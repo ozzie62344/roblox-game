@@ -148,6 +148,91 @@ local function setupPostEffects()
 	end
 end
 
+-- Per-map weather on top of the defaults above: MapService.Load calls Apply with the map's name.
+-- Anything a map leaves out keeps the default (the values set by the functions above). Same two
+-- fairness rules: rooms bright enough to spot someone, haze thin enough to see across the map.
+local DEFAULT = {
+	ClockTime = 15.5,
+	Brightness = 2.8,
+	Ambient = Color3.fromRGB(68, 64, 60),
+	OutdoorAmbient = Color3.fromRGB(118, 112, 108),
+	HazeDensity = 0.3,
+	HazeColor = Color3.fromRGB(205, 190, 165),
+	HazeDecay = Color3.fromRGB(110, 112, 125),
+	Glare = 0.2,
+	CloudCover = 0.45,
+	CloudDensity = 0.55,
+	CloudColor = Color3.fromRGB(245, 240, 235),
+	Contrast = 0.1,
+	Saturation = 0.05,
+	Tint = Color3.fromRGB(255, 248, 238),
+	SunRays = 0.08,
+}
+local PROFILES: { [string]: { [string]: any } } = {
+	-- A cold, overcast mountain plateau: grey sky, flat cool light, a little more haze
+	Flight9 = {
+		ClockTime = 13,
+		Brightness = 2,
+		Ambient = Color3.fromRGB(78, 82, 90),
+		OutdoorAmbient = Color3.fromRGB(140, 146, 158),
+		HazeDensity = 0.38,
+		HazeColor = Color3.fromRGB(200, 208, 220),
+		HazeDecay = Color3.fromRGB(150, 158, 172),
+		Glare = 0,
+		CloudCover = 0.85,
+		CloudDensity = 0.75,
+		CloudColor = Color3.fromRGB(205, 210, 218),
+		Contrast = 0.12,
+		Saturation = -0.08,
+		Tint = Color3.fromRGB(236, 243, 255),
+		SunRays = 0.02,
+	},
+	-- A clear city midday: the sun higher and whiter, less of the suburban gold
+	Bank = {
+		ClockTime = 13.5,
+		Brightness = 3,
+		HazeColor = Color3.fromRGB(200, 200, 205),
+		HazeDecay = Color3.fromRGB(120, 128, 145),
+		CloudCover = 0.35,
+		Tint = Color3.fromRGB(252, 252, 255),
+	},
+}
+
+function LightingService.Apply(mapName: string)
+	local profile = PROFILES[mapName] or {}
+	local function get(key: string): any
+		local value = profile[key]
+		return if value ~= nil then value else DEFAULT[key]
+	end
+	Lighting.ClockTime = get("ClockTime")
+	Lighting.Brightness = get("Brightness")
+	Lighting.Ambient = get("Ambient")
+	Lighting.OutdoorAmbient = get("OutdoorAmbient")
+	local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
+	if atmosphere then
+		atmosphere.Density = get("HazeDensity")
+		atmosphere.Color = get("HazeColor")
+		atmosphere.Decay = get("HazeDecay")
+		atmosphere.Glare = get("Glare")
+	end
+	local clouds = Workspace.Terrain:FindFirstChildOfClass("Clouds")
+	if clouds then
+		clouds.Cover = get("CloudCover")
+		clouds.Density = get("CloudDensity")
+		clouds.Color = get("CloudColor")
+	end
+	local color = Lighting:FindFirstChild("SceneColorCorrection") :: ColorCorrectionEffect?
+	if color then
+		color.Contrast = get("Contrast")
+		color.Saturation = get("Saturation")
+		color.TintColor = get("Tint")
+	end
+	local sunRays = Lighting:FindFirstChild("SceneSunRays") :: SunRaysEffect?
+	if sunRays then
+		sunRays.Intensity = get("SunRays")
+	end
+end
+
 function LightingService.Start()
 	-- Each step reuses objects that already exist, so running this twice is harmless
 	setupLighting()

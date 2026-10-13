@@ -13,6 +13,7 @@ local CameraService = require(script.Parent.CameraService)
 local Dummies = require(script.Parent.Dummies)
 local DestructionService = require(script.Parent.DestructionService)
 local FortifyService = require(script.Parent.FortifyService)
+local LightingService = require(script.Parent.LightingService)
 local TestArena = require(script.Parent.TestArena)
 local Bank = require(script.Parent.Maps.Bank)
 local Flight9 = require(script.Parent.Maps.Flight9)
@@ -71,6 +72,7 @@ function MapService.Load(name: string): boolean
 		map.Parent = Workspace
 	end
 	DestructionService.Reset()
+	LightingService.Apply(name) -- (each map's own weather: overcast on Flight 9...)
 	MatchState:SetAttribute("Map", name)
 	return true
 end
