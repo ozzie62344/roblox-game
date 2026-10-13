@@ -22,6 +22,7 @@ local Skins = require(ReplicatedStorage.Shared.Skins)
 local LeaderboardService = require(script.Parent.LeaderboardService)
 local PlayerData = require(script.Parent.PlayerData)
 local ShopService = require(script.Parent.ShopService)
+local StoreService = require(script.Parent.StoreService)
 
 local Progress = ReplicatedStorage.Remotes.Progress :: RemoteEvent
 
@@ -128,7 +129,8 @@ function ProgressService.Record(player: Player, event: Progression.Event)
 			end
 		end
 	end)
-	addXp(player, MatchConfig.Xp[event] or 0, REASONS[event] or "")
+	-- (the Double XP pass multiplies the match event's XP only, not the challenge XP below)
+	addXp(player, math.floor((MatchConfig.Xp[event] or 0) * StoreService.XpMultiplier(player) + 0.5), REASONS[event] or "")
 	for _, challenge in finished do
 		Progress:FireClient(player, "Challenge", challenge.Id)
 		ShopService.Award(player, challenge.Credits, "CHALLENGE")

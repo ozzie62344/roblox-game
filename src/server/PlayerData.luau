@@ -16,7 +16,8 @@
 -- hold in the lobby: SettingsService) and Settings (the SETTINGS menu: shared/PlayerSettings,
 -- SettingsService, client ClientSettings), and progression (shared/Progression, ProgressService):
 -- Xp, Level, Stats, DailyDay, DailyStreak, Challenges; and ranked (shared/Ranked, RankedService):
--- Mmr, RankedMatches, RankedWins, Rank, RankedPlacements.
+-- Mmr, RankedMatches, RankedWins, Rank, RankedPlacements; and the first-time tutorial
+-- (TutorialService, client Match/Tutorial): TutorialDone, TutorialSeen.
 
 local DataStoreService = game:GetService("DataStoreService")
 local HttpService = game:GetService("HttpService")
@@ -47,6 +48,8 @@ export type Data = {
 	Headshots: number,
 	Wins: number, -- matches won
 	Matches: number, -- matches finished
+	TutorialDone: boolean, -- finished the first-time tutorial (and got its credits: TutorialService)
+	TutorialSeen: boolean, -- was offered it (started or skipped): the lobby doesn't ask again
 	DailyDay: number, -- UTC day (Progression.Day) the daily reward was last claimed, 0 = never
 	DailyStreak: number, -- days in a row it had been claimed, as of DailyDay
 	ChallengeDay: number, -- the UTC day the challenges are for (new ones when it changes)
@@ -54,9 +57,13 @@ export type Data = {
 	Mmr: number, -- ranked skill rating (shared/Ranked)
 	RankedMatches: number, -- ranked matches finished (or left: a loss)
 	RankedWins: number,
+	Purchases: { string }, -- Robux store (StoreService): PurchaseIds of receipts already granted, newest last
+	StoreBought: { [string]: boolean }, -- one-time Robux products bought (shared/Store Key: "StarterPack")
 }
 
 local PlayerData = {}
+
+PlayerData.PurchaseHistory = 200 -- receipts remembered in Purchases (the oldest are dropped)
 
 local STORE_NAME = "PlayerData_v1"
 local AUTOSAVE_INTERVAL = 180
@@ -87,7 +94,9 @@ local function newData(): Data
 	return {
 		Credits = MatchConfig.Credits.Starting, Skins = {}, Equipped = {}, TouchLayout = "", Attachments = {}, OwnedAttachments = {}, LobbyWeapon = "", Settings = "",
 		Xp = 0, RewardedLevel = 1, Kills = 0, Headshots = 0, Wins = 0, Matches = 0, DailyDay = 0, DailyStreak = 0, ChallengeDay = 0, Challenges = {},
+		TutorialDone = false, TutorialSeen = false,
 		Mmr = Ranked.StartMmr, RankedMatches = 0, RankedWins = 0,
+		Purchases = {}, StoreBought = {},
 	}
 end
 
@@ -164,11 +173,31 @@ local function fromStored(stored: any): Data
 	data.Mmr = count(stored.Mmr, Ranked.StartMmr)
 	data.RankedMatches = count(stored.RankedMatches, 0)
 	data.RankedWins = count(stored.RankedWins, 0)
+	-- (anyone who has already played a match counts as having done the tutorial: no prompt, no credits)
+	data.TutorialDone = stored.TutorialDone == true or data.Matches > 0
+	data.TutorialSeen = stored.TutorialSeen == true or data.TutorialDone
 	if typeof(stored.Challenges) == "table" then
 		for _, entry in stored.Challenges do
 			local challenge = typeof(entry) == "table" and Progression.ChallengeById[entry.Id]
 			if challenge and #data.Challenges < Progression.ChallengesPerDay then
 				table.insert(data.Challenges, { Id = challenge.Id, Progress = math.min(count(entry.Progress, 0), challenge.Goal) })
+			end
+		end
+	end
+	if typeof(stored.Purchases) == "table" then
+		for _, id in stored.Purchases do
+			if typeof(id) == "string" and #id <= 100 then
+				table.insert(data.Purchases, id)
+			end
+		end
+		while #data.Purchases > PlayerData.PurchaseHistory do
+			table.remove(data.Purchases, 1)
+		end
+	end
+	if typeof(stored.StoreBought) == "table" then
+		for key, bought in stored.StoreBought do
+			if typeof(key) == "string" and #key <= 50 and bought == true then
+				data.StoreBought[key] = true
 			end
 		end
 	end
@@ -206,6 +235,8 @@ local function publish(player: Player, data: Data)
 	player:SetAttribute("Stats", HttpService:JSONEncode({ Kills = data.Kills, Headshots = data.Headshots, Wins = data.Wins, Matches = data.Matches }))
 	player:SetAttribute("DailyDay", data.DailyDay)
 	player:SetAttribute("DailyStreak", data.DailyStreak)
+	player:SetAttribute("TutorialDone", data.TutorialDone)
+	player:SetAttribute("TutorialSeen", data.TutorialSeen)
 	player:SetAttribute("Challenges", HttpService:JSONEncode({ Day = data.ChallengeDay, List = data.Challenges }))
 	local placed = Ranked.IsPlaced(data.RankedMatches)
 	player:SetAttribute("Mmr", data.Mmr)
@@ -256,23 +287,27 @@ local function load(player: Player): Data?
 	return nil
 end
 
-local function save(player: Player, release: boolean)
+-- Returns true once the data is in the DataStore (or there was nothing new to save)
+local function save(player: Player, release: boolean): boolean
 	local session = sessions[player]
 	local dataStore = store
 	if not session or not session.saving or not dataStore then
-		return
+		return false
 	end
 	if not session.dirty and not release then
-		return
+		return true
 	end
 	session.dirty = false
 	local data = session.data
+	local written = false
 	local ok, err = pcall(function()
 		dataStore:UpdateAsync(key(player), function(old)
 			local lock = typeof(old) == "table" and old.Lock or nil
 			if USE_LOCKS and typeof(lock) == "table" and lock.Job ~= game.JobId then
+				written = false
 				return nil -- another server has taken over: its copy is the real one now
 			end
+			written = true
 			return {
 				Credits = data.Credits,
 				Skins = data.Skins,
@@ -288,6 +323,8 @@ local function save(player: Player, release: boolean)
 				Headshots = data.Headshots,
 				Wins = data.Wins,
 				Matches = data.Matches,
+				TutorialDone = data.TutorialDone,
+				TutorialSeen = data.TutorialSeen,
 				DailyDay = data.DailyDay,
 				DailyStreak = data.DailyStreak,
 				ChallengeDay = data.ChallengeDay,
@@ -295,6 +332,8 @@ local function save(player: Player, release: boolean)
 				Mmr = data.Mmr,
 				RankedMatches = data.RankedMatches,
 				RankedWins = data.RankedWins,
+				Purchases = data.Purchases,
+				StoreBought = data.StoreBought,
 				Lock =if USE_LOCKS and not release then { Job = game.JobId, At = os.time() } else nil,
 			}
 		end)
@@ -303,6 +342,7 @@ local function save(player: Player, release: boolean)
 		session.dirty = true
 		warn(`PlayerData: couldn't save {player.Name}: {err}`)
 	end
+	return ok and written
 end
 
 -- The player's data, or nil if it hasn't loaded yet. Change it with Update, not directly.
@@ -338,6 +378,17 @@ end
 function PlayerData.IsSaving(player: Player): boolean
 	local session = sessions[player]
 	return session ~= nil and session.saving
+end
+
+-- Saves right now and waits for it (StoreService: a Robux purchase is only confirmed to Roblox
+-- once it's saved). True if the DataStore has the data as it is now.
+function PlayerData.SaveNow(player: Player): boolean
+	local session = sessions[player]
+	if not session then
+		return false
+	end
+	session.dirty = true -- (even if an autosave is already on its way: that one might fail)
+	return save(player, false)
 end
 
 -- Runs `hook` when a player is leaving, before their data's last save (RankedService: leaving a

@@ -217,6 +217,7 @@ function TeamPing.Ping()
 	if not hit then
 		return
 	end
+	state.lastPing = os.clock()
 	local enemy = enemyOf(hit.Instance)
 	if enemy then
 		local now = os.clock()

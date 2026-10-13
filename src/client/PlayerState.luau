@@ -59,6 +59,7 @@ return {
 	modsOpen = false, -- the MODS menu (attachments) is up, any time (cursor free, no shooting)
 	settingsOpen = false, -- the SETTINGS menu is up, any time (SettingsMenu; cursor free, no shooting)
 	touchControls = false, -- playing on a touch screen: MobileControls' buttons are showing
+	lastPing = -math.huge, -- os.clock() of your last on-foot ping (TeamPing; the tutorial watches it)
 	lookDrag = Vector2.zero, -- pixels the finger holding FIRE moved since last frame (MouseUnlock turns the camera)
 	weaponSpin = 0, -- how far the gatling's barrels are spun up, 0..1 (WeaponController; you move slower)
 	interactAction = nil :: string?, -- what HOLD [G] would do right now (ObjectiveController)

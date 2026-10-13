@@ -20,6 +20,8 @@
 -- little pictures on top of its paint (Combat/Stickers: "Cat", "Cheeto", "Holds").
 -- Level-reward skins (TrackOnly) can't be bought either: reaching their level on the reward track
 -- unlocks them (shared/Progression, server ProgressService).
+-- Robux-store skins (PassOnly = a Key in shared/Store: the "VIP" game pass, the "StarterPack")
+-- can't be bought with credits: buying that pass / pack adds them to your skins (StoreService).
 --
 -- The server keeps what you own and wear in player attributes:
 --   Credits        number
@@ -48,6 +50,7 @@ export type Skin = {
 	Stickers: ("Cat" | "Cheeto" | "Holds")?,
 	TrackOnly: number?, -- a level reward (shared/Progression): can't be bought, unlocked at this level
 	DailyOnly: number?, -- a daily-reward streak skin: can't be bought, yours after claiming this many days in a row
+	PassOnly: string?, -- comes with a Robux-store item (its Key in shared/Store): can't be bought with credits
 }
 
 local Skins = {}
@@ -140,6 +143,16 @@ Skins.DailyStreakDays = 7
 local daybreak = skin("Daybreak", "Daybreak", "Legendary", "Stripes", { rgb(250, 84, 40), rgb(255, 140, 20), rgb(255, 196, 40), rgb(220, 60, 110) }, M.SmoothPlastic, rgb(255, 200, 60), M.Metal, 0.2)
 daybreak.DailyOnly = Skins.DailyStreakDays
 table.insert(Skins.List, daybreak)
+
+-- Robux store (shared/Store, server StoreService): in the shop for everyone to see, "VIP PASS" /
+-- "STARTER PACK" instead of a price. Royal Guard: deep purple with gleaming gold stripes, for VIPs.
+local royal = skin("Royal", "Royal Guard", "Legendary", "Stripes", { rgb(58, 26, 96), rgb(40, 18, 70), rgb(255, 196, 64) }, M.Metal, rgb(255, 205, 80), M.Neon, 0.2)
+royal.PassOnly = "VIP"
+table.insert(Skins.List, royal)
+-- Vanguard: navy and steel camo with a blaze-orange trim, in the Starter Pack
+local vanguard = skin("Vanguard", "Vanguard", "Epic", "Camo", { rgb(34, 46, 74), rgb(70, 82, 100), rgb(24, 30, 44), rgb(110, 120, 135) }, M.Plastic, rgb(255, 120, 30), M.Metal, 0.05)
+vanguard.PassOnly = "StarterPack"
+table.insert(Skins.List, vanguard)
 
 -- Black chrome with rainbow lines, for devs only
 local developer = skin("Developer", "Developer", "Dev", "Solid", { rgb(16, 16, 20) }, M.Metal, rgb(160, 40, 60), M.Neon, 0.3)

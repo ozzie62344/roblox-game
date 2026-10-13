@@ -22,9 +22,9 @@ local SPOT_COOLDOWN = 1.5
 local lastMark: { [Player]: number } = {}
 local lastSpot: { [Player]: number } = {}
 
--- Your head, if you're alive and not in the lobby
+-- Your head, if you're alive and not in the lobby (its practice range counts as out: PracticeRange)
 local function eyes(player: Player): BasePart?
-	if player:GetAttribute("Location") == "Lobby" then
+	if player:GetAttribute("Location") == "Lobby" and player:GetAttribute("InPracticeRange") ~= true then
 		return nil
 	end
 	local character = player.Character

@@ -7,20 +7,27 @@
 -- A bought skin works on every gun and the knife; buying one puts it on the selected item.
 -- Dev-only skins (Skins.luau) only show up for devs, already unlocked. Level rewards (TrackOnly)
 -- show "LEVEL n" instead of a price until the reward track unlocks them (Match/ProgressMenu).
+-- ROBUX (the third tab, over the whole screen): credit packs, the Starter Pack and the VIP /
+-- Double XP passes (shared/Store). BUY only opens Roblox's purchase prompt: the server
+-- (StoreService) grants it once Roblox says it's paid for, then a banner says so. Items not set up
+-- yet (Id 0) say COMING SOON. Robux-store skins (Skins PassOnly) show "VIP PASS" / "STARTER PACK".
 -- Also: your credits next to the SHOP button in the lobby, the gun you hold there (◀ ▶ under SHOP,
 -- SettingsService), and a toast whenever you earn some
 -- ("+20 KILL"), anywhere. The server (ShopService) checks every purchase; the skins are in
 -- shared/Skins and painted by Combat/SkinPainter.
 
+local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local TextChatService = game:GetService("TextChatService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 local Attachments = require(ReplicatedStorage.Shared.Attachments)
 local Skins = require(ReplicatedStorage.Shared.Skins)
 local Sounds = require(ReplicatedStorage.Shared.Sounds)
+local Store = require(ReplicatedStorage.Shared.Store)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 local Effects = require(script.Parent.Parent.Combat.Effects)
 local GunModels = require(script.Parent.Parent.Combat.GunModels)
@@ -64,10 +71,16 @@ local toastList: Frame
 local skinGrid: ScrollingFrame
 local modsPanel: ScrollingFrame
 local viewButtons: { [string]: TextButton } = {}
+local itemList: Frame -- (left) and the preview (middle): hidden on the ROBUX tab
+local previewPanel: Frame
+local robuxPanel: ScrollingFrame
+local robuxHeading: TextLabel
+local storeButtons: { [string]: TextButton } = {} -- the BUY button on each ROBUX card, by Store Key
+local storeBanner: Frame
 
 local selectedItem = "Rifle"
 local selectedSkin = "" -- "" = the factory look
-local view = "Skins" -- the right side: "Skins" or "Mods" (attachments)
+local view = "Skins" -- the right side: "Skins" or "Mods" (attachments); "Robux": the store
 local trial: Attachments.Attachment? = nil -- MODS: an attachment you don't own, tried on in the preview
 local previewModel: Model? = nil
 local previewKey = ""
@@ -389,6 +402,225 @@ local function fillMods()
 	end
 end
 
+-- ─── Robux store ───────────────────────────────────────────────────────────────
+
+local function isPass(item: any): boolean
+	return item.GamePassId ~= nil
+end
+
+-- "VIP PASS", "STARTER PACK": where a Robux-store skin (Skins PassOnly) comes from
+local function storeLabel(key: string): string
+	local item = Store.ByKey[key]
+	if not item then
+		return "ROBUX STORE"
+	end
+	return string.upper(item.Name) .. (if isPass(item) then " PASS" else "")
+end
+
+-- Owned (a pass, or a one-time product like the Starter Pack): the server sets the attribute
+local function storeOwned(item: any): boolean
+	return (isPass(item) or item.OneTime == true) and Store.Owns(player, item.Key)
+end
+
+-- Opens Roblox's purchase prompt; StoreService grants it once it's paid for
+local function promptPurchase(item: any)
+	if storeOwned(item) then
+		return
+	end
+	if isPass(item) and item.GamePassId ~= 0 then
+		MarketplaceService:PromptGamePassPurchase(player, item.GamePassId)
+	elseif not isPass(item) and item.ProductId ~= 0 then
+		MarketplaceService:PromptProductPurchase(player, item.ProductId)
+	end
+end
+
+-- The BUY buttons: R$ price, OWNED, or COMING SOON (no Id pasted into shared/Store yet)
+local function refreshStore()
+	for key, button in storeButtons do
+		local item: any = Store.ByKey[key]
+		local id = if isPass(item) then item.GamePassId else item.ProductId
+		if storeOwned(item) then
+			setButtonText(button, "Owned")
+			MenuStyle.SetButtonColor(button, MenuStyle.Grey)
+		elseif id == 0 then
+			setButtonText(button, "Coming soon")
+			MenuStyle.SetButtonColor(button, MenuStyle.Grey)
+		else
+			setButtonText(button, `R$ {item.Robux}`)
+			MenuStyle.SetButtonColor(button, MenuStyle.Green)
+		end
+	end
+end
+
+-- A card with a BUY button along the bottom (tapping anywhere on it buys too)
+local function storeCard(parent: Instance, order: number, item: any): TextButton
+	local frame = Instance.new("TextButton")
+	frame.LayoutOrder = order
+	frame.AutoButtonColor = false
+	frame.Text = ""
+	frame.BackgroundColor3 = CARD
+	MenuStyle.Corner(frame, UDim.new(0, 12))
+	MenuStyle.Rim(frame, if item.Bonus or item.OneTime or isPass(item) then GOLD else Color3.fromRGB(60, 64, 76), 2)
+	frame.Parent = parent
+	local buy = MenuStyle.Button(frame, "", MenuStyle.Green, UDim2.new(1, -24, 0, 44), UDim2.new(0.5, 0, 1, -10), Vector2.new(0.5, 1))
+	buy.Activated:Connect(function()
+		promptPurchase(item)
+	end)
+	frame.Activated:Connect(function()
+		promptPurchase(item)
+	end)
+	storeButtons[item.Key] = buy
+	return frame
+end
+
+-- A credit pack: a pile of coins (bigger packs, bigger piles), the amount, a bonus badge
+local function packCard(parent: Instance, order: number, pack: Store.Product)
+	local frame = storeCard(parent, order, pack)
+	for i = 1, order do
+		coin(frame, 46, UDim2.new(0.5, (i - (order + 1) / 2) * 22, 0, 46 - (i % 2) * 6))
+	end
+	local amount = MenuStyle.Text(frame, formatCredits(pack.Credits), UDim2.new(1, -20, 0, 30), UDim2.new(0.5, 0, 0, 78), Vector2.new(0.5, 0))
+	amount.TextColor3 = Color3.fromRGB(255, 225, 120)
+	local label = MenuStyle.Text(frame, "CREDITS", UDim2.new(1, -20, 0, 16), UDim2.new(0.5, 0, 0, 108), Vector2.new(0.5, 0))
+	label.TextColor3 = Color3.fromRGB(170, 176, 190)
+	thinOutline(label, 1.5)
+	if pack.Bonus then
+		local badge = Instance.new("Frame")
+		badge.AnchorPoint = Vector2.new(1, 0)
+		badge.Position = UDim2.new(1, 6, 0, -6)
+		badge.Size = UDim2.fromOffset(92, 28)
+		badge.Rotation = 8
+		badge.BackgroundColor3 = MenuStyle.Red
+		MenuStyle.Corner(badge, UDim.new(1, 0))
+		MenuStyle.Rim(badge, MenuStyle.Outline, 2)
+		badge.Parent = frame
+		local text = MenuStyle.Text(badge, `+{pack.Bonus}% BONUS`, UDim2.new(1, -12, 0, 18), UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
+		thinOutline(text, 1.5)
+	end
+end
+
+-- The Starter Pack or a pass: its skin's paint chip (or a big "x2 XP"), the name, what you get
+local function perkCard(parent: Instance, order: number, item: any, lines: { string })
+	local frame = storeCard(parent, order, item)
+	local skin = item.Skin and Skins.ById[item.Skin]
+	if skin then
+		chip(frame, skin)
+	else
+		local art = Instance.new("Frame")
+		art.Position = UDim2.fromOffset(8, 8)
+		art.Size = UDim2.new(1, -16, 0, 78)
+		art.BackgroundColor3 = Color3.new(1, 1, 1)
+		MenuStyle.Corner(art, UDim.new(0, 8))
+		local shade = Instance.new("UIGradient")
+		shade.Color = ColorSequence.new(Color3.fromRGB(80, 150, 255), Color3.fromRGB(120, 60, 230))
+		shade.Rotation = 20
+		shade.Parent = art
+		art.Parent = frame
+		MenuStyle.Text(art, if item.XpMultiplier then `x{item.XpMultiplier} XP` else string.upper(item.Name), UDim2.new(1, -20, 0, 50), UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
+	end
+	local title = MenuStyle.Text(frame, string.upper(item.Name), UDim2.new(1, -20, 0, 28), UDim2.fromOffset(10, 92))
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.TextColor3 = GOLD
+	local info = Instance.new("TextLabel")
+	info.Position = UDim2.fromOffset(10, 124)
+	info.Size = UDim2.new(1, -20, 0, 54)
+	info.BackgroundTransparency = 1
+	info.FontFace = MenuStyle.Font
+	info.TextScaled = true
+	info.TextWrapped = true
+	info.TextXAlignment = Enum.TextXAlignment.Left
+	info.TextYAlignment = Enum.TextYAlignment.Top
+	info.TextColor3 = Color3.fromRGB(200, 205, 215)
+	info.Text = table.concat(lines, "\n")
+	info.Parent = frame
+	local limit = Instance.new("UITextSizeConstraint")
+	limit.MaxTextSize = 16
+	limit.Parent = info
+end
+
+-- Across the whole screen: a row of credit packs, then the Starter Pack and the passes
+local function buildRobuxPanel(content: Frame)
+	robuxHeading = MenuStyle.Text(content, "PAID WITH ROBUX · THANKS FOR SUPPORTING THE GAME!", UDim2.fromOffset(640, 26), UDim2.fromOffset(0, 90))
+	robuxHeading.TextXAlignment = Enum.TextXAlignment.Left
+	robuxHeading.TextColor3 = Color3.fromRGB(170, 176, 190)
+	thinOutline(robuxHeading, 1.5)
+	robuxHeading.Visible = false
+
+	robuxPanel = Instance.new("ScrollingFrame")
+	robuxPanel.Position = UDim2.fromOffset(0, 130)
+	robuxPanel.Size = UDim2.fromOffset(1100, 424)
+	robuxPanel.BackgroundTransparency = 1
+	robuxPanel.BorderSizePixel = 0
+	robuxPanel.ScrollBarThickness = 6
+	robuxPanel.ScrollBarImageColor3 = Color3.fromRGB(120, 124, 135)
+	robuxPanel.CanvasSize = UDim2.new()
+	robuxPanel.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	robuxPanel.Visible = false
+	robuxPanel.Parent = content
+	local layout = Instance.new("UIListLayout")
+	layout.Padding = UDim.new(0, 8)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Parent = robuxPanel
+	local padding = Instance.new("UIPadding")
+	padding.PaddingTop = UDim.new(0, 10)
+	padding.PaddingLeft = UDim.new(0, 8)
+	padding.PaddingBottom = UDim.new(0, 8)
+	padding.Parent = robuxPanel
+
+	local function section(order: number, heading: string, cellSize: Vector2): Frame
+		local label = MenuStyle.Text(robuxPanel, heading, UDim2.new(1, -16, 0, 26), UDim2.new())
+		label.TextXAlignment = Enum.TextXAlignment.Left
+		label.LayoutOrder = order
+		local row = Instance.new("Frame")
+		row.LayoutOrder = order + 1
+		row.Size = UDim2.new(1, -16, 0, 0)
+		row.AutomaticSize = Enum.AutomaticSize.Y
+		row.BackgroundTransparency = 1
+		row.Parent = robuxPanel
+		local grid = Instance.new("UIGridLayout")
+		grid.CellSize = UDim2.fromOffset(cellSize.X, cellSize.Y)
+		grid.CellPadding = UDim2.fromOffset(12, 12)
+		grid.SortOrder = Enum.SortOrder.LayoutOrder
+		grid.Parent = row
+		return row
+	end
+
+	local packs = section(1, "CREDITS", Vector2.new(258, 186))
+	for i, pack in Store.CreditPacks do
+		packCard(packs, i, pack)
+	end
+	local perks = section(3, "PACKS & PASSES", Vector2.new(348, 236))
+	local starter = Store.StarterPack
+	perkCard(perks, 1, starter, { starter.Description or "", "One per player" })
+	for i, pass in Store.Passes do
+		perkCard(perks, i + 1, pass, pass.Perks)
+	end
+end
+
+-- "VIP · THANK YOU!" across the top, whichever screen you're on (StoreService granted it)
+local function showStoreBanner(key: string)
+	local item: any = Store.ByKey[key]
+	if not item then
+		return
+	end
+	local label = storeBanner:FindFirstChild("Label") :: TextLabel
+	local sub = storeBanner:FindFirstChild("Sub") :: TextLabel
+	label.Text = `{string.upper(item.Name)} · THANK YOU!`
+	sub.Text = if isPass(item) then table.concat(item.Perks, " · ") else item.Description or `+{formatCredits(item.Credits)} credits`
+	local scale = storeBanner:FindFirstChildOfClass("UIScale") :: UIScale
+	storeBanner.Visible = true
+	scale.Scale = 0.4
+	TweenService:Create(scale, TweenInfo.new(0.4, Enum.EasingStyle.Back), { Scale = 1 }):Play()
+	Effects.Sound(Sounds.Shop.Buy, nil, Sounds.Shop.Volume, 1.1)
+	local shown = os.clock()
+	storeBanner:SetAttribute("Shown", shown)
+	task.delay(4, function()
+		if storeBanner:GetAttribute("Shown") == shown then
+			storeBanner.Visible = false
+		end
+	end)
+end
+
 -- ─── Refresh ───────────────────────────────────────────────────────────────────
 
 function refresh()
@@ -445,6 +677,10 @@ function refresh()
 			-- (a daily-reward streak skin)
 			status.Text = `{skin.DailyOnly}-DAY STREAK`
 			status.TextColor3 = Color3.fromRGB(255, 200, 120)
+		elseif skin and skin.PassOnly then
+			-- (comes with something on the ROBUX tab)
+			status.Text = storeLabel(skin.PassOnly)
+			status.TextColor3 = GOLD
 		else
 			price.Visible = true
 			status.Position = UDim2.new(0, 32, 1, -9)
@@ -478,6 +714,10 @@ function refresh()
 		setButtonText(actionButton, `{skin.DailyOnly}-day streak`)
 		MenuStyle.SetButtonColor(actionButton, MenuStyle.Grey)
 		hintLabel.Text = `A daily reward · claim the daily reward {skin.DailyOnly} days in a row (PROGRESS)`
+	elseif not owned and skin and skin.PassOnly then
+		setButtonText(actionButton, "Get it")
+		MenuStyle.SetButtonColor(actionButton, MenuStyle.Gold)
+		hintLabel.Text = `Comes with the {storeLabel(skin.PassOnly)} · see the ROBUX tab`
 	elseif not owned then
 		local affordable = amount ~= nil and amount >= skin.Price
 		setButtonText(actionButton, `Buy · {formatCredits(skin.Price)}`)
@@ -516,6 +756,15 @@ function refresh()
 			hintLabel.Text = if Attachments.SlotsFor[selectedItem] then "Tap one you own to put it on · tap another to try it on" else ""
 		end
 		fillMods()
+	end
+	-- ROBUX: the store across the whole screen (no item list or preview)
+	local robux = view == "Robux"
+	robuxPanel.Visible = robux
+	robuxHeading.Visible = robux
+	itemList.Visible = not robux
+	previewPanel.Visible = not robux
+	if robux then
+		refreshStore()
 	end
 	if screen.Visible then
 		rebuildPreview()
@@ -601,6 +850,7 @@ local function buildPreviewPanel(content: Frame)
 	MenuStyle.Corner(panel, UDim.new(0, 14))
 	MenuStyle.Rim(panel, Color3.fromRGB(60, 64, 76), 3)
 	panel.Parent = content
+	previewPanel = panel
 
 	-- A soft glow in the rarity's color behind the gun
 	glow = Instance.new("Frame")
@@ -660,7 +910,10 @@ local function buildPreviewPanel(content: Frame)
 			return
 		end
 		local skin = Skins.ById[selectedSkin]
-		if skin and not owns(skin.Id) then
+		if skin and skin.PassOnly and not owns(skin.Id) then
+			view = "Robux" -- (it comes with a pass / pack: show it)
+			refresh()
+		elseif skin and not owns(skin.Id) then
 			local amount = credits()
 			if amount and amount >= skin.Price and not skin.TrackOnly and not skin.DailyOnly then
 				Shop:FireServer("Buy", skin.Id, selectedItem)
@@ -762,6 +1015,7 @@ local function build()
 	tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	tabLayout.Padding = UDim.new(0, 6)
 	tabLayout.Parent = tabList
+	itemList = tabList
 	for i, item in Skins.Items do
 		tabs[item] = tab(item, i)
 		tabs[item].Parent = tabList
@@ -769,9 +1023,11 @@ local function build()
 
 	buildPreviewPanel(content)
 
-	-- Right: SKINS / MODS, then the skins or the attachment slots
-	for i, name in { "Skins", "Mods" } do
-		local button = MenuStyle.Button(content, name, MenuStyle.Grey, UDim2.fromOffset(206, 38), UDim2.fromOffset(672 + (i - 1) * 216, 84))
+	buildRobuxPanel(content)
+
+	-- Right: SKINS / MODS / ROBUX, then the skins, the attachment slots, or the store
+	for i, name in { "Skins", "Mods", "Robux" } do
+		local button = MenuStyle.Button(content, name, MenuStyle.Grey, UDim2.fromOffset(136, 38), UDim2.fromOffset(672 + (i - 1) * 146, 84))
 		button.Activated:Connect(function()
 			view = name
 			trial = nil
@@ -847,6 +1103,24 @@ local function build()
 	toastLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	toastLayout.Padding = UDim.new(0, 4)
 	toastLayout.Parent = toastList
+
+	-- Robux purchase banner (showStoreBanner), top middle
+	storeBanner = Instance.new("Frame")
+	storeBanner.AnchorPoint = Vector2.new(0.5, 0)
+	storeBanner.Position = UDim2.new(0.5, 0, 0, 70)
+	storeBanner.Size = UDim2.fromOffset(560, 86)
+	storeBanner.BackgroundColor3 = MenuStyle.Panel
+	storeBanner.Visible = false
+	MenuStyle.Corner(storeBanner, UDim.new(0, 14))
+	MenuStyle.Rim(storeBanner, GOLD, 4)
+	Instance.new("UIScale").Parent = storeBanner
+	storeBanner.Parent = gui
+	local bannerLabel = MenuStyle.Text(storeBanner, "", UDim2.new(1, -30, 0, 40), UDim2.new(0.5, 0, 0, 10), Vector2.new(0.5, 0))
+	bannerLabel.Name = "Label"
+	bannerLabel.TextColor3 = GOLD
+	local bannerSub = MenuStyle.Text(storeBanner, "", UDim2.new(1, -30, 0, 22), UDim2.new(0.5, 0, 0, 54), Vector2.new(0.5, 0))
+	bannerSub.Name = "Sub"
+	thinOutline(bannerSub, 1.5)
 end
 
 -- "+20  KILL" with a coin; pops in, then fades away
@@ -945,13 +1219,29 @@ function ShopMenu.Start()
 	for _, attribute in { "Credits", "OwnedSkins", "EquippedSkins", "DataOffline", "IsDev", "Attachments", "OwnedAttachments" } do
 		player:GetAttributeChangedSignal(attribute):Connect(refresh)
 	end
+	for key in Store.ByKey do
+		player:GetAttributeChangedSignal(key):Connect(refresh) -- (now owns a pass / the Starter Pack)
+	end
 	Shop.OnClientEvent:Connect(function(event, a, b)
 		if event == "Reward" and typeof(a) == "number" and typeof(b) == "string" then
 			toast(a, b)
 		elseif event == "Bought" and typeof(a) == "string" then
 			bought(a)
+		elseif event == "Store" and typeof(a) == "string" then
+			showStoreBanner(a)
 		end
 	end)
+
+	-- VIPs (the VIP pass: the server sets their "VIP" attribute) get a gold [VIP] tag in chat
+	TextChatService.OnIncomingMessage = function(message: TextChatMessage)
+		local properties = Instance.new("TextChatMessageProperties")
+		local source = message.TextSource
+		local sender = if source then Players:GetPlayerByUserId(source.UserId) else nil
+		if sender and Store.Owns(sender, "VIP") then
+			properties.PrefixText = `<font color="#FFC43C">[VIP]</font> {message.PrefixText}`
+		end
+		return properties
+	end
 
 	UserInputService.InputChanged:Connect(function(input)
 		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then

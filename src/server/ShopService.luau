@@ -11,8 +11,11 @@
 --                                               "Scope"; nil id = take it off)
 --   Shop:FireClient(player, "Reward", amount, reason)   credits earned (toast on screen)
 --   Shop:FireClient(player, "Bought", id)               a purchase went through (skin or attachment)
+--   Shop:FireClient(player, "Store", key)               a Robux purchase was granted (StoreService)
 -- Credits are earned in matches (RoundService, ObjectiveService call Award; amounts in
 -- MatchConfig.Credits). Ownership is checked here, never trusted from the client.
+-- Credits for match reasons (MATCH_REASONS) are multiplied for VIPs (StoreService sets the hook);
+-- challenges, daily / level rewards and dev gifts aren't.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -27,8 +30,30 @@ local ShopService = {}
 
 local lastRequest: { [Player]: number } = {}
 
+-- The reasons RoundService / ObjectiveService give for credits earned playing a match
+local MATCH_REASONS = {
+	["KILL"] = true,
+	["HEADSHOT"] = true,
+	["DEFUSER PLANTED"] = true,
+	["DEFUSER DISABLED"] = true,
+	["ROUND WON"] = true,
+	["MATCH WON"] = true,
+	["MATCH COMPLETE"] = true,
+}
+local matchMultiplier = function(_player: Player): number
+	return 1
+end
+
+-- StoreService: how much a player's match credits are multiplied by (the VIP pass)
+function ShopService.SetMatchMultiplier(multiplier: (Player) -> number)
+	matchMultiplier = multiplier
+end
+
 -- Gives a player credits and tells them why ("KILL", "ROUND WON"...)
 function ShopService.Award(player: Player, amount: number, reason: string)
+	if MATCH_REASONS[reason] then
+		amount = math.floor(amount * matchMultiplier(player) + 0.5)
+	end
 	if amount <= 0 then
 		return
 	end
@@ -54,8 +79,9 @@ end
 local function buy(player: Player, id: any, item: any)
 	local skin = typeof(id) == "string" and Skins.ById[id]
 	local data = PlayerData.Get(player)
-	-- (level-reward skins only come from the reward track: ProgressService)
-	if not skin or skin.DevOnly or skin.OnlyFor or skin.TrackOnly or skin.DailyOnly or not data or data.Skins[skin.Id] or data.Credits < skin.Price then
+	-- (level-reward skins only come from the reward track: ProgressService; Robux-store ones from
+	-- StoreService)
+	if not skin or skin.DevOnly or skin.OnlyFor or skin.TrackOnly or skin.DailyOnly or skin.PassOnly or not data or data.Skins[skin.Id] or data.Credits < skin.Price then
 		return
 	end
 	PlayerData.Update(player, function(d)
