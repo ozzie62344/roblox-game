@@ -59,6 +59,19 @@ local SPOTS: { [string]: { { any } } } = {
 		{ "GALLERY", Vector3.new(-16, 21.9, -13.5), Vector3.new(0, 0, 1), Vector3.new(4, 13.4, 8) },
 		{ "CELLAR HALL", Vector3.new(16, -2.6, -0.5), Vector3.new(0, 0, -1), Vector3.new(-6, -11.6, -17) },
 	},
+	Bank = {
+		{ "MAIN STREET", Vector3.new(-44, 9.4, -40.5), Vector3.new(0, 0, -1), Vector3.new(-30, 0.15, -80) },
+		{ "SIDE STREET", Vector3.new(-56.5, 9.4, -8), Vector3.new(-1, 0, 0), Vector3.new(-82, 0.15, -2) },
+		{ "BACK ALLEY", Vector3.new(-22, 9.4, 40.5), Vector3.new(0, 0, 1), Vector3.new(-14, 0.15, 80) },
+		{ "PARKING LOT", Vector3.new(56.5, 9.4, 20), Vector3.new(1, 0, 0), Vector3.new(96, 0.15, 4) },
+		{ "GARAGE", Vector3.new(40, -3.2, 3.5), Vector3.new(0, 0, -1), Vector3.new(52, -11.6, -24) },
+		{ "LOBBY", Vector3.new(-23.5, 10.4, -37.5), Vector3.new(1, 0, 0), Vector3.new(8, 0.4, -16) },
+		{ "TELLERS", Vector3.new(-2, 9.4, 5.5), Vector3.new(0, 0, -1), Vector3.new(-4, 0.4, -10) },
+		{ "WEST HALL", Vector3.new(-25.5, 9.4, 39.5), Vector3.new(0, 0, -1), Vector3.new(-30, 0.4, -8) },
+		{ "GALLERY", Vector3.new(18, 21.9, -12.5), Vector3.new(0, 0, -1), Vector3.new(-10, 8, -34) },
+		{ "VAULT LOBBY", Vector3.new(8.5, -2.6, -13.5), Vector3.new(0, 0, 1), Vector3.new(14, -11.6, 30) },
+		{ "BASEMENT", Vector3.new(-30, -2.6, -39.5), Vector3.new(0, 0, 1), Vector3.new(-27, -11.6, 10) },
+	},
 }
 
 -- Where the lens is (CamsController looks out of the same point)

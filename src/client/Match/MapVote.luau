@@ -23,6 +23,7 @@ local ART = {
 	House = { Color3.fromRGB(120, 60, 30), Color3.fromRGB(235, 160, 70) },
 	Warehouse = { Color3.fromRGB(45, 60, 80), Color3.fromRGB(230, 170, 40) },
 	Chalet = { Color3.fromRGB(35, 65, 90), Color3.fromRGB(170, 205, 230) },
+	Bank = { Color3.fromRGB(32, 64, 56), Color3.fromRGB(214, 180, 96) },
 	TestArena = { Color3.fromRGB(40, 50, 70), Color3.fromRGB(120, 150, 190) },
 	Other = { Color3.fromRGB(40, 70, 50), Color3.fromRGB(110, 190, 120) },
 }

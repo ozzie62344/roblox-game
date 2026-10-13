@@ -361,6 +361,7 @@ local function build()
 		{ value = "House", label = "House" },
 		{ value = "Warehouse", label = "Warehouse" },
 		{ value = "Chalet", label = "Chalet" },
+		{ value = "Bank", label = "Bank" },
 		{ value = "TestArena", label = "Test Arena" },
 	}, function()
 		return MatchState:GetAttribute("Map") or "House"

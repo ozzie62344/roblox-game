@@ -14,6 +14,7 @@ local Dummies = require(script.Parent.Dummies)
 local DestructionService = require(script.Parent.DestructionService)
 local FortifyService = require(script.Parent.FortifyService)
 local TestArena = require(script.Parent.TestArena)
+local Bank = require(script.Parent.Maps.Bank)
 local Chalet = require(script.Parent.Maps.Chalet)
 local House = require(script.Parent.Maps.House)
 local Lobby = require(script.Parent.Maps.Lobby)
@@ -28,10 +29,11 @@ local builders: { [string]: () -> Model } = {
 	House = House.Build,
 	Warehouse = Warehouse.Build,
 	Chalet = Chalet.Build,
+	Bank = Bank.Build,
 }
 
 -- The maps players vote between before a match (the dev panel can also load the TestArena)
-MapService.MapNames = { "House", "Warehouse", "Chalet" }
+MapService.MapNames = { "House", "Warehouse", "Chalet", "Bank" }
 
 function MapService.Load(name: string): boolean
 	if name ~= "TestArena" and not builders[name] then
