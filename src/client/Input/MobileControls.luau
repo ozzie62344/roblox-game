@@ -269,15 +269,7 @@ local SPECS: { Spec } = {
 		end,
 	},
 
-	{
-		id = "HideCards", label = "HIDE\nCARDS", side = "Center", x = 1.4, y = 0.75, size = 1.0, modes = { "Other" },
-		press = function()
-			state.draftOpen = false -- (look around during the setup; LOADOUT brings them back)
-		end,
-		visible = function()
-			return state.draftOpen and state.loadoutWindow
-		end,
-	},
+	-- (the operator select screen has its own HIDE button: LOADOUT above brings it back)
 
 	-- Drone / defender cameras / spectating
 	{

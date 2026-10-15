@@ -1,9 +1,11 @@
 -- Defenders pick which site pair to defend during the pre-round freeze (Attack / Defend, on maps
--- with site pairs): a row of buttons under the top bar. Clicking one moves the whole team there
--- (RoundService); the last pick counts. The cursor is free while the loadout cards are open;
--- otherwise Left Alt frees it. Attackers find out where when the round goes live.
--- Attackers get the same row for their spawn point instead ("SPAWN: Front Street / Back Alley /
--- Side Drive", MatchState "AttackSpawns"): each picks their own and is moved there right away.
+-- with site pairs). Clicking one moves the whole team there (RoundService); the last pick counts.
+-- Attackers pick their spawn point instead ("Front Street / Back Alley / Side Drive", MatchState
+-- "AttackSpawns"): each picks their own and is moved there right away.
+-- The operator select screen (LoadoutPicker) shows these choices in its own panel, through
+-- SitePicker.Current / SitePicker.Choose. While that screen is hidden (Left Alt / HIDE) the same
+-- choices sit in a row of buttons under the top bar instead; Left Alt frees the mouse for them.
+-- Attackers find out where the defenders are when the round goes live.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -19,6 +21,12 @@ local player = Players.LocalPlayer
 
 local SitePicker = {}
 
+-- What you can pick right now: Kind "Site" (defenders, for the team) or "Spawn" (attackers, for
+-- yourself); Options in button order (Detail: the pair's rooms); Picked: the current pick; Key
+-- changes whenever the options do (the map streams in), so a UI knows to remake its buttons
+export type Option = { Id: string, Detail: string? }
+export type Choice = { Kind: string, Options: { Option }, Picked: string?, Key: string }
+
 local BUTTON_COLOR = Color3.fromRGB(28, 30, 36)
 local PICKED_COLOR = Color3.fromRGB(50, 110, 220)
 
@@ -26,7 +34,8 @@ local bar: Frame
 local row: Frame
 local title: TextLabel
 local buttons: { [string]: TextButton } = {}
-local builtFrom: any = -1 -- what the buttons were made from (site count, or the spawn list)
+local current: Choice? = nil
+local builtFrom = "" -- the Key the bar's buttons were made from
 
 -- "Site" (defenders), "Spawn" (attackers) or nil (nothing to pick right now)
 local function shouldShow(): string?
@@ -66,6 +75,43 @@ local function getPairs(): { [string]: string }
 	return rooms
 end
 
+local function makeOptions(kind: string): { Option }
+	local options = {}
+	if kind == "Spawn" then
+		for _, name in string.split(MatchState:GetAttribute("AttackSpawns") or "", ",") do
+			if name ~= "" then
+				table.insert(options, { Id = name })
+			end
+		end
+	else
+		for pair, rooms in getPairs() do
+			table.insert(options, { Id = pair, Detail = rooms })
+		end
+	end
+	table.sort(options, function(a, b)
+		return a.Id < b.Id
+	end)
+	return options
+end
+
+-- What there is to pick right now (nil: nothing)
+function SitePicker.Current(): Choice?
+	return current
+end
+
+-- Pick `id` from the current choice
+function SitePicker.Choose(id: string)
+	local choice = current
+	if not choice then
+		return
+	end
+	if choice.Kind == "Spawn" then
+		PickSite:FireServer(id, "Spawn")
+	else
+		PickSite:FireServer(id)
+	end
+end
+
 local function clearButtons()
 	for _, button in buttons do
 		button:Destroy()
@@ -73,18 +119,8 @@ local function clearButtons()
 	table.clear(buttons)
 end
 
-local function makeButtons(kind: string)
-	local rooms = if kind == "Site" then getPairs() else {}
-	local names = {}
-	if kind == "Spawn" then
-		names = string.split(MatchState:GetAttribute("AttackSpawns") or "", ",")
-	else
-		for pair in rooms do
-			table.insert(names, pair)
-		end
-	end
-	table.sort(names)
-	for i, pair in names do
+local function makeButtons(choice: Choice)
+	for i, option in choice.Options do
 		local button = Instance.new("TextButton")
 		button.Size = UDim2.fromOffset(170, 50)
 		button.LayoutOrder = i
@@ -94,20 +130,15 @@ local function makeButtons(kind: string)
 		button.TextSize = 15
 		button.TextColor3 = Color3.new(1, 1, 1)
 		button.RichText = true
-		button.Text = if kind == "Spawn" then string.upper(pair)
-			else `{string.upper(pair)}\n<font size="12" color="#AAB0BC">{rooms[pair]}</font>`
+		button.Text = if option.Detail then `{string.upper(option.Id)}\n<font size="12" color="#AAB0BC">{option.Detail}</font>` else string.upper(option.Id)
 		local corner = Instance.new("UICorner")
 		corner.CornerRadius = UDim.new(0, 8)
 		corner.Parent = button
 		button.Activated:Connect(function()
-			if kind == "Spawn" then
-				PickSite:FireServer(pair, "Spawn")
-			else
-				PickSite:FireServer(pair)
-			end
+			SitePicker.Choose(option.Id)
 		end)
 		button.Parent = row
-		buttons[pair] = button
+		buttons[option.Id] = button
 	end
 end
 
@@ -151,35 +182,47 @@ end
 local function update()
 	local kind = shouldShow()
 	if not kind then
-		if bar.Visible or builtFrom ~= -1 then
+		if current then
+			current = nil
 			bar.Visible = false
 			clearButtons() -- the next round may be on a fresh map
-			builtFrom = -1
+			builtFrom = ""
 		end
 		return
 	end
 	-- The map streams in (StreamingEnabled): far-off sites arrive a few seconds after the phase
-	-- changes, so remake the buttons whenever more of them show up
-	local source: any
+	-- changes, so remake the options whenever more of them show up
+	local key: string
 	if kind == "Spawn" then
-		source = "Spawn:" .. MatchState:GetAttribute("AttackSpawns")
+		key = "Spawn:" .. MatchState:GetAttribute("AttackSpawns")
 	else
 		local map = Workspace:FindFirstChild("Map")
 		local objectives = map and map:FindFirstChild("Objectives")
-		source = if objectives then #objectives:GetChildren() else 0
+		key = "Site:" .. (if objectives then #objectives:GetChildren() else 0)
 	end
-	if source ~= builtFrom then
+	if not current or current.Key ~= key then
+		current = { Kind = kind, Options = makeOptions(kind), Picked = nil, Key = key }
+	end
+	local choice = current :: Choice
+	local picked = if kind == "Spawn" then player:GetAttribute("SpawnPick") else MatchState:GetAttribute("SitePair")
+	choice.Picked = if typeof(picked) == "string" then picked else nil
+
+	-- The operator select screen shows the same choices while it's open: no second copy
+	if state.draftOpen or #choice.Options == 0 then
+		bar.Visible = false
+		return
+	end
+	if builtFrom ~= key then
 		clearButtons()
-		makeButtons(kind)
-		builtFrom = source
+		makeButtons(choice)
+		builtFrom = key
 		local how = if state.touchControls then "TAP ONE" else "CLICK  (LEFT ALT FREES THE MOUSE)"
 		title.Text = if kind == "Spawn" then `PICK YOUR SPAWN  ·  {how}` else `PICK A SITE TO DEFEND  ·  {how}`
 		title.TextColor3 = if kind == "Spawn" then Color3.fromRGB(255, 150, 110) else Color3.fromRGB(120, 175, 255)
 	end
-	bar.Visible = next(buttons) ~= nil
-	local picked = if kind == "Spawn" then player:GetAttribute("SpawnPick") else MatchState:GetAttribute("SitePair")
-	for pair, button in buttons do
-		button.BackgroundColor3 = if pair == picked then PICKED_COLOR else BUTTON_COLOR
+	bar.Visible = true
+	for id, button in buttons do
+		button.BackgroundColor3 = if id == choice.Picked then PICKED_COLOR else BUTTON_COLOR
 	end
 end
 
