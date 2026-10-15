@@ -26,7 +26,7 @@ local player = Players.LocalPlayer
 
 local MusicController = {}
 
-type Track = { Id: string, Volume: number, Pitch: number?, Looped: boolean? }
+type Track = { Id: string, Volume: number, Pitch: number?, Looped: boolean?, Name: string? }
 type Voice = {
 	sound: Sound,
 	context: string,
@@ -53,6 +53,8 @@ local stingSound: Sound? = nil
 local stingDone = true
 local stingStartedAt = 0
 local lastSting: { [string]: number } = {}
+local forcedTrack: number? = nil -- (dev panel: the next track to start, instead of the shuffle)
+local forcedContext: string? = nil -- (dev panel: play this context whatever the game is doing; "Off" = silence)
 
 local function playable(track: any): boolean
 	return typeof(track) == "table" and typeof(track.Id) == "string" and track.Id ~= ""
@@ -75,6 +77,14 @@ local function nextTrack(name: string): Track?
 	local list = playableTracks(name)
 	if #list == 0 then
 		return nil
+	end
+	if forcedTrack and Music.Contexts[name][forcedTrack] then
+		local index = forcedTrack
+		forcedTrack = nil
+		if playlists[name] then
+			playlists[name].last = index
+		end
+		return Music.Contexts[name][index]
 	end
 	local playlist = playlists[name]
 	if not playlist or playlist.position >= #playlist.order or #playlist.order ~= #list then
@@ -132,6 +142,9 @@ end
 
 -- Which music fits right now, and how loud (1 = as set in Music)
 local function pickContext(): (string?, number)
+	if forcedContext then
+		return if forcedContext == "Off" then nil else forcedContext, 1
+	end
 	local phase = MatchState:GetAttribute("Phase") or "Waiting"
 	local location = player:GetAttribute("Location")
 	if phase == "Vote" then
@@ -290,6 +303,67 @@ local function update(dt: number)
 			end
 		end
 	end
+end
+
+-- ─── Dev panel ─────────────────────────────────────────────────────────────────
+
+-- The voice that's playing now (the newest one not fading out)
+local function liveVoice(): Voice?
+	for i = #voices, 1, -1 do
+		if voices[i].target == 1 then
+			return voices[i]
+		end
+	end
+	return nil
+end
+
+-- Jump `by` tracks through the current context's list (wraps round), with a quick crossfade
+function MusicController.Skip(by: number)
+	local name = currentContext
+	if not name then
+		return
+	end
+	local list = playableTracks(name)
+	if #list == 0 then
+		return
+	end
+	local voice = liveVoice()
+	local current = voice and table.find(Music.Contexts[name], voice.track) or list[1]
+	local at = table.find(list, current) or 1
+	forcedTrack = list[(at - 1 + by) % #list + 1]
+	for _, other in voices do
+		other.advanced = true
+		other.target = 0
+		other.fadeTime = 0.6
+	end
+	startVoice(name, 0.6)
+end
+
+-- Play a context ("Lobby" / "Prep" / "Tension" / "Off") whatever the game is doing; nil = automatic
+function MusicController.Force(name: string?)
+	forcedContext = name
+end
+
+function MusicController.Forced(): string?
+	return forcedContext
+end
+
+-- What's playing: "Lobby 2/4 · Lofi Electronic Chill", or "silent"
+function MusicController.NowPlaying(): string
+	local voice = liveVoice()
+	if not voice then
+		return "silent"
+	end
+	local list = playableTracks(voice.context)
+	local index = table.find(Music.Contexts[voice.context], voice.track) or 0
+	local place = table.find(list, index) or 0
+	return `{voice.context} {place}/{#list} · {voice.track.Name or voice.track.Id}`
+end
+
+-- Play a sting right now (skips the repeat guard)
+function MusicController.Preview(name: string)
+	lastSting[name] = nil
+	MusicController.Sting(name)
 end
 
 function MusicController.Start()

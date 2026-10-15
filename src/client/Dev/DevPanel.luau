@@ -9,6 +9,7 @@ local Weapons = require(ReplicatedStorage.Shared.Weapons)
 local state = require(script.Parent.Parent.PlayerState)
 local WeaponController = require(script.Parent.Parent.Combat.WeaponController)
 local Actions = require(script.Parent.Parent.Input.Actions)
+local MusicController = require(script.Parent.Parent.Audio.MusicController)
 
 local DevAction = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("DevAction") :: RemoteEvent
 local MatchState = ReplicatedStorage:WaitForChild("MatchState")
@@ -444,8 +445,89 @@ local function build()
 		DevAction:FireServer("StopMatch")
 	end)
 
+	-- Music: what's playing, skip through the tracks, force a context, hear the stings (all on
+	-- this screen only)
+	heading(panel, "MUSIC (only you hear these changes)", 30)
+	local music = Instance.new("Frame")
+	music.Size = UDim2.new(1, 0, 0, 0)
+	music.AutomaticSize = Enum.AutomaticSize.Y
+	music.LayoutOrder = 31
+	music.BackgroundTransparency = 1
+	music.Parent = panel
+	local musicLayout = Instance.new("UIListLayout")
+	musicLayout.Padding = UDim.new(0, 4)
+	musicLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	musicLayout.Parent = music
+	local songRow = Instance.new("Frame")
+	songRow.Size = UDim2.new(1, 0, 0, 30)
+	songRow.LayoutOrder = 1
+	songRow.BackgroundTransparency = 1
+	songRow.Parent = music
+	local previousSong = Instance.new("TextButton")
+	previousSong.Size = UDim2.new(0, 30, 1, 0)
+	styleButton(previousSong, "◀")
+	previousSong.Parent = songRow
+	local nextSong = Instance.new("TextButton")
+	nextSong.AnchorPoint = Vector2.new(1, 0)
+	nextSong.Position = UDim2.fromScale(1, 0)
+	nextSong.Size = UDim2.new(0, 30, 1, 0)
+	styleButton(nextSong, "▶")
+	nextSong.Parent = songRow
+	local nowPlaying = Instance.new("TextLabel")
+	nowPlaying.Position = UDim2.fromOffset(34, 0)
+	nowPlaying.Size = UDim2.new(1, -68, 1, 0)
+	nowPlaying.BackgroundTransparency = 1
+	nowPlaying.Font = Enum.Font.GothamMedium
+	nowPlaying.TextSize = 12
+	nowPlaying.TextColor3 = Color3.new(1, 1, 1)
+	nowPlaying.TextTruncate = Enum.TextTruncate.AtEnd
+	nowPlaying.Parent = songRow
+	local function showSong()
+		nowPlaying.Text = MusicController.NowPlaying()
+	end
+	previousSong.Activated:Connect(function()
+		MusicController.Skip(-1)
+		task.delay(0.1, showSong)
+	end)
+	nextSong.Activated:Connect(function()
+		MusicController.Skip(1)
+		task.delay(0.1, showSong)
+	end)
+	choiceGrid(music, 2, {
+		{ value = "Auto", label = "Auto" },
+		{ value = "Lobby", label = "Lobby songs" },
+		{ value = "Prep", label = "Prep track" },
+		{ value = "Tension", label = "Tension" },
+		{ value = "Off", label = "Off" },
+	}, function()
+		return MusicController.Forced() or "Auto"
+	end, function(value)
+		MusicController.Force(if value == "Auto" then nil else value)
+		refreshAll()
+		task.delay(0.1, showSong)
+	end)
+	heading(music, "Hear a sting:", 3)
+	local stings = {}
+	for _, name in { "RoundStart", "RoundWin", "RoundLoss", "MatchWin", "MatchLoss", "MVP", "LevelUp", "RankUp", "RankDown" } do
+		table.insert(stings, { value = name, label = name })
+	end
+	choiceGrid(music, 4, stings, function()
+		return ""
+	end, function(name)
+		MusicController.Preview(name)
+	end)
+	-- (the label keeps up while the panel is open: tracks change on their own too)
+	task.spawn(function()
+		while true do
+			if panel.Visible then
+				showSong()
+			end
+			task.wait(0.5)
+		end
+	end)
+
 	-- MouseUnlock frees the cursor while the panel is open (state.devPanelOpen)
-	local close = button(panel, "Close", 30)
+	local close = button(panel, "Close", 32)
 	close.BackgroundColor3 = Color3.fromRGB(120, 50, 50)
 	close.Activated:Connect(function()
 		setOpen(false)
