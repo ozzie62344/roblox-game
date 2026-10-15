@@ -20,6 +20,7 @@ local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local Ranked = require(ReplicatedStorage.Shared.Ranked)
 local Skins = require(ReplicatedStorage.Shared.Skins)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
+local MusicController = require(script.Parent.Parent.Audio.MusicController)
 local GunModels = require(script.Parent.Parent.Combat.GunModels)
 local state = require(script.Parent.Parent.PlayerState)
 local MenuStyle = require(script.Parent.MenuStyle)
@@ -286,6 +287,7 @@ local function buildRanked(content: Frame, result: RankedResult)
 	if event == "RANKED" then
 		return
 	end
+	MusicController.Sting(if event == "RANK DOWN" then "RankDown" else "RankUp") -- Music: rank up (or placed) / rank down sting
 	local ribbon = Instance.new("Frame")
 	ribbon.AnchorPoint = Vector2.new(0.5, 0.5)
 	ribbon.Position = UDim2.fromScale(0.5, 0.42)
@@ -341,6 +343,9 @@ local function open(results: Results)
 		end
 	end
 	local won = mine ~= nil and mine.team == results.winner
+	if mine then
+		MusicController.Sting(if won then "MatchWin" else "MatchLoss") -- Music: VICTORY / DEFEAT sting (first: the rank and MVP ones queue behind it)
+	end
 	local title = if not mine then `{string.upper(results.winner)} WINS` elseif won then "VICTORY" else "DEFEAT"
 	local heading = MenuStyle.Text(content, title, UDim2.fromOffset(600, 54), UDim2.new(0.5, 0, 0, 0), Vector2.new(0.5, 0))
 	heading.TextColor3 = if not mine then teamColor(results.winner) elseif won then MenuStyle.Gold else MenuStyle.Red
@@ -361,6 +366,9 @@ local function open(results: Results)
 	body.BackgroundTransparency = 1
 	body.Parent = content
 	local frameStep = buildMvp(body, results, mvpRow)
+	if results.mvp == player.UserId then
+		MusicController.Sting("MVP") -- Music: you're the MVP
+	end
 
 	local board = Instance.new("Frame")
 	board.Position = UDim2.fromOffset(340, 0)

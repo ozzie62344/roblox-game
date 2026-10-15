@@ -11,6 +11,7 @@ local Workspace = game:GetService("Workspace")
 
 local GameRules = require(ReplicatedStorage.Shared.GameRules)
 local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
+local MusicController = require(script.Parent.Parent.Audio.MusicController)
 
 local MatchState = ReplicatedStorage:WaitForChild("MatchState")
 local KillFeed = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("KillFeed") :: RemoteEvent
@@ -163,6 +164,23 @@ local function showBanner(message: string)
 	fade:Play()
 end
 
+-- Music: a sting with the round's banners (MusicController), for players on a team. The live
+-- round's banner (RoundService sets Phase before Banner) → RoundStart; "BLUE WINS · ..." →
+-- RoundWin / RoundLoss (draws and halftime get none; the match's last round is MatchResults')
+local function roundSting(message: string)
+	local phase = MatchState:GetAttribute("Phase")
+	local team = player.Team
+	if not team or not table.find(MatchConfig.TeamOrder, team.Name) then
+		return
+	end
+	if phase == "Action" then
+		MusicController.Sting("RoundStart")
+	elseif phase == "PostRound" and string.find(message, " WINS · ", 1, true) then
+		local won = string.sub(message, 1, #team.Name + 5) == string.upper(team.Name) .. " WINS"
+		MusicController.Sting(if won then "RoundWin" else "RoundLoss")
+	end
+end
+
 local function colorHex(color: Color3): string
 	return "#" .. color:ToHex()
 end
@@ -276,6 +294,7 @@ function MatchHud.Start()
 	build()
 	MatchState:GetAttributeChangedSignal("Banner"):Connect(function()
 		showBanner(MatchState:GetAttribute("Banner") or "")
+		roundSting(MatchState:GetAttribute("Banner") or "") -- Music: RoundStart / RoundWin / RoundLoss sting
 	end)
 	KillFeed.OnClientEvent:Connect(addKillFeedEntry)
 	RunService.RenderStepped:Connect(update)

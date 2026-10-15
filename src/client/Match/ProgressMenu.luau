@@ -29,6 +29,7 @@ local Ranked = require(ReplicatedStorage.Shared.Ranked)
 local Skins = require(ReplicatedStorage.Shared.Skins)
 local Sounds = require(ReplicatedStorage.Shared.Sounds)
 local Effects = require(script.Parent.Parent.Combat.Effects)
+local MusicController = require(script.Parent.Parent.Audio.MusicController)
 local state = require(script.Parent.Parent.PlayerState)
 local MenuStyle = require(script.Parent.MenuStyle)
 
@@ -366,6 +367,7 @@ local function updateSummary(dt: number)
 		shownLevel = level
 		stamp(summaryStamp)
 		Effects.Sound(Sounds.Shop.Buy, nil, Sounds.Shop.Volume, 1.25)
+		MusicController.Sting("LevelUp") -- Music: level up sting (the XP card's LEVEL UP! stamp)
 	end
 	showLevel(summaryBar, shownXp)
 	summaryGain.Text = `+{formatNumber(math.max(0, target - start))} XP`
@@ -1095,6 +1097,7 @@ function ProgressMenu.Start()
 			if not summaryOpen then -- (the XP card stamps it itself)
 				showBanner("LEVEL UP!", `LEVEL {a} · {unlockText(b, a)}`, Color3.fromRGB(120, 255, 100))
 				Effects.Sound(Sounds.Shop.Buy, nil, Sounds.Shop.Volume, 1.25)
+				MusicController.Sting("LevelUp") -- Music: level up sting (the LEVEL UP! banner)
 			end
 		elseif event == "Challenge" and typeof(a) == "string" then
 			local challenge = Progression.ChallengeById[a]
