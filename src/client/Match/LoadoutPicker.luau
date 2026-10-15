@@ -22,6 +22,7 @@ local state = require(script.Parent.Parent.PlayerState)
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local LoadoutOffer = Remotes:WaitForChild("LoadoutOffer") :: RemoteEvent
 local DraftPick = Remotes:WaitForChild("DraftPick") :: RemoteEvent
+local MatchState = ReplicatedStorage:WaitForChild("MatchState")
 
 local player = Players.LocalPlayer
 
@@ -35,6 +36,7 @@ local DIM = Color3.fromRGB(95, 98, 106)
 local GADGET_COLOR = Color3.fromRGB(120, 190, 255)
 local TAKEN_COLOR = Color3.fromRGB(255, 170, 70)
 local CARD_WIDTH, CARD_HEIGHT, CARD_GAP = 178, 360, 12
+local CARDS_TOP = 72 -- title, timer bar and your team's picks above the cards
 local PICK_KEYS = { Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four, Enum.KeyCode.Five, Enum.KeyCode.Six }
 
 type OfferEntry = { Id: string, Weapons: { string }, TakenBy: string? }
@@ -52,7 +54,9 @@ local scale: UIScale
 local title: TextLabel
 local timerBar: Frame
 local cardRow: Frame
+local teamLine: TextLabel
 local hint: TextLabel
+local lastPhase: string? = nil
 local cards: { GuiObject } = {}
 local offer: Offer? = nil
 local deadline = 0
@@ -184,7 +188,10 @@ local function makeCard(index: number, entry: OfferEntry): TextButton?
 		textLabel(card, `[{index}]`, 12, text, 0)
 	end
 	textLabel(card, string.upper(operator.Name), 24, if blockedBy then DIM else operator.Color, 1)
-	textLabel(card, operator.Bio, 12, text, 2).Size = UDim2.new(1, 0, 0, 44)
+	-- Armor / speed pips over the bio, e.g. "ARMOR ●●○  SPEED ●○○"
+	local armor, speed = operator.Armor or 2, operator.Speed or 2
+	local ratings = `ARMOR {string.rep("●", armor)}{string.rep("○", 3 - armor)}  SPEED {string.rep("●", speed)}{string.rep("○", 3 - speed)}`
+	textLabel(card, ratings .. "\n" .. operator.Bio, 12, text, 2).Size = UDim2.new(1, 0, 0, 58)
 	if gadget then
 		textLabel(card, `{string.upper(gadget.Name)}  [{gadget.Key}]`, 14, if blockedBy then DIM else GADGET_COLOR, 3)
 		local description = textLabel(card, gadget.Description, 11, text, 4)
@@ -245,7 +252,7 @@ function render()
 			end
 		end
 	end
-	root.Size = UDim2.fromOffset(math.max(count * (CARD_WIDTH + CARD_GAP) - CARD_GAP, 420), 60 + CARD_HEIGHT)
+	root.Size = UDim2.fromOffset(math.max(count * (CARD_WIDTH + CARD_GAP) - CARD_GAP, 420), CARDS_TOP + CARD_HEIGHT)
 end
 
 local function onOffer(newOffer: Offer)
@@ -299,7 +306,7 @@ local function build()
 	root = Instance.new("Frame")
 	root.AnchorPoint = Vector2.new(0.5, 0.5)
 	root.Position = UDim2.fromScale(0.5, 0.55)
-	root.Size = UDim2.fromOffset(720, 60 + CARD_HEIGHT)
+	root.Size = UDim2.fromOffset(720, CARDS_TOP + CARD_HEIGHT)
 	root.BackgroundTransparency = 1
 	root.Visible = false
 	root.Parent = gui
@@ -342,8 +349,21 @@ local function build()
 	hint.Visible = false
 	hint.Parent = gui
 
+	-- Your team's picks so far (Siege shows who's taken what)
+	teamLine = Instance.new("TextLabel")
+	teamLine.Position = UDim2.fromOffset(0, 50)
+	teamLine.Size = UDim2.new(1, 0, 0, 16)
+	teamLine.BackgroundTransparency = 1
+	teamLine.Font = Enum.Font.GothamBold
+	teamLine.TextSize = 13
+	teamLine.TextColor3 = GREY
+	teamLine.TextStrokeTransparency = 0.6
+	teamLine.RichText = true
+	teamLine.TextTruncate = Enum.TextTruncate.AtEnd
+	teamLine.Parent = root
+
 	cardRow = Instance.new("Frame")
-	cardRow.Position = UDim2.fromOffset(0, 60)
+	cardRow.Position = UDim2.fromOffset(0, CARDS_TOP)
 	cardRow.Size = UDim2.new(1, 0, 0, CARD_HEIGHT)
 	cardRow.BackgroundTransparency = 1
 	cardRow.Parent = root
@@ -355,9 +375,38 @@ local function build()
 	layout.Parent = cardRow
 end
 
+-- "YOUR TEAM:  Ozzie VOLTA  ·  Sam choosing..." (operators replicate as player attributes)
+local function teamPicks(): string
+	local team = player.Team
+	if not team then
+		return ""
+	end
+	local parts = {}
+	for _, member in team:GetPlayers() do
+		local operator = Operators.ById[member:GetAttribute("Operator") or ""]
+		local name = if member == player then "You" else member.DisplayName
+		table.insert(parts, if operator
+			then `{name} <font color="#{operator.Color:ToHex()}">{string.upper(operator.Name)}</font>`
+			else `{name} <font color="#{DIM:ToHex()}">choosing...</font>`)
+	end
+	return "YOUR TEAM:  " .. table.concat(parts, "   ·   ")
+end
+
 local function update()
 	local now = Workspace:GetServerTimeNow()
 	local remaining = deadline - now
+	-- Operator selection is over and the setup has started: cards away so you can get to work
+	-- (Left Alt / LOADOUT still brings them back until the round starts)
+	local phase = MatchState:GetAttribute("Phase")
+	if phase ~= lastPhase then
+		lastPhase = phase
+		if phase == "Prep" then
+			state.draftOpen = false
+		end
+	end
+	if root.Visible then
+		teamLine.Text = teamPicks()
+	end
 	-- Fit the row on screen (a little margin; never bigger than designed)
 	local viewport = Workspace.CurrentCamera.ViewportSize
 	local size = root.Size

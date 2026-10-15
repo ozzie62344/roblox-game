@@ -4,7 +4,7 @@
 --           in further and is slower to aim. Guns with a sight that can't come off (the
 --           sniper's scope) or nowhere to put one (pistols) don't get this slot.
 --   Muzzle  Suppressor (much quieter, no echo), Compensator (less sideways kick)
---   Under   Laser (tighter hip fire)
+--   Under   Laser (tighter hip fire, less hip bloom)
 -- No attachment in a slot = the gun as it comes (its "Factory" look).
 -- What a player owns and has on their guns is kept with their data (PlayerData) and shown as
 -- player attributes: OwnedAttachments "RedDot,Scope" and Attachments (JSON
@@ -110,23 +110,35 @@ function Attachments.Apply<W>(weapon: W, chosen: Chosen): W
 		return weapon
 	end
 	local stats = table.clone(weapon :: any)
+	-- Optics: how far each one zooms (FOV multiplier aimed in; the gun's iron sights are its own
+	-- AdsFovScale, about 0.85). The 1x sights barely zoom, like Siege's; the scope is a real 2.5x.
 	if chosen.Optic == "RedDot" then
+		stats.AdsFovScale = 0.86 -- 1x (the marksman loses its prism scope's zoom)
 		stats.AdsTime *= 0.92
+	elseif chosen.Optic == "Holo" then
+		stats.AdsFovScale = 0.8 -- a touch more (about 1.1x)
+	end
+	if chosen.Optic == "RedDot" or chosen.Optic == "Holo" then
+		stats.AdsSensitivity = math.max(stats.AdsSensitivity, 0.7) -- (no slower than a 1x sight needs)
 	elseif chosen.Optic == "Scope" then
-		stats.AdsFovScale = math.min(stats.AdsFovScale, 0.5)
+		stats.AdsFovScale = 0.46 -- 2.5x
 		stats.AdsTime += 0.08
 		stats.AdsSensitivity *= 0.75
+		stats.Breath *= 1.5 -- (more zoom shows more of the wobble)
 	end
 	if chosen.Muzzle == "Suppressor" then
 		stats.FireVolume *= 0.35
 		stats.TailSound = nil
 	elseif chosen.Muzzle == "Compensator" then
-		stats.RecoilSide *= 0.6
+		-- Tames the sideways part of the pattern (the climb is still yours to pull down)
+		stats.RecoilSway *= 0.6
 		stats.RecoilDrift *= 0.5
+		stats.RecoilJitter *= 0.8
 		stats.FireVolume *= 1.1
 	end
 	if chosen.Under == "Laser" then
 		stats.HipSpread *= 0.8
+		stats.HipBloom *= 0.8
 	end
 	return stats :: W
 end

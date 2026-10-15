@@ -83,6 +83,18 @@ local Sounds = {
 		MinFallSpeed = 35, -- softer landings make no sound
 	},
 
+	-- Vaulting over cover / climbing onto a ledge (Footsteps): hands and kit slapping onto it (the
+	-- footstep, pitched down) with a scuff of cloth, then a step as you land. Carries like a sprint.
+	Vault = {
+		Id = "rbxasset://sounds/action_footsteps_plastic.mp3",
+		Cloth = "rbxassetid://9113828720", -- Cloth Rip Rapid 7 (Pro Sound Effects), like the rope
+		Range = 90,
+		Volume = 0.9,
+		Pitch = 0.7,
+		ClothVolume = 0.35,
+		Duration = 0.25, -- seconds of the footstep sound per thump
+	},
+
 	-- Deployable cover starting to come out of the ground (placeholder: get-up sound, pitched down)
 	CoverStart = {
 		Id = "rbxasset://sounds/action_get_up.mp3",
@@ -214,6 +226,16 @@ local Sounds = {
 		Swing = "rbxasset://sounds/swordlunge.wav",
 		Hit = "rbxasset://sounds/swordslash.wav",
 		Volume = 0.7,
+	},
+
+	-- Your hits, once the server confirms them (WeaponController → Hud hit markers): a quiet tick
+	-- for a body hit, a sharper higher one for the head, a lower chime for a kill. Placeholders:
+	-- Roblox's built-in ping, pitched.
+	HitMarker = {
+		Id = "rbxasset://sounds/electronicpingshort.wav",
+		Body = { Volume = 0.22, Pitch = 2.6 },
+		Head = { Volume = 0.3, Pitch = 3.2 },
+		Kill = { Volume = 0.4, Pitch = 1.35 },
 	},
 
 	-- Shop: buying a skin, and credits coming in. Placeholders: Roblox's built-in ping.

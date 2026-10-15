@@ -255,7 +255,7 @@ local function update(dt: number)
 	countLabel.Text = if typeof(left) == "number" then `{left} MORE DRONE{if left == 1 then "" else "S"} THIS ROUND` else ""
 	local alive = humanoid ~= nil and humanoid.Health > 0
 	hintLabel.Text = if state.touchControls
-		then "STICK DRIVES (ALL THE WAY: SPRINT)  ·  DRAG TO LOOK  ·  JUMP HOPS  ·  SPOT / PING"
+		then "STICK DRIVES (ALL THE WAY: SPRINT)  ·  DRAG TO LOOK  ·  HOP  ·  SPOT / PING"
 		else `WASD DRIVE  ·  SHIFT SPRINT  ·  SPACE HOP  ·  CLICK SPOT / PING  ·  Z {if alive then "BACK TO YOUR BODY" else "BACK TO SPECTATING"}`
 end
 

@@ -36,6 +36,63 @@ local builders: { [string]: () -> Model } = {
 -- The maps players vote between before a match (the dev panel can also load the TestArena)
 MapService.MapNames = { "House", "Warehouse", "Flight9", "Bank" }
 
+-- Attackers pick one of their side's spawn pads during operator selection (Siege's spawn
+-- select). Each map's pads are named by which side of the building they're on (+Z is north);
+-- a pad that already has a "SpawnName" attribute (a Studio-built map) keeps it, and anything not
+-- listed here gets a compass name.
+local SPAWN_NAMES: { [string]: { [string]: string } } = {
+	House = { South = "Front Street", North = "Back Alley", East = "Side Drive" },
+	Warehouse = { South = "Truck Lot", North = "Rail Yard", East = "Car Park" },
+	Flight9 = { South = "Checkpoint Road", North = "North Field", West = "Crash Scar" },
+	Bank = { South = "Main Street", North = "Staff Lot", East = "Parking Lot" },
+}
+
+local function compass(position: Vector3): string
+	if math.abs(position.Z) >= math.abs(position.X) then
+		return if position.Z >= 0 then "North" else "South"
+	end
+	return if position.X >= 0 then "East" else "West"
+end
+
+-- Gives every attacker pad its name and publishes the list (MatchState "AttackSpawns",
+-- "Front Street,Back Alley,Side Drive") for the client's spawn picker
+local function nameAttackSpawns(name: string, mapRoot: Instance)
+	local folder = mapRoot:FindFirstChild("TeamSpawns")
+	local names = {}
+	for _, pad in if folder then folder:GetChildren() else {} do
+		if pad:IsA("BasePart") and pad:GetAttribute("Side") == "Attack" then
+			local spawnName = pad:GetAttribute("SpawnName")
+			if typeof(spawnName) ~= "string" then
+				local direction = compass(pad.Position)
+				spawnName = SPAWN_NAMES[name] and SPAWN_NAMES[name][direction] or `{direction} Side`
+			end
+			-- (two pads on the same side of an unlisted map: number them)
+			local unique, n = spawnName, 1
+			while table.find(names, unique) do
+				n += 1
+				unique = `{spawnName} {n}`
+			end
+			pad:SetAttribute("SpawnName", unique)
+			table.insert(names, unique)
+		end
+	end
+	table.sort(names)
+	MatchState:SetAttribute("AttackSpawns", if #names > 0 then table.concat(names, ",") else nil)
+end
+
+-- The attackers' spawn pads on the loaded map (each with its "SpawnName")
+function MapService.GetAttackSpawns(): { BasePart }
+	local mapRoot = Workspace:FindFirstChild("Map") or Workspace:FindFirstChild("TestArena")
+	local folder = mapRoot and mapRoot:FindFirstChild("TeamSpawns")
+	local pads = {}
+	for _, pad in if folder then folder:GetChildren() else {} do
+		if pad:IsA("BasePart") and pad:GetAttribute("Side") == "Attack" then
+			table.insert(pads, pad)
+		end
+	end
+	return pads
+end
+
 function MapService.Load(name: string): boolean
 	if name ~= "TestArena" and not builders[name] then
 		return false
@@ -70,6 +127,10 @@ function MapService.Load(name: string): boolean
 		FortifyService.Prepare(map)
 		CameraService.Build(name, map)
 		map.Parent = Workspace
+	end
+	local loaded = Workspace:FindFirstChild("Map") or Workspace:FindFirstChild("TestArena")
+	if loaded then
+		nameAttackSpawns(name, loaded)
 	end
 	DestructionService.Reset()
 	LightingService.Apply(name) -- (each map's own weather: overcast on Flight 9...)

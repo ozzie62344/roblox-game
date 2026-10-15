@@ -67,6 +67,20 @@ function Effects.Impact(position: Vector3, normal: Vector3?)
 	Debris:AddItem(hole, 6)
 end
 
+-- A bullet ending in someone: a quick dark-red puff (no bullet hole: they'll move)
+function Effects.BodyHit(position: Vector3, normal: Vector3?)
+	local facing = if normal then CFrame.lookAt(position, position + normal) else CFrame.new(position)
+	local puff = effectPart(Vector3.new(0.35, 0.35, 0.35), facing, Color3.fromRGB(120, 16, 16))
+	puff.Material = Enum.Material.SmoothPlastic
+	puff.Shape = Enum.PartType.Ball
+	puff.Transparency = 0.15
+	TweenService:Create(puff, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = Vector3.new(0.9, 0.9, 0.9),
+		Transparency = 1,
+	}):Play()
+	Debris:AddItem(puff, 0.25)
+end
+
 -- The shop's blips are menu sounds (the UI volume setting). (The same file is also the defuser's
 -- beep, so it's told apart by being played flat, from here.)
 local UI_SOUNDS = { [Sounds.Shop.Buy] = true, [Sounds.Shop.Credits] = true }

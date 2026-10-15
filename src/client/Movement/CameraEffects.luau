@@ -1,5 +1,5 @@
 -- First-person camera feel: speed-based FOV, aim-down-sights zoom, recoil,
--- lean, dash / wall jump FOV kicks, slide tilt and drop, strafe tilt.
+-- lean, the dip and roll of a vault, strafe tilt.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -31,12 +31,6 @@ local function update(dt: number)
 	local speedAlpha =
 		math.clamp((state.speed - Config.WalkSpeed) / (Config.FovMaxSpeed - Config.WalkSpeed), 0, 1)
 	local targetFov = Config.BaseFov + speedAlpha * Config.FovSpeedBonus * (1 - state.aimAlpha)
-	if state.dashing then
-		targetFov += Config.DashFovKick
-	end
-	if os.clock() - state.lastWallJump < 0.15 then
-		targetFov += Config.WallJumpFovKick
-	end
 	-- Eased so the zoom starts and ends gently instead of snapping
 	local aimEase = state.aimAlpha * state.aimAlpha * (3 - 2 * state.aimAlpha)
 	targetFov *= 1 + (state.adsFovScale - 1) * aimEase
@@ -51,23 +45,23 @@ local function update(dt: number)
 	camera.CFrame *= CFrame.Angles(pitch - appliedRecoilPitch, state.recoilYaw - appliedRecoilYaw, 0)
 	appliedRecoilPitch, appliedRecoilYaw = pitch, state.recoilYaw
 
-	-- Roll: lean, slide tilt, and a slight lean into strafes
+	-- Roll: lean, a vault's tilt, and a slight lean into strafes
 	local right = camera.CFrame.RightVector
 	local strafe = math.clamp(state.velocity:Dot(right) / Config.SprintSpeed, -1, 1)
 	local targetRoll = -strafe * math.rad(Config.StrafeTilt) - state.lean * math.rad(Config.LeanRoll)
-	if state.sliding then
-		targetRoll += math.rad(Config.SlideTilt)
-	end
+	-- Mid-vault: rolled a little and dipped (both peak halfway over)
+	local vaultArc = if state.vaulting then math.sin(state.vaultAlpha * math.pi) else 0
+	targetRoll += vaultArc * math.rad(Config.VaultCameraRoll)
 	roll = smooth(roll, targetRoll, 16, dt)
 	camera.CFrame *= CFrame.Angles(0, 0, roll + state.recoilRoll)
 
-	-- Shift sideways while leaning (crouch/slide height comes from the body itself lowering).
+	-- Shift sideways while leaning (crouch height comes from the body itself lowering).
 	-- Lying down: your body lies flat, so your eyes go further down than the body's drop.
 	proneDrop = smooth(proneDrop, if state.prone then Config.ProneCameraDrop else 0, 8, dt)
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if humanoid then
-		humanoid.CameraOffset = Vector3.new(state.leanOffset, -proneDrop, 0)
+		humanoid.CameraOffset = Vector3.new(state.leanOffset, -proneDrop - vaultArc * Config.VaultCameraDip, 0)
 	end
 end
 

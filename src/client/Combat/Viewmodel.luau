@@ -40,6 +40,12 @@ local SPRINT_POSE = CFrame.new(0, -0.06, 0.05) * CFrame.Angles(math.rad(-25), ma
 local TUCK_POSE = CFrame.new(0.04, -0.06, 0.45) * CFrame.Angles(math.rad(55), math.rad(-12), math.rad(-8))
 -- Crawling: gun pulled in low and canted, rocking with each pull forward
 local CRAWL_POSE = CFrame.new(0.05, -0.14, 0.12) * CFrame.Angles(math.rad(-12), math.rad(18), math.rad(28))
+-- Sway at the hip: the gun drifts in a slow loop this many degrees (times the gun's Sway), and
+-- lags behind fast turns (degrees per radian/second of turn, up to LOOK_LAG_MAX). Aimed in, none:
+-- the sight stays dead on (the aim's own breathing is in WeaponController).
+local IDLE_SWAY = 0.6
+local LOOK_LAG = 0.9
+local LOOK_LAG_MAX = 3
 
 local SLEEVE_COLOR = Color3.fromRGB(62, 68, 56)
 local GLOVE_COLOR = Color3.fromRGB(28, 28, 30)
@@ -489,6 +495,11 @@ function Viewmodel.new(weapon: Weapons.Weapon, skin: Skins.Skin?, attachments: {
 		kick = 0,
 		spin = 0,
 		bobTime = 0,
+		sway = weapon.Sway or 1,
+		swayTime = random:NextNumber(0, 10),
+		lagPitch = 0,
+		lagYaw = 0,
+		lastLook = nil :: Vector3?,
 		sprintAlpha = 0,
 		crawlAlpha = 0,
 		tuckAlpha = 0,
@@ -668,6 +679,7 @@ end
 type Pose = {
 	aimAlpha: number,
 	sprinting: boolean,
+	raiseTime: number?, -- seconds the gun takes to come up out of the sprint pose
 	crawling: boolean,
 	reloading: boolean,
 	speed: number,
@@ -692,7 +704,9 @@ function Viewmodel:Update(dt: number, cameraCFrame: CFrame, pose: Pose)
 		return current + (target - current) * (1 - math.exp(-sharpness * dt))
 	end
 
-	self.sprintAlpha = approach(self.sprintAlpha, if pose.sprinting and not self.clip then 1 else 0, 10)
+	-- (down quickly; back up in about the gun's sprint-out time, so it's up when it can fire)
+	local raiseSharpness = if pose.raiseTime then 2.3 / math.max(pose.raiseTime, 0.05) else 10
+	self.sprintAlpha = approach(self.sprintAlpha, if pose.sprinting and not self.clip then 1 else 0, if pose.sprinting then 10 else raiseSharpness)
 	self.tuckAlpha = approach(self.tuckAlpha, self:WallTuck(cameraCFrame), 12)
 	self.crawlAlpha = approach(self.crawlAlpha, if pose.crawling and not self.clip then 1 - pose.aimAlpha else 0, 8)
 	self.crawlTime += dt * math.clamp(pose.speed, 0, 6) * 1.8
@@ -713,7 +727,29 @@ function Viewmodel:Update(dt: number, cameraCFrame: CFrame, pose: Pose)
 		* CFrame.new():Lerp(crawlPose, self.crawlAlpha)
 		* CFrame.new():Lerp(TUCK_POSE, self.tuckAlpha)
 	local kick = CFrame.new(0, 0, self.kick) * CFrame.Angles(self.kick * 0.15, 0, 0)
-	local base = cameraCFrame * offset * bob * action * kick
+
+	-- Sway (hip only): a slow idle drift, and lagging a touch behind your turns
+	self.swayTime += dt
+	local hip = 1 - aim
+	local idle = math.rad(IDLE_SWAY * self.sway) * hip
+	local lagPitch, lagYaw = 0, 0
+	local lastLook = self.lastLook
+	if lastLook and dt > 0 then
+		-- Last frame's look direction, seen from this frame's camera: left of center = turned right
+		local seen = cameraCFrame:VectorToObjectSpace(lastLook)
+		local limit = math.rad(LOOK_LAG_MAX)
+		lagYaw = math.clamp(-seen.X / dt * math.rad(LOOK_LAG) * self.sway, -limit, limit)
+		lagPitch = math.clamp(seen.Y / dt * math.rad(LOOK_LAG) * self.sway, -limit, limit)
+	end
+	self.lastLook = cameraCFrame.LookVector
+	self.lagPitch = approach(self.lagPitch, lagPitch * hip, 14)
+	self.lagYaw = approach(self.lagYaw, lagYaw * hip, 14)
+	local sway = CFrame.Angles(
+		math.sin(self.swayTime * 1.1) * idle * 0.5 + self.lagPitch,
+		math.sin(self.swayTime * 0.7) * idle + self.lagYaw,
+		0
+	)
+	local base = cameraCFrame * offset * bob * action * sway * kick
 
 	-- Animation: find the two keyframes we're between and blend them
 	local gunCF = base

@@ -6,6 +6,12 @@
 -- RoundService places the bombs when the pick is locked in, starts/ends rounds and polls GetStatus().
 -- Clients read MatchState attributes (DefuserSite, DefuserPosition, DefusedAt) and the player
 -- attributes Interaction / InteractEndsAt (for the progress bar).
+-- Like Siege, one attacker carries the defuser (player attribute "HasDefuser", MatchState
+-- "DefuserCarrier" = their UserId), handed to a random attacker when the setup starts; only they can
+-- plant. If they die it drops where they fell (MatchState "DefuserDropped" = position) and any
+-- attacker who walks over it picks it up.
+-- shortcut: the carrier is public (attributes), so a cheater on defence could read it; send it
+-- only to attackers if that ever matters
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -19,6 +25,7 @@ local ShopService = require(script.Parent.ShopService)
 
 local Remotes = ReplicatedStorage.Remotes
 local Interact = Remotes.Interact :: RemoteEvent
+local AbilityEffect = Remotes.AbilityEffect :: RemoteEvent
 local ObjectiveEvent = Remotes.ObjectiveEvent :: RemoteEvent
 local MatchState = ReplicatedStorage.MatchState
 
@@ -36,6 +43,11 @@ local defuser: BasePart? = nil
 local plantedSite: BasePart? = nil
 local bombs: { [BasePart]: Model } = {}
 local interactors: { [Player]: { kind: string, endsAt: number } } = {}
+-- The defuser before it's planted: who has it, or where it's lying
+local carrier: Player? = nil
+local carrierTeam: Team? = nil -- set while the defuser is in play this round (setup onwards)
+local lastCarrierPosition: Vector3? = nil
+local dropped: BasePart? = nil
 
 local function allSites(): { BasePart }
 	local mapRoot = Workspace:FindFirstChild("Map") or Workspace:FindFirstChild("TestArena")
@@ -93,7 +105,7 @@ local function canInteract(player: Player, kind: string): boolean
 		return false
 	end
 	if kind == "Plant" then
-		return status == "None" and player.Team == attackTeam and siteAt(root.Position) ~= nil
+		return status == "None" and player.Team == attackTeam and player == carrier and siteAt(root.Position) ~= nil
 	elseif kind == "Disable" then
 		return status == "Planted"
 			and player.Team == defendTeam
@@ -112,6 +124,128 @@ end
 local function clearInteractors()
 	for player in interactors do
 		stopInteracting(player)
+	end
+end
+
+-- A quick line on someone's screen (AbilityController shows "Status" messages)
+local function tell(players: { Player }, message: string)
+	for _, player in players do
+		AbilityEffect:FireClient(player, "Status", message)
+	end
+end
+
+-- Nobody has the defuser and it isn't lying anywhere (planted, or the round is over)
+local function clearCarrier()
+	if carrier then
+		carrier:SetAttribute("HasDefuser", nil)
+		carrier = nil
+	end
+	if dropped then
+		dropped:Destroy()
+		dropped = nil
+	end
+	lastCarrierPosition = nil
+	MatchState:SetAttribute("DefuserCarrier", nil)
+	MatchState:SetAttribute("DefuserDropped", nil)
+end
+
+local function setCarrier(player: Player)
+	clearCarrier()
+	carrier = player
+	player:SetAttribute("HasDefuser", true)
+	MatchState:SetAttribute("DefuserCarrier", player.UserId)
+	tell({ player }, "YOU HAVE THE DEFUSER: PLANT IT IN A SITE")
+end
+
+local function livingRoot(player: Player): BasePart?
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	return if humanoid and humanoid.Health > 0 then root else nil
+end
+
+-- Hands the defuser to a random living attacker (the setup's starting carrier, or when the carrier
+-- leaves before it could drop anywhere sensible)
+local function giveToRandom()
+	local candidates = {}
+	for _, player in if carrierTeam then carrierTeam:GetPlayers() else {} do
+		if livingRoot(player) then
+			table.insert(candidates, player)
+		end
+	end
+	if #candidates > 0 then
+		setCarrier(candidates[math.random(#candidates)])
+	else
+		clearCarrier()
+	end
+end
+
+-- The carrier died (or left) at `at`: the defuser falls to the floor there
+local function dropDefuser(at: Vector3)
+	local mapRoot = Workspace:FindFirstChild("Map") or Workspace:FindFirstChild("TestArena")
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = if mapRoot then { mapRoot } else {}
+	local ground = Workspace:Raycast(at + Vector3.new(0, 1, 0), Vector3.new(0, -60, 0), params)
+	if not ground then
+		giveToRandom() -- (fell out of the world: nowhere to pick it up from)
+		return
+	end
+	clearCarrier()
+	local position = ground.Position + Vector3.new(0, 0.25, 0)
+	local device = Instance.new("Part")
+	device.Name = "DroppedDefuser"
+	device.Size = Vector3.new(1.2, 0.5, 0.8)
+	device.CFrame = CFrame.new(position)
+	device.Anchored = true
+	device.CanCollide = false
+	device.CanQuery = false
+	device.CanTouch = false
+	device.Color = Color3.fromRGB(40, 42, 46)
+	device.Material = Enum.Material.Metal
+	local light = Instance.new("PointLight")
+	light.Color = Color3.fromRGB(255, 60, 60)
+	light.Range = 6
+	light.Parent = device
+	device.Parent = Workspace
+	dropped = device
+	MatchState:SetAttribute("DefuserDropped", position)
+	tell(if carrierTeam then carrierTeam:GetPlayers() else {}, "DEFUSER DROPPED: PICK IT UP")
+end
+
+-- Every frame from the setup until the plant: keeps track of the carrier, drops the defuser when
+-- they die, and gives it to the first attacker who walks over it
+local function updateCarrier()
+	if not carrierTeam or status ~= "None" then
+		return
+	end
+	if carrier then
+		local root = livingRoot(carrier)
+		if carrier.Parent and carrier.Team == carrierTeam and root then
+			lastCarrierPosition = root.Position
+			return
+		end
+		-- During the setup everyone's still in spawn: just pass it on
+		if active and lastCarrierPosition then
+			dropDefuser(lastCarrierPosition)
+		else
+			giveToRandom()
+		end
+		return
+	end
+	if not dropped then
+		giveToRandom() -- (nobody was alive to take it before)
+		return
+	end
+	for _, player in carrierTeam:GetPlayers() do
+		local root = livingRoot(player)
+		if root and not root.Anchored and (root.Position - dropped.Position).Magnitude <= MatchConfig.DefuserPickupRange then
+			local others = carrierTeam:GetPlayers()
+			table.remove(others, table.find(others, player) :: number)
+			setCarrier(player)
+			tell(others, `{string.upper(player.DisplayName)} HAS THE DEFUSER`)
+			return
+		end
 	end
 end
 
@@ -149,6 +283,7 @@ local function plant(player: Player)
 	plantedSite = site
 
 	status = "Planted"
+	clearCarrier() -- (it's on the floor now, ticking)
 	defusedAt = Workspace:GetServerTimeNow() + MatchConfig.DefuserTime
 	local siteName = site:GetAttribute("Site")
 	MatchState:SetAttribute("DefuserSite", siteName)
@@ -256,6 +391,7 @@ function ObjectiveService.PlaceBombs()
 end
 
 local function update()
+	updateCarrier()
 	if not active then
 		return
 	end
@@ -277,15 +413,8 @@ local function update()
 	end
 end
 
-function ObjectiveService.BeginRound(attackers: Team, defenders: Team)
-	ObjectiveService.EndRound()
-	attackTeam, defendTeam = attackers, defenders
-	active = true
-	status = "None"
-end
-
-function ObjectiveService.EndRound()
-	active = false
+-- No planted defuser (between rounds, or before the plant)
+local function resetPlant()
 	status = "None"
 	clearInteractors()
 	if defuser then
@@ -296,6 +425,36 @@ function ObjectiveService.EndRound()
 	MatchState:SetAttribute("DefuserSite", nil)
 	MatchState:SetAttribute("DefuserPosition", nil)
 	MatchState:SetAttribute("DefusedAt", nil)
+end
+
+-- The setup starts: a random attacker gets the defuser (Siege hands it out at the start of the round)
+function ObjectiveService.GiveDefuser(attackers: Team)
+	clearCarrier()
+	carrierTeam = attackers
+	giveToRandom()
+end
+
+-- The round goes live: plants and disables count from now. Whoever has the defuser keeps it.
+function ObjectiveService.BeginRound(attackers: Team, defenders: Team)
+	active = false
+	resetPlant()
+	attackTeam, defendTeam = attackers, defenders
+	if carrierTeam ~= attackers then
+		ObjectiveService.GiveDefuser(attackers) -- (nobody got it during a setup)
+	end
+	active = true
+end
+
+function ObjectiveService.EndRound()
+	active = false
+	resetPlant()
+	clearCarrier()
+	carrierTeam = nil
+end
+
+-- Who has the defuser right now (nil before the setup, once it's planted, or while it's dropped)
+function ObjectiveService.GetCarrier(): Player?
+	return carrier
 end
 
 function ObjectiveService.GetStatus(): Status

@@ -2,19 +2,19 @@
 -- the same action handler (Actions) or controller function, so every rule (no shooting while
 -- deploying, ability charges, cooldowns...) stays where it already is.
 --   Playing:    FIRE (STAB in Knives Only; slide the finger holding it to look around while
---               you shoot), AIM (tap on / off), RELOAD, CROUCH (tap crouch, double tap prone,
---               hold while sprinting to slide), KNIFE, your ability (or DASH),
+--               you shoot), AIM (tap on / off), RELOAD, CROUCH (tap crouch, double tap prone),
+--               VAULT (over low cover / through windows; gets you up from prone; on a rope:
+--               PUSH OFF / in through the window), KNIFE, your ability,
 --               LEAN LEFT / RIGHT, DRONE / CAMS, RAPPEL, USE (hold: shows up when there's
 --               something to plant, disable, barricade or reinforce), LOADOUT while you can
 --               still change it, MODS, SCORE (the scoreboard), PING (mark for your team),
 --               SETTINGS (SettingsMenu; its CONTROLS page can start EDIT BUTTONS too)
---   Drone:      the thumbstick drives, dragging looks (TouchLook), HOP, SPOT, EXIT (Roblox hides its
---               jump button while you're in the drone: your body's jumping is switched off)
+--   Drone:      the thumbstick drives, dragging looks (TouchLook), HOP, SPOT, EXIT
 --   Cameras:    < > switch camera, dragging looks, SPOT, EXIT
 --   Spectating: < > who to watch, plus DRONE / CAMS
 -- No sprint button: the thumbstick is analog (MovementController), all the way forward sprints.
--- Roblox's own thumbstick and jump button stay; the jump button also wall-jumps, gets you up from
--- prone and pushes off the wall while rappelling. Every button is on the right
+-- Roblox's own thumbstick stays; its jump button doesn't show (there's no jumping: the body's
+-- Jumping state is off, MovementController), VAULT takes its place. Every button is on the right
 -- half of the screen: the left half is the thumbstick's (a thumb landing on a button there
 -- wouldn't move you).
 -- Showing on touch screens until a key or mouse button is used (a laptop with a touch screen
@@ -41,7 +41,6 @@ local SettingsMenu = require(script.Parent.Parent.Match.SettingsMenu)
 local Scoreboard = require(script.Parent.Parent.Match.Scoreboard)
 local Spectate = require(script.Parent.Parent.Match.Spectate)
 local TeamPing = require(script.Parent.Parent.Match.TeamPing)
-local MovementController = require(script.Parent.Parent.Movement.MovementController)
 local RappelController = require(script.Parent.Parent.Movement.RappelController)
 local Actions = require(script.Parent.Actions)
 
@@ -89,7 +88,6 @@ local held: { [InputObject]: { spec: Spec, button: TextButton } } = {}
 local fireDrags: { [InputObject]: Vector3 } = {} -- fingers on a FIRE button → where they were last frame
 local aimOn = false
 local fireHolds = 0
-local lastJump = 0
 local currentMode: Mode? = nil
 local touchMode = UserInputService.TouchEnabled
 
@@ -174,7 +172,7 @@ end
 
 local leanLeftPress, leanLeftRelease = hold("LeanLeft")
 local leanRightPress, leanRightRelease = hold("LeanRight")
-local crouchPress, crouchRelease = hold("CrouchSlide")
+local crouchPress, crouchRelease = hold("Crouch")
 local usePress, useRelease = hold("Interact")
 
 local SPECS: { Spec } = {
@@ -194,23 +192,42 @@ local SPECS: { Spec } = {
 	{
 		id = "Crouch", label = "CROUCH", side = "Right", x = 2.6, y = 4.35, size = 1.1, modes = { "Play" }, press = crouchPress, release = crouchRelease,
 		on = function()
-			return state.crouching or state.prone or state.sliding
+			return state.crouching or state.prone
+		end,
+	},
+	{
+		-- Space's job: vault (or get up); on a rope, push off / go in through the window
+		label = function()
+			return if state.rappelling then "PUSH\nOFF" elseif state.prone then "GET\nUP" else "VAULT"
+		end,
+		id = "Vault", side = "Right", x = 4.35, y = 2.35, size = 1.05, modes = { "Play" },
+		press = function()
+			if state.rappelling then
+				RappelController.Jump()
+			else
+				act("Vault", true)
+			end
+		end,
+		on = function()
+			return state.vaulting
 		end,
 	},
 	{ id = "Knife", label = "KNIFE", side = "Right", x = 4.3, y = 3.6, size = 1.0, modes = { "Play" }, press = tap("Melee") },
 	{
 		label = function()
 			local ability = Abilities[player:GetAttribute("Ability") or ""]
-			if not ability or ability.Kind ~= "Active" then
-				return "DASH"
+			if not ability then
+				return ""
 			end
 			local charges = player:GetAttribute("AbilityCharges")
 			return string.upper(ability.Name) .. (if typeof(charges) == "number" then `\n{charges}` else "")
 		end,
 		id = "Ability", side = "Right", x = 6.0, y = 2.7, size = 1.1, modes = { "Play" },
 		press = function()
-			local ability = Abilities[player:GetAttribute("Ability") or ""]
-			act(if ability and ability.Kind == "Active" then "UseAbility" else "Dash", true)
+			act("UseAbility", true)
+		end,
+		visible = function()
+			return Abilities[player:GetAttribute("Ability") or ""] ~= nil
 		end,
 	},
 	{
@@ -715,24 +732,6 @@ function MobileControls.Start()
 	end
 	UserInputService.InputEnded:Connect(letGo)
 	UserInputService.TouchEnded:Connect(letGo)
-
-	-- Roblox's jump button: wall jumps, getting up, pushing off while rappelling, drone hops. A
-	-- held button asks every frame, so only the first ask after a pause counts as a press.
-	UserInputService.JumpRequest:Connect(function()
-		local now = os.clock()
-		local fresh = now - lastJump > 0.25
-		lastJump = now
-		if not fresh or not touchActive() then
-			return
-		end
-		if DroneController.IsDriving() then
-			DroneController.Hop()
-		elseif state.rappelling then
-			RappelController.Jump()
-		else
-			MovementController.JumpPressed()
-		end
-	end)
 
 	player.CharacterAdded:Connect(function()
 		for input in held do

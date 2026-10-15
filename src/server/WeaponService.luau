@@ -3,12 +3,16 @@
 -- Each player's current weapon is stored in their "Weapon" attribute (set by loadouts / dev panel).
 -- GameRules.NoGun ("Knife", Knives Only) means no gun: every shot and reload is refused.
 -- Headshots Only (GameRules): body shots do no damage.
+-- Damage rules (Siege): a bullet to the head kills (Weapons HeadshotKills; shotgun pellets don't),
+-- arms and legs take 75%, armor takes body / limb damage down (1 / 2 / 3 armor: x1 / x0.9 / x0.8),
+-- and every gun loses damage with range (Weapons FalloffStart / FalloffEnd / MinDamageScale).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
 local GameRules = require(ReplicatedStorage.Shared.GameRules)
+local Operators = require(ReplicatedStorage.Shared.Operators)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 local AntiCheat = require(script.Parent.AntiCheat)
 local DestructionService = require(script.Parent.DestructionService)
@@ -38,6 +42,14 @@ local MAX_PENETRATIONS = 4 -- breakable surfaces one bullet can go through
 -- Damage left after going through each kind of breakable surface (Siege: glass and barricades
 -- give no protection; drywall loss isn't documented, 0.8 is our pick). Headshots still kill.
 local PENETRATION_DAMAGE = { Glass = 1, Soft = 0.8, Barricade = 1 }
+-- Body and limb damage taken by armor rating (an operator's Armor; Siege's light / medium / heavy)
+local ARMOR_DAMAGE = { 1, 0.9, 0.8 }
+local DEFAULT_ARMOR = 2 -- anyone without an operator (bots, dummies, a dev-panel loadout)
+local LIMB_DAMAGE = 0.75 -- arms and legs (hands and feet too)
+local HEADSHOT_KILL_DAMAGE = 1000 -- "kills outright" (more than anyone's health)
+-- A hat / hair / helmet only counts as the head this close to it (studs past the head's box):
+-- cosmetics don't make your head bigger, but a bullet clipping a helmet still kills
+local ACCESSORY_REACH = 0.4
 
 local WeaponService = {}
 
@@ -45,6 +57,7 @@ type PlayerData = {
 	weapon: Weapons.Weapon,
 	ammo: number,
 	reloadEnd: number?,
+	reloadAmmo: number, -- what the mag holds once the reload in progress is done
 	shotBudget: number,
 	lastFire: number,
 }
@@ -59,8 +72,9 @@ local function resetData(player: Player)
 	local weapon = Weapons[player:GetAttribute("Weapon") or DEFAULT_WEAPON] or Weapons[DEFAULT_WEAPON]
 	playerData[player] = {
 		weapon = weapon,
-		ammo = weapon.MagazineSize,
+		ammo = weapon.MagazineSize + weapon.Chamber, -- (you spawn with one up the spout: 30+1)
 		reloadEnd = nil,
+		reloadAmmo = weapon.MagazineSize,
 		shotBudget = MAX_BURST,
 		lastFire = 0,
 	}
@@ -78,11 +92,71 @@ local function findHumanoid(part: Instance): Humanoid?
 	return nil
 end
 
--- Body or head damage, reduced by range falloff
-local function damageAtDistance(weapon: Weapons.Weapon, distance: number, headshot: boolean): number
+type Zone = "Head" | "Body" | "Limb"
+
+local function zoneOf(partName: string): Zone
+	if partName == "Head" then
+		return "Head"
+	end
+	-- R15 (LeftUpperArm, RightFoot...) and R6 (Left Arm, Right Leg) limbs
+	for _, limb in { "Arm", "Leg", "Hand", "Foot" } do
+		if string.find(partName, limb, 1, true) then
+			return "Limb"
+		end
+	end
+	return "Body"
+end
+
+-- Which part of the body a bullet hit. Accessories (hats, hair, backpacks) count as the body
+-- part they're worn on, but only right next to it: nil = it only clipped a cosmetic (no damage).
+local function hitZone(hitPart: BasePart, endPosition: Vector3): Zone?
+	local accessory = hitPart.Parent
+	if not (accessory and accessory:IsA("Accessory")) then
+		return zoneOf(hitPart.Name)
+	end
+	local weld = hitPart:FindFirstChild("AccessoryWeld")
+	local wornOn = if weld and weld:IsA("Weld") then (if weld.Part0 == hitPart then weld.Part1 else weld.Part0) else nil
+	if not wornOn then
+		return nil
+	end
+	local localPoint = wornOn.CFrame:PointToObjectSpace(endPosition)
+	local half = wornOn.Size / 2 + Vector3.one * ACCESSORY_REACH
+	if math.abs(localPoint.X) > half.X or math.abs(localPoint.Y) > half.Y or math.abs(localPoint.Z) > half.Z then
+		return nil
+	end
+	return zoneOf(wornOn.Name)
+end
+
+-- Body / limb damage multiplier for whoever got hit (their operator's armor)
+local function armorScale(targetHumanoid: Humanoid): number
+	local character = targetHumanoid.Parent
+	local targetPlayer = Players:GetPlayerFromCharacter(character)
+	local armor: any = nil
+	if targetPlayer then
+		local operator = Operators.ById[targetPlayer:GetAttribute("Operator") or ""]
+		armor = operator and (operator :: any).Armor
+	elseif character then
+		armor = character:GetAttribute("Armor") -- (a bot can say)
+	end
+	return ARMOR_DAMAGE[armor] or ARMOR_DAMAGE[DEFAULT_ARMOR]
+end
+
+-- Range falloff: 1 up to FalloffStart, down to MinDamageScale at FalloffEnd
+local function rangeScale(weapon: Weapons.Weapon, distance: number): number
 	local alpha = math.clamp((distance - weapon.FalloffStart) / (weapon.FalloffEnd - weapon.FalloffStart), 0, 1)
-	local base = if headshot then weapon.HeadshotDamage else weapon.Damage
-	return base * (1 + (weapon.MinDamageScale - 1) * alpha)
+	return 1 + (weapon.MinDamageScale - 1) * alpha
+end
+
+-- One bullet's / pellet's damage. `through` = what's left after glass / drywall on the way.
+local function bulletDamage(weapon: Weapons.Weapon, distance: number, zone: Zone, targetHumanoid: Humanoid, through: number): number
+	if zone == "Head" then
+		if weapon.HeadshotKills then
+			return HEADSHOT_KILL_DAMAGE -- (through drywall too, like Siege)
+		end
+		return (weapon.HeadshotDamage or weapon.Damage) * rangeScale(weapon, distance) -- (shotgun pellets)
+	end
+	local zoneScale = if zone == "Limb" then LIMB_DAMAGE else 1
+	return weapon.Damage * rangeScale(weapon, distance) * zoneScale * armorScale(targetHumanoid) * through
 end
 
 -- Players frozen in their spawn (pre-round / attackers during defender prep) can't be hurt
@@ -178,8 +252,9 @@ end
 
 type Hit = { humanoid: Humanoid, damage: number, headshot: boolean }
 
--- Validates one bullet/pellet. Returns its end position (for tracers) and the hit, if any.
-local function checkShot(player: Player, character: Model, weapon: Weapons.Weapon, origin: Vector3, shot: any): (Vector3?, Hit?)
+-- Validates one bullet/pellet. Returns its end position (for tracers), the hit, if any, and
+-- whether it ended in someone (impact effects: blood, not a bullet hole).
+local function checkShot(player: Player, character: Model, weapon: Weapons.Weapon, origin: Vector3, shot: any): (Vector3?, Hit?, boolean?)
 	if typeof(shot) ~= "table" then
 		return nil, nil
 	end
@@ -213,7 +288,7 @@ local function checkShot(player: Player, character: Model, weapon: Weapons.Weapo
 
 	local targetHumanoid = findHumanoid(hitPart)
 	if not targetHumanoid or targetHumanoid.Health <= 0 or targetHumanoid.Parent == character then
-		return endPosition, nil
+		return endPosition, nil, targetHumanoid ~= nil
 	end
 	if (endPosition - hitPart.Position).Magnitude > hitPart.Size.Magnitude / 2 + HIT_TOLERANCE then
 		return endPosition, nil
@@ -221,18 +296,22 @@ local function checkShot(player: Player, character: Model, weapon: Weapons.Weapo
 	-- No friendly fire
 	local targetPlayer = Players:GetPlayerFromCharacter(targetHumanoid.Parent)
 	if targetPlayer and not player.Neutral and targetPlayer.Team == player.Team then
-		return endPosition, nil
+		return endPosition, nil, true
 	end
 	if isProtected(targetHumanoid) then
-		return endPosition, nil
+		return endPosition, nil, true
 	end
 
-	local headshot = hitPart.Name == "Head"
-	if GameRules.Current().HeadshotsOnly and not headshot then
-		return endPosition, nil
+	local zone = hitZone(hitPart, endPosition)
+	if not zone then
+		return endPosition, nil, true -- only clipped a hat
 	end
-	local damage = damageAtDistance(weapon, distance, headshot) * (if headshot then 1 else through)
-	return endPosition, { humanoid = targetHumanoid, damage = damage, headshot = headshot }
+	local headshot = zone == "Head"
+	if GameRules.Current().HeadshotsOnly and not headshot then
+		return endPosition, nil, true
+	end
+	local damage = bulletDamage(weapon, distance, zone, targetHumanoid, through)
+	return endPosition, { humanoid = targetHumanoid, damage = damage, headshot = headshot }, true
 end
 
 -- shots = { { direction, hitPart, endPosition }, ... }  (one entry per pellet)
@@ -264,7 +343,7 @@ local function onFire(player: Player, origin: any, shots: any)
 		if now < data.reloadEnd - RELOAD_TOLERANCE then
 			return
 		end
-		data.ammo = weapon.MagazineSize
+		data.ammo = data.reloadAmmo
 		data.reloadEnd = nil
 	end
 	if data.ammo <= 0 then
@@ -295,11 +374,13 @@ local function onFire(player: Player, origin: any, shots: any)
 	end
 
 	local endPositions = {}
+	local inFlesh = {} -- (per end position: it ended in someone)
 	local totals: { [Humanoid]: { damage: number, headshot: boolean } } = {}
 	for _, shot in shots do
-		local endPosition, hit = checkShot(player, character :: Model, weapon, origin, shot)
+		local endPosition, hit, flesh = checkShot(player, character :: Model, weapon, origin, shot)
 		if endPosition then
 			table.insert(endPositions, endPosition)
+			table.insert(inFlesh, flesh == true)
 		end
 		if hit then
 			local total = totals[hit.humanoid] or { damage = 0, headshot = false }
@@ -310,7 +391,7 @@ local function onFire(player: Player, origin: any, shots: any)
 	end
 
 	if #endPositions > 0 then
-		ShotFired:FireAllClients(player, origin, endPositions, weapon.Name)
+		ShotFired:FireAllClients(player, origin, endPositions, weapon.Name, inFlesh)
 	end
 
 	-- (anti-cheat) Kills on other players feed the aimbot heuristic: logged only, never acted on
@@ -391,13 +472,20 @@ local function onMelee(player: Player, targetPart: any, hitPoint: any)
 	applyDamage(player, targetHumanoid, MELEE_DAMAGE, false, root.Position, "Knife")
 end
 
+-- Tactical reload (rounds left): the one in the chamber stays, so the mag ends up 30+1. Empty:
+-- slower (the bolt / slide / pump has to be worked) and that chambers one from the new mag (30).
+-- WeaponController does the same sums.
 local function onReload(player: Player)
 	local data = playerData[player]
-	if not data or data.reloadEnd or data.ammo >= data.weapon.MagazineSize then
+	if not data or data.reloadEnd or data.ammo >= data.weapon.MagazineSize + data.weapon.Chamber then
 		return
 	end
-	data.reloadEnd = os.clock() + data.weapon.ReloadTime
-	ReloadStarted:FireAllClients(player, data.weapon.Name)
+	local weapon = data.weapon
+	local empty = data.ammo <= 0
+	local duration = if empty then weapon.EmptyReloadTime else weapon.ReloadTime
+	data.reloadEnd = os.clock() + duration
+	data.reloadAmmo = weapon.MagazineSize + (if empty then 0 else math.min(data.ammo, weapon.Chamber))
+	ReloadStarted:FireAllClients(player, weapon.Name, duration)
 end
 
 -- An explosion (breach charge, thermite) at `center`: damage falls off with distance. Anyone on
@@ -431,7 +519,7 @@ end
 function WeaponService.Refill(player: Player)
 	local data = playerData[player]
 	if data then
-		data.ammo = data.weapon.MagazineSize
+		data.ammo = data.weapon.MagazineSize + data.weapon.Chamber
 		data.reloadEnd = nil
 	end
 end

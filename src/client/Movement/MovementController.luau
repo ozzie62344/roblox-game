@@ -1,18 +1,32 @@
--- Client-side movement: sprint, crouch, prone (crawl), slide, dash, wall jump.
--- We drive horizontal velocity ourselves through a LinearVelocity so momentum
--- carries between moves. The Humanoid still handles jumping, gravity, stairs
--- and animations.
+-- Client-side movement, Siege-style: walk, sprint, crouch, prone (crawl) and vaulting. No jumping
+-- (the Humanoid's Jumping state is switched off, which also hides the phone's jump button).
+-- We drive horizontal velocity ourselves through a LinearVelocity, with weighty acceleration and
+-- deceleration. The Humanoid still handles gravity, stairs and falling off ledges.
+--   Speeds scale with your operator's Speed rating (Operators.luau, MovementConfig.SpeedRating);
+--   strafing is a little slower than forward and backing up slower still.
+--   Sprinting: no aiming, no leaning, and holding fire ends it (state.fireHeld, WeaponController).
+--   After a sprint (or a vault) the gun takes MovementConfig.SprintOutTime to come back up:
+--   state.canFire says when you can shoot.
+--   Vault (Space / gamepad A / the phone's VAULT button): facing low cover or a window sill, a
+--   short scripted hop over it (quicker from a sprint), or up onto it if it's too deep to clear
+--   (a crate, a ledge) — never higher than MovementConfig.VaultMaxHeight. The body is moved
+--   along the arc here every physics step (PlatformStand, like the rappel); the server hears about
+--   it (Vault remote → the character's "Vaulting" attribute) so others hear it and see the pose,
+--   and the anti-cheat lets the hop through.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage.Shared.MovementConfig)
+local Operators = require(ReplicatedStorage.Shared.Operators)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 
-local SetCrouch = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("SetCrouch") :: RemoteEvent
+local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+local SetCrouch = Remotes:WaitForChild("SetCrouch") :: RemoteEvent
+local VaultRemote = Remotes:WaitForChild("Vault") :: RemoteEvent
+local ReloadStarted = Remotes:WaitForChild("ReloadStarted") :: RemoteEvent
 
 local player = Players.LocalPlayer
 
@@ -21,6 +35,7 @@ local MovementController = {}
 local state = require(script.Parent.Parent.PlayerState)
 local Actions = require(script.Parent.Parent.Input.Actions)
 local MoveInput = require(script.Parent.Parent.Input.MoveInput)
+local Footsteps = require(script.Parent.Parent.Audio.Footsteps)
 
 local humanoid: Humanoid? = nil
 local root: BasePart? = nil
@@ -28,31 +43,29 @@ local linearVelocity: LinearVelocity? = nil
 local characterConnections: { RBXScriptConnection } = {}
 
 local sprintHeld = false
-local slideHeld = false -- slides only last while C / Ctrl is held
+local lastSprintInput = false -- (a fresh sprint press stands you up from a crouch / prone)
 local velocity = Vector3.zero -- horizontal velocity we want
-local velocityOverridden = false -- an input (slide/wall jump) set velocity since the last step
-local slideTimer = 0
-local slideBufferedUntil = -math.huge
-local lastSlideBoostTime = -math.huge
-local dashTimer = 0
-local dashDirection = Vector3.zero
-local lastDashTime = -math.huge
-local airDashUsed = false
-local wallJumpsUsed = 0
-local lastWallNormal: Vector3? = nil -- the wall we last jumped off (by which way it faces)
-local lastGroundedTime = 0
+local velocityOverridden = false -- a vault ending set velocity since the last step
 local standHipHeight = 2
-local heightDrop = 0 -- smoothed: how far we're currently lowered (crouch / slide / prone)
+local heightDrop = 0 -- smoothed: how far we're currently lowered (crouch / prone)
 local sentLowered = false
 local sentProne = false
-local jumpBlocked = false
 local lastCrouchTap = -math.huge
+local sprintOutUntil = 0 -- os.clock(): the gun is back up after a sprint / vault
+local reloadingUntil = 0 -- os.clock(): our own reload (ReloadStarted comes back to us too)
 
-local WALL_CHECK_DIRECTIONS = {}
-for i = 0, 7 do
-	local angle = i * math.pi / 4
-	table.insert(WALL_CHECK_DIRECTIONS, Vector3.new(math.cos(angle), 0, math.sin(angle)))
-end
+-- A vault / climb in progress: the root follows `points` (keyframes of where your middle is) over
+-- `duration` seconds; `ends` is the share of the time each segment finishes at
+type Vault = {
+	points: { Vector3 },
+	ends: { number },
+	duration: number,
+	elapsed: number,
+	exitVelocity: Vector3,
+	endCrouched: boolean,
+	landed: boolean, -- ends on solid ground (otherwise you drop off the far side)
+}
+local vault: Vault? = nil
 
 -- Humanoid states where we hand control back to Roblox's default movement
 local PASSIVE_STATES = {
@@ -116,18 +129,20 @@ local function wishDirection(): Vector3
 	return direction.Unit
 end
 
--- Abilities are handed out by the server through a player attribute, e.g. Ability = "Dash"
-local function hasAbility(name: string): boolean
-	return Config.TestAllAbilities or player:GetAttribute("Ability") == name
+-- Your operator's Speed rating (1-3; 2 with no operator) as a speed multiplier
+local function speedRating(): number
+	local operator = Operators.ById[player:GetAttribute("Operator") or ""]
+	local rating = if operator and operator.Speed then operator.Speed else 2
+	return Config.SpeedRating[rating] or 1
 end
 
-local lastSlideEnd = -math.huge
-
-local function endSlide()
-	if state.sliding then
-		lastSlideEnd = os.clock()
+-- Forward is full speed, sideways StrafeScale, straight back BackpedalScale (blended between)
+local function directionScale(wish: Vector3): number
+	local forward = wish:Dot(lookDirection())
+	if forward >= 0 then
+		return Config.StrafeScale + (1 - Config.StrafeScale) * forward
 	end
-	state.sliding = false
+	return Config.StrafeScale + (Config.BackpedalScale - Config.StrafeScale) * -forward
 end
 
 -- Is there room above your head to rise this much? (don't stand up into a ceiling)
@@ -154,8 +169,6 @@ local function tryStandUp()
 end
 
 local function goProne()
-	endSlide()
-	state.dashing = false
 	state.crouching = false
 	state.prone = true
 end
@@ -173,129 +186,310 @@ local function getUp(toCrouch: boolean)
 	end
 end
 
-local function startSlide()
-	if state.sliding or state.dashing then
-		return
-	end
-	-- A short wait after each slide before the next one
-	if os.clock() - lastSlideEnd < Config.SlideCooldown then
-		return
-	end
-	if not isGrounded() then
-		-- Remember the press so the slide fires the moment we land
-		slideBufferedUntil = os.clock() + Config.SlideBufferTime
-		return
-	end
-	slideBufferedUntil = -math.huge
-	local speed = velocity.Magnitude
-	if speed < Config.SlideMinStartSpeed then
-		return
-	end
+-- ─── Vaulting ──────────────────────────────────────────────────────────────────
 
-	local boost = 0
-	local now = os.clock()
-	if now - lastSlideBoostTime >= Config.SlideBoostCooldown then
-		boost = Config.SlideBoost
-		lastSlideBoostTime = now
-	end
+local HEAD_ABOVE_ROOT = 2.6 -- top of your head above your middle (R15)
 
-	-- Never slow you down if you're already faster than the slide cap (e.g. right after a dash)
-	local newSpeed = math.max(speed, math.min(speed + boost, Config.SlideMaxSpeed))
-	velocity = velocity.Unit * newSpeed
-	velocityOverridden = true
-	slideTimer = 0
-	state.sliding = true
+-- Your middle's height above the floor when standing
+local function standRootHeight(): number
+	return standHipHeight + (if root then root.Size.Y / 2 else 1)
 end
 
-local function startDash()
-	if state.dashing or state.prone or not root or not hasAbility("Dash") then
-		return
-	end
-	local now = os.clock()
-	if now - lastDashTime < Config.DashCooldown then
-		return
-	end
-	local grounded = isGrounded()
-	if not grounded and airDashUsed then
-		return
-	end
-
-	local direction = wishDirection()
-	if direction == Vector3.zero then
-		direction = lookDirection()
-	end
-
-	lastDashTime = now
-	if not grounded then
-		airDashUsed = true
-	end
-	endSlide()
-	dashTimer = 0
-	dashDirection = direction
-	state.dashing = true
-end
-
--- Finds the closest steep wall around the player, if any
-local function findWall(): RaycastResult?
-	if not root then
-		return nil
+local function vaultParams(): RaycastParams
+	local ignore: { Instance } = { Workspace.CurrentCamera }
+	for _, other in Players:GetPlayers() do
+		if other.Character then
+			table.insert(ignore, other.Character)
+		end
 	end
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { root.Parent :: Instance }
+	params.FilterDescendantsInstances = ignore
+	params.RespectCanCollide = true -- (open doors, see-through effects)
+	return params
+end
 
-	local closest: RaycastResult? = nil
-	for _, direction in WALL_CHECK_DIRECTIONS do
-		local result = Workspace:Raycast(root.Position, direction * Config.WallJumpCheckDistance, params)
-		if result and math.abs(result.Normal.Y) < 0.3 then
-			if not closest or result.Distance < closest.Distance then
-				closest = result
-			end
+-- Works out a vault / climb over whatever is in front of you, or nil if there's nothing you can
+-- get over. Distances are along `v` (straight into the cover's face) from your middle.
+local function planVault(fast: boolean): Vault?
+	if not root or not humanoid then
+		return nil
+	end
+	local params = vaultParams()
+	local origin = root.Position
+	local standRoot = standRootHeight()
+	local floor = Workspace:Raycast(origin, Vector3.new(0, -(standRoot + 1.5), 0), params)
+	if not floor then
+		return nil
+	end
+	local feetY = floor.Position.Y
+
+	-- The cover's face: knee and shin height, in front of where you're looking
+	local look = lookDirection()
+	local face: RaycastResult? = nil
+	for _, h in { 0.7, 1.1, 1.6 } do
+		local hit = Workspace:Raycast(Vector3.new(origin.X, feetY + h, origin.Z), look * Config.VaultReach, params)
+		if hit and math.abs(hit.Normal.Y) < 0.35 and (not face or hit.Distance < face.Distance) then
+			face = hit
 		end
 	end
-	return closest
+	if not face then
+		return nil
+	end
+	local v = -flat(face.Normal).Unit
+	if v:Dot(look) < 0.6 then
+		return nil -- (more than ~50° off: you're running along it, not at it)
+	end
+	local frontDist = flat(face.Position - origin):Dot(v)
+	local function at(distance: number, y: number): Vector3
+		return Vector3.new(origin.X, y, origin.Z) + v * distance
+	end
+
+	-- Its top: the lowest height where nothing is in the way just past the face
+	local topGuess: number? = nil
+	local h = 0.5
+	while h <= Config.VaultMaxHeight + 0.3 do
+		if not Workspace:Raycast(at(0, feetY + h), v * (frontDist + 0.5), params) then
+			topGuess = feetY + h
+			break
+		end
+		h += 0.25
+	end
+	if not topGuess then
+		return nil -- a wall (that's what the rappel is for)
+	end
+	local topY = topGuess - 0.125
+	local onTop = Workspace:Raycast(at(frontDist + 0.35, topGuess + 0.3), Vector3.new(0, -1.2, 0), params)
+	if onTop and onTop.Normal.Y > 0.6 then
+		topY = onTop.Position.Y
+	end
+	local height = topY - feetY
+	if height < Config.VaultMinHeight or height > Config.VaultMaxHeight + 0.05 then
+		return nil
+	end
+
+	-- Room above it (a window's top, a shelf)
+	local above = Workspace:Raycast(at(frontDist + 0.35, topY + 0.05), Vector3.new(0, 8, 0), params)
+	local gap = if above then above.Distance else 8
+	if gap < Config.VaultMinGap then
+		return nil
+	end
+
+	-- How deep is it? Step along the top until it drops away.
+	local farDist: number? = nil
+	local k = 0.35
+	while k <= Config.VaultMaxThickness + 0.4 do
+		if not Workspace:Raycast(at(frontDist + k, topY + 0.4), Vector3.new(0, -0.9, 0), params) then
+			farDist = frontDist + k - 0.2
+			break
+		end
+		k += 0.4
+	end
+
+	-- Nothing in the way along the path at this height (your middle and both shoulders)
+	local sideways = v:Cross(Vector3.yAxis)
+	local function pathClear(y: number, length: number): boolean
+		for _, side in { 0, 0.55, -0.55 } do
+			if Workspace:Raycast(at(0, y) + sideways * side, v * length, params) then
+				return false
+			end
+		end
+		return true
+	end
+	-- Standing room on the floor at `spot`: nil = none, otherwise whether you'd have to crouch
+	local fullHeight = standRoot + HEAD_ABOVE_ROOT
+	local function roomAt(spot: Vector3): boolean?
+		local ceiling = Workspace:Raycast(spot + Vector3.new(0, 0.2, 0), Vector3.new(0, fullHeight, 0), params)
+		if ceiling and ceiling.Distance < fullHeight - Config.CrouchHeightDrop - 0.2 then
+			return nil
+		end
+		return ceiling ~= nil
+	end
+
+	local exitSpeed = if fast then Config.VaultFastExitSpeed else Config.VaultExitSpeed
+	if farDist then
+		-- Vault over: up to just above the top, across, and down on the far side
+		local landDist = farDist + 1.4
+		local over = math.max(topY + math.clamp(gap - HEAD_ABOVE_ROOT - 0.15, 0.9, 1.5), origin.Y + 0.3)
+		if not pathClear(over - 0.3, landDist + 0.6) or not pathClear(math.min(over + 1.3, topY + gap - 0.4), landDist + 0.6) then
+			return nil
+		end
+		local ground = Workspace:Raycast(at(landDist, topY + 0.5), Vector3.new(0, -(height + 0.5 + Config.VaultMaxDrop), 0), params)
+		local endY = over -- (a long drop on the far side: over the top and let go)
+		local endCrouched = false
+		if ground then
+			local crouched = roomAt(ground.Position)
+			if crouched == nil then
+				return nil -- no room to land
+			end
+			endCrouched = crouched
+			-- Nothing on the far side at body height either
+			if Workspace:Raycast(at(farDist, ground.Position.Y + 1.2), v * (landDist - farDist + 0.6), params) then
+				return nil
+			end
+			endY = ground.Position.Y + standRoot - (if endCrouched then Config.CrouchHeightDrop else 0)
+		end
+		return {
+			points = { origin, at(math.max(frontDist - 0.15, 0), over), at(farDist + 0.15, over), at(landDist, endY) },
+			ends = { 0.4, 0.65, 1 },
+			duration = if fast then Config.VaultFastTime else Config.VaultTime,
+			elapsed = 0,
+			exitVelocity = v * exitSpeed,
+			endCrouched = endCrouched,
+			landed = ground ~= nil,
+		}
+	end
+
+	-- Too deep to clear: climb up onto it (a crate, a ledge), if there's somewhere to stand
+	local standDist = frontDist + 1.3
+	local footing = Workspace:Raycast(at(standDist, topY + 1), Vector3.new(0, -1.5, 0), params)
+	if not footing or footing.Normal.Y < 0.7 or math.abs(footing.Position.Y - topY) > 0.4 then
+		return nil
+	end
+	local endCrouched = roomAt(footing.Position)
+	if endCrouched == nil or not pathClear(footing.Position.Y + 1, standDist + 0.6) then
+		return nil
+	end
+	local endY = footing.Position.Y + standRoot - (if endCrouched then Config.CrouchHeightDrop else 0)
+	return {
+		points = { origin, at(math.max(frontDist - 0.6, 0), endY + 0.2), at(standDist, endY) },
+		ends = { 0.65, 1 },
+		duration = Config.ClimbTime * (if fast then 0.85 else 1),
+		elapsed = 0,
+		exitVelocity = v * exitSpeed * 0.5,
+		endCrouched = endCrouched,
+		landed = true,
+	}
 end
 
-local function tryWallJump()
-	if not humanoid or not root or isGrounded() or not hasAbility("WallJump") then
-		return
+-- Where your middle is `t` (0-1) of the way through the vault: each segment moves across at a
+-- steady pace; going up eases out (a quick push up), coming down eases in (dropping off)
+local function vaultPosition(plan: Vault, t: number): Vector3
+	local startT = 0
+	for i, endT in plan.ends do
+		if t <= endT or i == #plan.ends then
+			local a, b = plan.points[i], plan.points[i + 1]
+			local u = math.clamp((t - startT) / math.max(endT - startT, 1e-3), 0, 1)
+			local rise = b.Y - a.Y
+			local up = if rise > 0.05 then math.sin(u * math.pi / 2)
+				elseif rise < -0.05 then 1 - math.cos(u * math.pi / 2)
+				else u
+			local across = flat(a):Lerp(flat(b), u)
+			return Vector3.new(across.X, a.Y + rise * up, across.Z)
+		end
+		startT = endT
 	end
-	if PASSIVE_STATES[humanoid:GetState()] then
-		return
-	end
-	if os.clock() - lastGroundedTime < Config.WallJumpMinAirTime then
-		return
-	end
-	if wallJumpsUsed >= Config.WallJumpMaxPerAir then
-		return
-	end
+	return plan.points[#plan.points]
+end
 
-	local wall = findWall()
-	if not wall then
+local function finishVault()
+	local plan = vault
+	vault = nil
+	state.vaulting = false
+	state.vaultAlpha = 0
+	sprintOutUntil = os.clock() + Config.SprintOutTime
+	if not plan or not humanoid or not root then
 		return
 	end
-	local normal = flat(wall.Normal).Unit
-	-- No jumping off the same wall twice in a row (stops climbing a single wall). Compared by the
-	-- way the wall faces, because one wall is often built from several parts.
-	if lastWallNormal and normal:Dot(lastWallNormal) > 0.7 then
-		return
-	end
-	local alongWall = velocity - normal * velocity:Dot(normal)
-	velocity = alongWall * Config.WallJumpKeepAlong + normal * Config.WallJumpPush
+	local final = plan.points[#plan.points]
+	root.CFrame = CFrame.lookAt(final, final + lookDirection())
+	root.AssemblyLinearVelocity = plan.exitVelocity
+	humanoid.PlatformStand = false
+	humanoid:ChangeState(if plan.landed then Enum.HumanoidStateType.Running else Enum.HumanoidStateType.Freefall)
+	velocity = plan.exitVelocity
 	velocityOverridden = true
-
-	local v = root.AssemblyLinearVelocity
-	root.AssemblyLinearVelocity = Vector3.new(v.X, Config.WallJumpUp, v.Z)
-
-	wallJumpsUsed += 1
-	lastWallNormal = normal
-	endSlide()
-	state.dashing = false
-	state.lastWallJump = os.clock()
+	state.crouching = plan.endCrouched
+	if plan.endCrouched then
+		-- (already low: don't pop up into the ceiling for a frame)
+		heightDrop = Config.CrouchHeightDrop
+		humanoid.HipHeight = standHipHeight - heightDrop
+	end
+	if plan.landed and not (root.Parent and root.Parent:GetAttribute("Silent")) then -- (Ghost Step: silent)
+		Footsteps.VaultLand(final - Vector3.new(0, standRootHeight(), 0), true)
+	end
 end
+
+local function cancelVault()
+	if vault and humanoid and not state.rappelling then -- (the rope keeps PlatformStand on)
+		humanoid.PlatformStand = false
+	end
+	vault = nil
+	state.vaulting = false
+	state.vaultAlpha = 0
+end
+
+local function tryVault()
+	if vault or not humanoid or not root or humanoid.Health <= 0 or root.Anchored then
+		return
+	end
+	if state.prone or state.aiming or state.aimAlpha > 0.2 or os.clock() < reloadingUntil then
+		return -- (aiming, reloading or lying down: no vaulting)
+	end
+	if state.rappelling or state.deploying or state.interacting or state.droning or state.meleeing
+		or state.spectating or state.devPanelOpen or state.mouseUnlocked
+		or not isGrounded() or PASSIVE_STATES[humanoid:GetState()]
+	then
+		return
+	end
+	local fast = state.sprinting
+	local plan = planVault(fast)
+	if not plan then
+		return
+	end
+	vault = plan
+	state.vaulting = true
+	state.vaultAlpha = 0
+	state.sprinting = false
+	state.canFire = false
+	if heightDrop > 0 then -- (vaulting from a crouch: you come up as you go over)
+		heightDrop = 0
+		humanoid.HipHeight = standHipHeight
+	end
+	humanoid.PlatformStand = true
+	VaultRemote:FireServer(plan.duration)
+	if not (root.Parent and root.Parent:GetAttribute("Silent")) then -- (Ghost Step: silent)
+		Footsteps.VaultStart(root.Position - Vector3.new(0, standRootHeight(), 0), true)
+	end
+end
+
+-- Moves the root along the vault every physics step (true while vaulting)
+local function stepVault(dt: number): boolean
+	local plan = vault
+	if not plan or not humanoid or not root or not linearVelocity then
+		return false
+	end
+	if humanoid.Health <= 0 or root.Anchored or state.rappelling then
+		cancelVault()
+		return false
+	end
+	linearVelocity.Enabled = false
+	plan.elapsed += dt
+	local t = plan.elapsed / plan.duration
+	if t >= 1 then
+		finishVault()
+		return false
+	end
+	state.vaultAlpha = t
+	local position = vaultPosition(plan, t)
+	local nextPosition = vaultPosition(plan, math.min(t + dt / plan.duration, 1))
+	root.CFrame = CFrame.lookAt(position, position + lookDirection())
+	-- (moving at the path's own speed: after this physics step the root is where the next frame wants it)
+	root.AssemblyLinearVelocity = (nextPosition - position) / math.max(dt, 1e-3)
+	root.AssemblyAngularVelocity = Vector3.zero
+	state.velocity = flat(root.AssemblyLinearVelocity)
+	state.speed = state.velocity.Magnitude
+	state.sprinting = false
+	state.canFire = false
+	return true
+end
+
+-- ─── Every physics step ────────────────────────────────────────────────────────
 
 local function step(dt: number)
 	if not humanoid or not root or not linearVelocity then
+		return
+	end
+	if stepVault(dt) then
 		return
 	end
 
@@ -303,8 +497,8 @@ local function step(dt: number)
 	linearVelocity.Enabled = not passive
 	if passive then
 		velocity = flat(root.AssemblyLinearVelocity)
-		endSlide()
-		state.dashing = false
+		state.sprinting = false
+		state.canFire = os.clock() >= sprintOutUntil
 		return
 	end
 
@@ -317,138 +511,103 @@ local function step(dt: number)
 
 	-- If something blocked us (a wall), adopt the real velocity so we don't keep pushing into it
 	local actual = flat(fullVelocity)
-	if not state.dashing and not velocityOverridden and (velocity - actual).Magnitude > 2 then
+	if not velocityOverridden and (velocity - actual).Magnitude > 2 then
 		velocity = actual
 	end
 	velocityOverridden = false
 
 	local grounded = isGrounded()
-	if grounded then
-		airDashUsed = false
-		wallJumpsUsed = 0
-		lastWallNormal = nil
-		lastGroundedTime = os.clock()
-		if slideHeld and os.clock() <= slideBufferedUntil then
-			startSlide()
-		end
-	end
 
-	-- Pulling up cover / planting / disabling / driving a drone: rooted in place, can't jump.
-	-- Lying down: no jumping either (Space gets you up instead).
+	-- Pulling up cover / planting / disabling / driving a drone: rooted in place
 	local rooted = state.deploying or state.interacting or state.droning
 	local wish = if rooted then Vector3.zero else wishDirection()
-	if (rooted or state.prone) ~= jumpBlocked then
-		jumpBlocked = rooted or state.prone
-		humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, not jumpBlocked)
-	end
-	if rooted then
-		endSlide()
-	end
 	local stickSprint, stickScale = stickSpeed()
-	local wantsToSprint = (sprintHeld or stickSprint) and wish:Dot(lookDirection()) > 0.5
-	if state.prone and wantsToSprint then
-		getUp(false)
-	end
-	if state.crouching and wantsToSprint then
+	local sprintInput = sprintHeld or stickSprint
+	local sprintPressed = sprintInput and not lastSprintInput
+	lastSprintInput = sprintInput
+	local wantsToSprint = sprintInput and wish:Dot(lookDirection()) > 0.5
+	-- A fresh sprint press gets you up off the floor / out of a crouch (just holding it doesn't:
+	-- crouch while running and you stay down until you press it again)
+	if sprintPressed and wantsToSprint then
+		if state.prone then
+			getUp(false)
+		end
 		tryStandUp()
 	end
+	local wasSprinting = state.sprinting
 	state.sprinting = wantsToSprint
+		and grounded
 		and not state.crouching
 		and not state.prone
 		and not state.aiming
 		and not state.leaning
+		and not state.fireHeld -- (pressing fire ends a sprint; the shot comes once the gun's up)
 		and os.clock() - state.lastShot > Config.SprintBlockAfterShot
+	if wasSprinting and not state.sprinting then
+		sprintOutUntil = os.clock() + Config.SprintOutTime
+	end
+	state.canFire = not state.sprinting and os.clock() >= sprintOutUntil
 
-	if state.dashing then
-		dashTimer += dt
-		velocity = dashDirection * Config.DashSpeed
-		-- Hold height during the dash so air dashes feel snappy instead of droopy
-		local v = root.AssemblyLinearVelocity
-		if v.Y < 0 then
-			root.AssemblyLinearVelocity = Vector3.new(v.X, 0, v.Z)
+	local targetSpeed = Config.WalkSpeed
+	if state.sprinting then
+		targetSpeed = Config.SprintSpeed
+	else
+		if state.aiming then
+			targetSpeed = math.min(targetSpeed, Config.AimWalkSpeed)
 		end
-		if dashTimer >= Config.DashDuration then
-			state.dashing = false
-			velocity = dashDirection * Config.DashExitSpeed
+		if state.crouching then
+			targetSpeed = math.min(targetSpeed, Config.CrouchSpeed)
 		end
-	elseif state.sliding then
-		slideTimer += dt
-		local speed = math.max(velocity.Magnitude - Config.SlideFriction * dt, 0)
-		local direction = if velocity.Magnitude > 0 then velocity.Unit else lookDirection()
+		if state.prone then
+			targetSpeed = math.min(targetSpeed, Config.ProneSpeed)
+		end
+		targetSpeed *= stickScale
 		if wish ~= Vector3.zero then
-			local steered = direction:Lerp(wish, math.clamp(Config.SlideSteer * dt, 0, 1))
-			if steered.Magnitude > 1e-3 then
-				direction = steered.Unit
-			end
+			targetSpeed *= directionScale(wish)
 		end
-		velocity = direction * speed
-		local timeUp = slideTimer >= Config.SlideMaxDuration
-		if not slideHeld or speed <= Config.SlideEndSpeed or timeUp or not grounded then
-			endSlide()
-			-- Slid under something low? Stay crouched instead of standing into it
-			if grounded and not canStandUp() then
-				state.crouching = true
-			end
+	end
+	targetSpeed *= speedRating()
+	-- Heavy guns (the gatling) slow you down, sprinting too, and more again while it's spinning
+	local held = Weapons[player:GetAttribute("Weapon") or ""]
+	if held and held.MoveSpeedScale then
+		targetSpeed *= held.MoveSpeedScale * (1 - (held.SpinSlow or 0) * state.weaponSpin)
+	end
+	local speed = velocity.Magnitude
+
+	if grounded then
+		if wish ~= Vector3.zero and speed > targetSpeed then
+			-- Carrying extra momentum (a speed vault, a push off the rope): bleed it off gradually
+			local newSpeed = math.max(speed - Config.MomentumFriction * dt, targetSpeed)
+			velocity = moveToward(velocity, wish * newSpeed, Config.GroundAccel * dt)
+		else
+			local accel = if wish == Vector3.zero then Config.GroundDecel else Config.GroundAccel
+			velocity = moveToward(velocity, wish * targetSpeed, accel * dt)
 		end
 	else
-		local targetSpeed = Config.WalkSpeed
-		if state.sprinting then
-			targetSpeed = Config.SprintSpeed
-		else
-			if state.aiming then
-				targetSpeed = math.min(targetSpeed, Config.AimWalkSpeed)
-			end
-			if state.crouching then
-				targetSpeed = math.min(targetSpeed, Config.CrouchSpeed)
-			end
-			if state.prone then
-				targetSpeed = math.min(targetSpeed, Config.ProneSpeed)
-			end
-			targetSpeed *= stickScale
-		end
-		-- Heavy guns (the gatling) slow you down, sprinting too, and more again while it's spinning
-		local held = Weapons[player:GetAttribute("Weapon") or ""]
-		if held and held.MoveSpeedScale then
-			targetSpeed *= held.MoveSpeedScale * (1 - (held.SpinSlow or 0) * state.weaponSpin)
-		end
-		local speed = velocity.Magnitude
-
-		if grounded then
-			if wish ~= Vector3.zero and speed > targetSpeed then
-				-- Carrying extra momentum: bleed it off gradually but let the player steer
-				local newSpeed = math.max(speed - Config.MomentumFriction * dt, targetSpeed)
-				velocity = moveToward(velocity, wish * newSpeed, Config.GroundAccel * dt)
-			else
-				local accel = if wish == Vector3.zero then Config.GroundDecel else Config.GroundAccel
-				velocity = moveToward(velocity, wish * targetSpeed, accel * dt)
-			end
-		else
-			if speed > targetSpeed then
-				-- Keep momentum in the air, with some steering
-				local newSpeed = math.max(speed - Config.AirDrag * dt, targetSpeed)
-				local direction = velocity.Unit
-				local steerLocked = os.clock() - state.lastWallJump < Config.WallJumpSteerLock
-				if wish ~= Vector3.zero and not steerLocked then
-					local steered = direction:Lerp(wish, math.clamp(Config.AirSteer * dt, 0, 1))
-					if steered.Magnitude > 1e-3 then
-						direction = steered.Unit
-					end
+		if speed > targetSpeed then
+			-- Keep momentum in the air, with a little steering
+			local newSpeed = math.max(speed - Config.AirDrag * dt, targetSpeed)
+			local direction = velocity.Unit
+			if wish ~= Vector3.zero then
+				local steered = direction:Lerp(wish, math.clamp(Config.AirSteer * dt, 0, 1))
+				if steered.Magnitude > 1e-3 then
+					direction = steered.Unit
 				end
-				velocity = direction * newSpeed
-			else
-				velocity = moveToward(velocity, wish * targetSpeed, Config.AirAccel * dt)
 			end
+			velocity = direction * newSpeed
+		else
+			velocity = moveToward(velocity, wish * targetSpeed, Config.AirAccel * dt)
 		end
 	end
 
 	linearVelocity.PlaneVelocity = Vector2.new(velocity.X, velocity.Z)
 
-	-- Crouching and sliding lower the whole character (hitbox included), not just the camera.
-	-- Planting / disabling kneels too; barricading and reinforcing are done standing. Lying down
-	-- drops it nearly to the floor (other players see the body lie flat: BodyAnimator).
+	-- Crouching lowers the whole character (hitbox included), not just the camera. Planting /
+	-- disabling kneels too; barricading and reinforcing are done standing. Lying down drops it
+	-- nearly to the floor (other players see the body lie flat: BodyAnimator).
 	local interaction = player:GetAttribute("Interaction")
 	local kneeling = state.interacting and (interaction == "Plant" or interaction == "Disable")
-	local lowered = state.crouching or state.sliding or state.deploying or kneeling or state.prone
+	local lowered = state.crouching or state.deploying or kneeling or state.prone
 	local targetDrop = if state.prone then math.max(standHipHeight - Config.ProneHipHeight, Config.CrouchHeightDrop)
 		elseif lowered then Config.CrouchHeightDrop
 		else 0
@@ -480,10 +639,13 @@ local function cleanupCharacter()
 	if linearVelocity then
 		linearVelocity:Destroy()
 	end
+	vault = nil
 	humanoid, root, linearVelocity = nil, nil, nil
 	velocity = Vector3.zero
-	state.sliding = false
-	state.dashing = false
+	state.vaulting = false
+	state.vaultAlpha = 0
+	state.sprinting = false
+	state.canFire = true
 	state.crouching = false
 	state.prone = false
 	state.speed = 0
@@ -491,7 +653,8 @@ local function cleanupCharacter()
 	heightDrop = 0
 	sentLowered = false
 	sentProne = false
-	jumpBlocked = false
+	sprintOutUntil = 0
+	reloadingUntil = 0
 end
 
 local function setupCharacter(character: Model)
@@ -499,9 +662,11 @@ local function setupCharacter(character: Model)
 
 	local newHumanoid = character:WaitForChild("Humanoid") :: Humanoid
 	local newRoot = character:WaitForChild("HumanoidRootPart") :: BasePart
-	-- A short hop (Siege-style): Roblox's default 7 studs bonked your head on low ceilings
+	-- No jumping at all (Siege): you vault instead. With jumping off, Roblox hides the phone's
+	-- jump button too (MobileControls has a VAULT button).
 	newHumanoid.UseJumpPower = false
-	newHumanoid.JumpHeight = Config.JumpHeight
+	newHumanoid.JumpHeight = 0
+	newHumanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
 
 	local attachment = Instance.new("Attachment")
 	attachment.Name = "MovementAttachment"
@@ -521,26 +686,17 @@ local function setupCharacter(character: Model)
 	humanoid, root, linearVelocity = newHumanoid, newRoot, constraint
 	standHipHeight = newHumanoid.HipHeight
 
-	table.insert(
-		characterConnections,
-		newHumanoid.StateChanged:Connect(function(_, newState)
-			-- Jumping out of a slide keeps all your speed (slide-hopping); jumping also stands you up
-			if newState == Enum.HumanoidStateType.Jumping then
-				endSlide()
-				state.crouching = false
-			end
-		end)
-	)
 	table.insert(characterConnections, newHumanoid.Died:Connect(cleanupCharacter))
 end
 
--- A fresh jump press: up from prone, or a wall jump in the air (keyboard / gamepad here, the
--- phone's jump button through MobileControls)
-function MovementController.JumpPressed()
-	if state.prone then
+-- The vault key (Space / gamepad A / the phone's VAULT button): up from prone, otherwise vault
+function MovementController.VaultPressed()
+	if state.droning or state.spectating then
+		return -- (Space hops the drone)
+	elseif state.prone then
 		getUp(false)
 	else
-		tryWallJump()
+		tryVault()
 	end
 end
 
@@ -550,11 +706,10 @@ function MovementController.Start()
 		return Enum.ContextActionResult.Pass
 	end, Enum.KeyCode.LeftShift, Enum.KeyCode.ButtonL3)
 
-	-- C / Ctrl: hold to slide while sprinting (letting go ends the slide), otherwise tap to toggle
-	-- crouch. Two quick taps: lie down (prone); tap again to come back up to a crouch.
-	Actions.Bind("CrouchSlide", function(_, inputState)
-		slideHeld = inputState == Enum.UserInputState.Begin
-		if inputState ~= Enum.UserInputState.Begin or state.deploying or state.interacting then
+	-- C / Ctrl: tap to toggle crouch (crouching ends a sprint). Two quick taps: lie down (prone);
+	-- tap again to come back up to a crouch.
+	Actions.Bind("Crouch", function(_, inputState)
+		if inputState ~= Enum.UserInputState.Begin or state.deploying or state.interacting or state.vaulting then
 			return Enum.ContextActionResult.Sink
 		end
 		local now = os.clock()
@@ -568,30 +723,28 @@ function MovementController.Start()
 		elseif doubleTap and isGrounded() and not state.rappelling and not state.inLobby then
 			goProne()
 			lastCrouchTap = -math.huge
-		elseif state.sprinting or (not isGrounded() and sprintHeld) then
-			startSlide()
 		elseif state.crouching then
 			tryStandUp()
-		elseif isGrounded() and not state.sliding then
+		elseif isGrounded() then
 			state.crouching = true
 		end
 		return Enum.ContextActionResult.Sink
 	end, Enum.KeyCode.C, Enum.KeyCode.LeftControl, Enum.KeyCode.ButtonB)
 
-	Actions.Bind("Dash", function(_, inputState)
+	-- Space / A: vault (or get up). While rappelling, RappelController takes Space first (higher
+	-- priority) to go in through the window / push off.
+	Actions.Bind("Vault", function(_, inputState)
 		if inputState == Enum.UserInputState.Begin then
-			startDash()
+			MovementController.VaultPressed()
 		end
-		return Enum.ContextActionResult.Sink
-	end, Enum.KeyCode.X, Enum.KeyCode.ButtonL1)
+		return Enum.ContextActionResult.Pass
+	end, Enum.KeyCode.Space, Enum.KeyCode.ButtonA)
 
-	-- Wall jump on a fresh jump press (the Humanoid ignores jumps while airborne, so no conflict)
-	UserInputService.InputBegan:Connect(function(input, gameProcessed)
-		if gameProcessed then
-			return
-		end
-		if input.KeyCode == Enum.KeyCode.Space or input.KeyCode == Enum.KeyCode.ButtonA then
-			MovementController.JumpPressed()
+	-- Our own reloads (no vaulting mid-reload): the server tells everyone, us included
+	ReloadStarted.OnClientEvent:Connect(function(reloader: Player, weaponName: string, duration: number?)
+		local weapon = Weapons[weaponName]
+		if reloader == player and weapon then
+			reloadingUntil = os.clock() + (if typeof(duration) == "number" then duration else weapon.ReloadTime)
 		end
 	end)
 

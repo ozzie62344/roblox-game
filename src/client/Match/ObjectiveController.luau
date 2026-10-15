@@ -1,5 +1,6 @@
 -- Attack / Defend on the client:
---   • Hold G to plant the defuser (attackers, inside a bomb site) or disable it (defenders, next to it)
+--   • Hold G to plant the defuser (the attacker carrying it, inside a bomb site) or disable it
+--     (defenders, next to it); a "D" marker shows attackers where a dead carrier dropped it
 --   • "HOLD [G]" prompt + progress bar; you're locked in place while doing it
 --   • A / B site markers (only the defended pair's, on maps with several), and a countdown
 --     marker on the planted defuser
@@ -44,6 +45,8 @@ local siteFloors: { [BasePart]: Model } = {}
 local defuserMarker: BillboardGui
 local defuserMarkerText: TextLabel
 local defuserAnchor: Part
+local droppedMarker: BillboardGui -- attackers: where the dead carrier dropped the defuser
+local droppedAnchor: Part
 local nextBeep = 0
 
 local function isAttackDefend(): boolean
@@ -209,7 +212,8 @@ local function availableAction(): (string?, BasePart?)
 	local role = myRole()
 	local defuserPosition = MatchState:GetAttribute("DefuserPosition")
 	if isAttackDefend() then
-		if role == "Attack" and phase == "Action" and not defuserPosition and inSite(root.Position) and not teammatePlanting() then
+		-- (only the attacker carrying the defuser can plant it, ObjectiveService)
+		if role == "Attack" and phase == "Action" and player:GetAttribute("HasDefuser") and not defuserPosition and inSite(root.Position) and not teammatePlanting() then
 			return "Plant", nil
 		elseif role == "Defend" and phase == "Planted" and defuserPosition then
 			if (root.Position - defuserPosition).Magnitude <= MatchConfig.DisableRange then
@@ -308,6 +312,16 @@ local function build()
 	defuserMarker.Enabled = false
 	-- 3D markers go straight into PlayerGui (they don't draw inside a ScreenGui)
 	defuserMarker.Parent = player.PlayerGui
+
+	droppedAnchor = defuserAnchor:Clone()
+	local droppedText
+	droppedMarker, droppedText = marker("D", Color3.fromRGB(255, 150, 60))
+	droppedText.TextSize = 18
+	droppedMarker.Size = UDim2.fromOffset(36, 36)
+	droppedMarker.StudsOffset = Vector3.new(0, 2, 0)
+	droppedMarker.Adornee = droppedAnchor
+	droppedMarker.Enabled = false
+	droppedMarker.Parent = player.PlayerGui
 end
 
 -- Painted area on the floor showing exactly where you can plant: a faint yellow fill and a
@@ -394,6 +408,17 @@ local function update()
 	else
 		defuserMarker.Enabled = false
 		defuserAnchor.Parent = nil
+	end
+
+	-- Dropped defuser (its carrier died): attackers see where to pick it up
+	local droppedAt = MatchState:GetAttribute("DefuserDropped")
+	if attackDefend and droppedAt and myRole() == "Attack" then
+		droppedAnchor.Position = droppedAt
+		droppedAnchor.Parent = Workspace.CurrentCamera
+		droppedMarker.Enabled = true
+	else
+		droppedMarker.Enabled = false
+		droppedAnchor.Parent = nil
 	end
 
 	-- Plant / disable / barricade in progress: progress bar, and locked in place

@@ -1,17 +1,18 @@
 -- The first-time tutorial: a checklist card at the top middle of the screen that moves on when you
--- actually do each thing (walk, look, sprint, crouch and slide, then in the PRACTICE RANGE: aim,
+-- actually do each thing (walk, look, sprint, crouch, then in the PRACTICE RANGE: vault, aim,
 -- hit a bot, take two down, reload, lean, ping, scoreboard, and back out), then a few one-line
 -- cards about the match (NEXT) and YOU'RE READY. Every line shows the key, or on a touch screen
 -- the button's name (state.touchControls). Each step is checked here, on this client, from the
--- shared PlayerState (sprinting, sliding, aiming, leaning, lastPing...) and a few remotes
+-- shared PlayerState (sprinting, vaulting, aiming, leaning, lastPing...) and a few remotes
 -- (HitConfirmed for hits / kills on the bots, ReloadStarted for your own reloads).
 --   New players (the "TutorialSeen" attribute is false: PlayerData) are asked once when they
 --   first reach the lobby: NEW HERE? START / SKIP. The lobby's TUTORIAL button (right, under the
 --   PARTY) runs it again any time.
 --   Finishing it tells the server (TutorialService), which gives TutorialService.Reward credits
 --   the first time only.
--- A step that needs the practice range is left out on a server without one. Phones crouch and
--- slide in the range (the CROUCH button only shows when you're playing, not in the lobby).
+-- A step that needs the practice range is left out on a server without one (vaulting too: its
+-- low walls and crates are there). Phones crouch in the range (the CROUCH button only shows when
+-- you're playing, not in the lobby).
 -- In the range the mouse is locked: Left Alt frees it to click SKIP (MouseUnlock).
 
 local Players = game:GetService("Players")
@@ -75,7 +76,6 @@ local shownText = ""
 
 -- What the current step has counted so far (reset when a step begins)
 local progress = 0
-local phase = 0
 local stepStarted = 0
 local lastFlat: Vector3? = nil
 local lastYaw: number? = nil
@@ -213,18 +213,23 @@ local sprintStep: Step = {
 }
 
 local crouchStep: Step = {
-	title = "CROUCH & SLIDE",
+	title = "CROUCH",
 	text = function()
-		if phase == 0 then
-			return if touch() then `Tap {gold("CROUCH")} to crouch` else `Press {gold("C")} to crouch`
-		end
-		return if touch() then `Now sprint, then hold {gold("CROUCH")} to slide` else `Now sprint and hold {gold("C")} to slide`
+		return if touch() then `Tap {gold("CROUCH")} to crouch` else `Press {gold("C")} to crouch`
 	end,
 	check = function()
-		if phase == 0 and (state.crouching or state.prone) then
-			phase = 1
-		end
-		return phase == 1 and state.sliding
+		return state.crouching or state.prone
+	end,
+}
+
+local vaultStep: Step = {
+	title = "VAULT",
+	text = function()
+		local key = if touch() then "VAULT" else "SPACE"
+		return `Walk up to a {gold("LOW WALL")} or crate and press {gold(key)} to vault over or climb up`
+	end,
+	check = function()
+		return state.vaulting
 	end,
 }
 
@@ -371,8 +376,11 @@ local function buildSteps(): { Step }
 	if hasRange then
 		for _, step in { rangeStep, aimStep, hitStep, killStep, reloadStep, leanStep, pingStep, scoreStep, outStep } do
 			table.insert(list, step)
-			if step == rangeStep and touch() then
-				table.insert(list, crouchStep)
+			if step == rangeStep then
+				if touch() then
+					table.insert(list, crouchStep)
+				end
+				table.insert(list, vaultStep)
 			end
 		end
 	end
@@ -409,7 +417,7 @@ end
 local function beginStep(i: number)
 	index = i
 	completing = false
-	progress, phase = 0, 0
+	progress = 0
 	stepStarted = os.clock()
 	lastFlat, lastYaw = nil, nil
 	check.Visible = false

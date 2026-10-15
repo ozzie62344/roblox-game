@@ -1,6 +1,7 @@
 -- Hands every player an operator (Operators.luau) each round: their gadget and one of their guns.
 --   Draft:  everyone sees their side's operators and picks one plus a gun (can change until the
---           timer ends); anyone who doesn't gets a random free one when the round starts
+--           timer ends, i.e. through the setup too); anyone who hasn't picked when operator
+--           selection ends gets a random free one
 --   Random: everyone gets a random operator for their side, with a random gun from their list
 -- Two teammates can't be the same operator: the first to pick gets it, and the others see that
 -- card taken. Once you've used a charge of your gadget (defenders during setup), your operator is
@@ -161,7 +162,24 @@ function LoadoutService.StartRound(players: { Player }, mode: string, duration: 
 	end
 end
 
--- Called when the freeze ends: anyone who didn't pick gets a random free operator
+-- Called when operator selection ends: anyone who hasn't picked gets a random free operator now
+-- (they can still change until the pick window closes)
+function LoadoutService.AssignUnpicked()
+	local changed = false
+	for player, entry in entries do
+		if not entry.picked and player.Parent then
+			assignRandom(player)
+			changed = true
+		end
+	end
+	if changed then
+		for player in entries do
+			sendOffer(player)
+		end
+	end
+end
+
+-- Called when the round starts: anyone who still didn't pick gets a random free operator
 function LoadoutService.FinishRound()
 	for player, entry in entries do
 		if not entry.picked and player.Parent then

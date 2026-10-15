@@ -7,11 +7,12 @@ return {
 	velocity = Vector3.zero,
 	grounded = true,
 	sprinting = false,
-	sliding = false,
+	sliding = false, -- (there's no sliding any more: always false; kept for older readers)
 	crouching = false,
 	prone = false, -- lying down / crawling (double-tap crouch)
-	dashing = false,
-	lastWallJump = -math.huge,
+	vaulting = false, -- mid vault / climb (MovementController): the body is moved along a short arc
+	vaultAlpha = 0, -- how far through the vault, 0..1 (CameraEffects dips the camera with it)
+	canFire = true, -- false while sprinting or vaulting and for MovementConfig.SprintOutTime after (the gun coming back up)
 	rappelling = false, -- hanging on a rope on the outside of a building (RappelController)
 	rappelSpeed = 0, -- studs/second you're moving along the wall on the rope
 
@@ -39,6 +40,7 @@ return {
 	aimAlpha = 0, -- 0 = hip, 1 = fully aimed in
 	adsFovScale = 1,
 	lastShot = -math.huge,
+	fireHeld = false, -- the fire button is held with a gun out (WeaponController): it stops a sprint
 	recoilPitch = 0, -- radians, applied to the camera
 	recoilYaw = 0,
 	recoilRoll = 0, -- radians, visual jolt only

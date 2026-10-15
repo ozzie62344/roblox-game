@@ -1,17 +1,18 @@
 -- Abilities (gadgets). Each operator (Operators.luau) brings one of these as their gadget; the dev
 -- panel can hand out any of them.
---   Movement abilities live in MovementController (Dash on X, Wall Jump on Space).
---   Active abilities are used with X, run on the server (AbilityService / GadgetService), and
---   have charges per round.
+--   Abilities are used with X, run on the server (AbilityService / GadgetService), and have
+--   charges per round. (There are no movement abilities: everyone moves the same, Siege-style,
+--   only faster or slower by their operator's Speed rating. The old Dash / Wall Jump are gone;
+--   an "Ability" attribute naming one just finds nothing here, like no ability.)
 --   Side: what an ability is for: attacking tools ("Attack": breaching, grenades, finding
 --   enemies) belong to attackers, holding tools ("Defend": fortifying, roaming quietly, holding an
---   angle) to defenders. Plain movement (no Side) fits either.
+--   angle) to defenders.
 
 export type Ability = {
 	Name: string,
 	Key: string,
 	Description: string,
-	Kind: "Movement" | "Active",
+	Kind: "Active",
 	Side: ("Attack" | "Defend")?,
 	Charges: number?, -- uses per round (active abilities)
 	Detonates: boolean?, -- X again sets off what you placed (free, even with no charges left)
@@ -20,18 +21,6 @@ export type Ability = {
 }
 
 local Abilities: { [string]: Ability } = {
-	Dash = {
-		Name = "Dash",
-		Key = "X",
-		Kind = "Movement",
-		Description = "Burst in the direction you're moving. Works once in the air.",
-	},
-	WallJump = {
-		Name = "Wall Jump",
-		Key = "Space",
-		Kind = "Movement",
-		Description = "Jump off walls while in the air. Bounce between two walls to climb.",
-	},
 	ReconPulse = {
 		Name = "Recon Pulse",
 		Key = "X",
@@ -49,7 +38,7 @@ local Abilities: { [string]: Ability } = {
 		Side = "Defend", -- roaming without being heard
 		Charges = 2,
 		Duration = 8,
-		Description = "Your footsteps, jumps and landings are silent for 8 seconds.",
+		Description = "Your footsteps, vaults and landings are silent for 8 seconds.",
 	},
 	DeployableCover = {
 		Name = "Deployable Cover",

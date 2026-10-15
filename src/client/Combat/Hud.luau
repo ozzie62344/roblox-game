@@ -244,27 +244,42 @@ function Hud.SetHitMarkers(on: boolean)
 	hitMarkersOn = on
 end
 
--- kind: "body", "head" or "kill"
+-- Hit marker looks: colour, tick length and thickness, how long it stays, and how far out it
+-- pops from before settling (a kill punches out and back in)
+local HIT_MARKERS = {
+	body = { color = WHITE, length = 9, thickness = 2, duration = 0.25, pop = 0 },
+	head = { color = Color3.fromRGB(255, 120, 90), length = 10, thickness = 2, duration = 0.3, pop = 0 },
+	kill = { color = RED, length = 14, thickness = 2, duration = 0.4, pop = 4 },
+	headkill = { color = RED, length = 16, thickness = 3, duration = 0.5, pop = 6 },
+}
+
+-- kind: "body", "head", "kill" or "headkill" (a headshot that killed: a bigger, bolder X)
 function Hud.HitMarker(kind: string)
 	if not hitMarkersOn then
 		return
 	end
 	hitMarkerToken += 1
 	local token = hitMarkerToken
-	local color = if kind == "body" then WHITE else RED
-	local length = if kind == "kill" then 14 else 9
+	local look = HIT_MARKERS[kind] or HIT_MARKERS.body
+	local length = look.length
 
 	for i, bar in hitMarkerBars do
 		local angle = math.rad(45 + (i - 1) * 90)
 		local distance = 7 + length / 2
-		bar.Size = UDim2.fromOffset(2, length)
-		bar.Position = UDim2.new(0.5, math.sin(angle) * distance, 0.5, -math.cos(angle) * distance)
-		bar.BackgroundColor3 = color
+		local direction = Vector2.new(math.sin(angle), -math.cos(angle))
+		local settled = UDim2.new(0.5, direction.X * distance, 0.5, direction.Y * distance)
+		local popped = direction * (distance + look.pop)
+		bar.Size = UDim2.fromOffset(look.thickness, length)
+		bar.Position = if look.pop > 0 then UDim2.new(0.5, popped.X, 0.5, popped.Y) else settled
+		bar.BackgroundColor3 = look.color
 		bar.BackgroundTransparency = 0
 		bar.Visible = true
-		TweenService:Create(bar, TweenInfo.new(0.25), { BackgroundTransparency = 1 }):Play()
+		if look.pop > 0 then
+			TweenService:Create(bar, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Position = settled }):Play()
+		end
+		TweenService:Create(bar, TweenInfo.new(look.duration, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { BackgroundTransparency = 1 }):Play()
 	end
-	task.delay(0.25, function()
+	task.delay(look.duration, function()
 		if token == hitMarkerToken then
 			for _, bar in hitMarkerBars do
 				bar.Visible = false
@@ -278,8 +293,10 @@ function Hud.SetAmmoText(text: string)
 	ammoLabel.TextColor3 = WHITE
 end
 
+-- A round in the chamber on top of a full mag shows like Siege: "30+1 / 30"
 function Hud.SetAmmo(current: number, max: number, reloading: boolean)
-	ammoLabel.Text = if reloading then "RELOADING" else `{current} / {max}`
+	local shown = if current > max then `{max}+{current - max}` else tostring(current)
+	ammoLabel.Text = if reloading then "RELOADING" else `{shown} / {max}`
 	ammoLabel.TextColor3 = if current == 0 and not reloading then RED else WHITE
 end
 

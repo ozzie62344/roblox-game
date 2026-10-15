@@ -1,6 +1,5 @@
 -- X uses your active ability: your operator's gadget (Recon Pulse, Ghost Step, Deployable Cover
 -- and the Siege gadgets; the heartbeat sensor and barbed wire draw in GadgetEffects).
--- Dash also lives on X, so for Dash this passes the key through to MovementController.
 -- Also draws ability effects the server sends: reveals, pulse waves (scan / EMP), "scanned"
 -- warnings and gadget status messages ("JAMMED", "CHARGE SET"...).
 
@@ -148,7 +147,7 @@ function AbilityController.Start()
 		local abilityName = player:GetAttribute("Ability")
 		local ability = abilityName and Abilities[abilityName]
 		if not ability or ability.Kind ~= "Active" then
-			return Enum.ContextActionResult.Pass -- Dash (or nothing): let MovementController have X
+			return Enum.ContextActionResult.Pass -- (no ability: nothing to do)
 		end
 		if state.devPanelOpen or state.mouseUnlocked or state.draftOpen or state.spectating or state.deploying or state.interacting or state.droning then
 			return Enum.ContextActionResult.Sink

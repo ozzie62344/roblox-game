@@ -2,6 +2,8 @@
 -- with site pairs): a row of buttons under the top bar. Clicking one moves the whole team there
 -- (RoundService); the last pick counts. The cursor is free while the loadout cards are open;
 -- otherwise Left Alt frees it. Attackers find out where when the round goes live.
+-- Attackers get the same row for their spawn point instead ("SPAWN: Front Street / Back Alley /
+-- Side Drive", MatchState "AttackSpawns"): each picks their own and is moved there right away.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -22,16 +24,20 @@ local PICKED_COLOR = Color3.fromRGB(50, 110, 220)
 
 local bar: Frame
 local row: Frame
+local title: TextLabel
 local buttons: { [string]: TextButton } = {}
-local builtFrom = -1 -- how many sites the buttons were made from
+local builtFrom: any = -1 -- what the buttons were made from (site count, or the spawn list)
 
-local function shouldShow(): boolean
+-- "Site" (defenders), "Spawn" (attackers) or nil (nothing to pick right now)
+local function shouldShow(): string?
 	local attackTeam = MatchState:GetAttribute("AttackTeam")
-	return MatchState:GetAttribute("Phase") == "PreRound"
-		and MatchState:GetAttribute("GameMode") == "AttackDefend"
-		and attackTeam ~= nil
-		and player.Team ~= nil
-		and player.Team.Name ~= attackTeam
+	if MatchState:GetAttribute("Phase") ~= "PreRound" or attackTeam == nil or player.Team == nil then
+		return nil
+	end
+	if player.Team.Name == attackTeam then
+		return if MatchState:GetAttribute("AttackSpawns") then "Spawn" else nil
+	end
+	return if MatchState:GetAttribute("GameMode") == "AttackDefend" then "Site" else nil
 end
 
 -- Pair → its rooms in site order ("Gym · Workshop"), read from the map's sites
@@ -67,11 +73,15 @@ local function clearButtons()
 	table.clear(buttons)
 end
 
-local function makeButtons()
-	local rooms = getPairs()
+local function makeButtons(kind: string)
+	local rooms = if kind == "Site" then getPairs() else {}
 	local names = {}
-	for pair in rooms do
-		table.insert(names, pair)
+	if kind == "Spawn" then
+		names = string.split(MatchState:GetAttribute("AttackSpawns") or "", ",")
+	else
+		for pair in rooms do
+			table.insert(names, pair)
+		end
 	end
 	table.sort(names)
 	for i, pair in names do
@@ -84,12 +94,17 @@ local function makeButtons()
 		button.TextSize = 15
 		button.TextColor3 = Color3.new(1, 1, 1)
 		button.RichText = true
-		button.Text = `{string.upper(pair)}\n<font size="12" color="#AAB0BC">{rooms[pair]}</font>`
+		button.Text = if kind == "Spawn" then string.upper(pair)
+			else `{string.upper(pair)}\n<font size="12" color="#AAB0BC">{rooms[pair]}</font>`
 		local corner = Instance.new("UICorner")
 		corner.CornerRadius = UDim.new(0, 8)
 		corner.Parent = button
 		button.Activated:Connect(function()
-			PickSite:FireServer(pair)
+			if kind == "Spawn" then
+				PickSite:FireServer(pair, "Spawn")
+			else
+				PickSite:FireServer(pair)
+			end
 		end)
 		button.Parent = row
 		buttons[pair] = button
@@ -111,14 +126,13 @@ local function build()
 	bar.Visible = false
 	bar.Parent = gui
 
-	local title = Instance.new("TextLabel")
+	title = Instance.new("TextLabel")
 	title.Size = UDim2.new(1, 0, 0, 24)
 	title.BackgroundTransparency = 1
 	title.Font = Enum.Font.GothamBlack
 	title.TextSize = 16
 	title.TextColor3 = Color3.fromRGB(120, 175, 255)
 	title.TextStrokeTransparency = 0.5
-	title.Text = if state.touchControls then "PICK A SITE TO DEFEND  ·  TAP ONE" else "PICK A SITE TO DEFEND  ·  CLICK  (LEFT ALT FREES THE MOUSE)"
 	title.Parent = bar
 
 	row = Instance.new("Frame")
@@ -135,8 +149,9 @@ local function build()
 end
 
 local function update()
-	if not shouldShow() then
-		if bar.Visible then
+	local kind = shouldShow()
+	if not kind then
+		if bar.Visible or builtFrom ~= -1 then
 			bar.Visible = false
 			clearButtons() -- the next round may be on a fresh map
 			builtFrom = -1
@@ -145,16 +160,24 @@ local function update()
 	end
 	-- The map streams in (StreamingEnabled): far-off sites arrive a few seconds after the phase
 	-- changes, so remake the buttons whenever more of them show up
-	local map = Workspace:FindFirstChild("Map")
-	local objectives = map and map:FindFirstChild("Objectives")
-	local siteCount = if objectives then #objectives:GetChildren() else 0
-	if siteCount ~= builtFrom then
+	local source: any
+	if kind == "Spawn" then
+		source = "Spawn:" .. MatchState:GetAttribute("AttackSpawns")
+	else
+		local map = Workspace:FindFirstChild("Map")
+		local objectives = map and map:FindFirstChild("Objectives")
+		source = if objectives then #objectives:GetChildren() else 0
+	end
+	if source ~= builtFrom then
 		clearButtons()
-		makeButtons()
-		builtFrom = siteCount
+		makeButtons(kind)
+		builtFrom = source
+		local how = if state.touchControls then "TAP ONE" else "CLICK  (LEFT ALT FREES THE MOUSE)"
+		title.Text = if kind == "Spawn" then `PICK YOUR SPAWN  ·  {how}` else `PICK A SITE TO DEFEND  ·  {how}`
+		title.TextColor3 = if kind == "Spawn" then Color3.fromRGB(255, 150, 110) else Color3.fromRGB(120, 175, 255)
 	end
 	bar.Visible = next(buttons) ~= nil
-	local picked = MatchState:GetAttribute("SitePair")
+	local picked = if kind == "Spawn" then player:GetAttribute("SpawnPick") else MatchState:GetAttribute("SitePair")
 	for pair, button in buttons do
 		button.BackgroundColor3 = if pair == picked then PICKED_COLOR else BUTTON_COLOR
 	end

@@ -1,19 +1,22 @@
--- Footsteps, jumps and landings for every character, including your own (yours quieter).
--- Sprinting is loud and carries far, walking is medium, crouching is nearly silent,
--- sliding makes no steps. The floor changes the step (Sounds.Footstep.Surfaces): metal catwalks
--- clank and carry, floorboards thud, carpet and grass are soft. This is how you hear people coming.
+-- Footsteps, vaults and landings for every character, including your own (yours quieter).
+-- Sprinting is loud and carries far, walking is medium, crouching is nearly silent. The floor
+-- changes the step (Sounds.Footstep.Surfaces): metal catwalks clank and carry, floorboards thud,
+-- carpet and grass are soft. This is how you hear people coming.
+-- Vaults: yours are played by MovementController the moment you go (VaultStart / VaultLand);
+-- everyone else's when their "Vaulting" attribute flips (PoseService).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
+local Config = require(ReplicatedStorage.Shared.MovementConfig)
 local Sounds = require(ReplicatedStorage.Shared.Sounds)
 local Sound3D = require(script.Parent.Sound3D)
 
 local Footsteps = {}
 
-local SPRINT_THRESHOLD = 22 -- studs/s; faster than this counts as sprinting
+local SPRINT_THRESHOLD = Config.SprintThreshold -- studs/s; faster than this counts as sprinting
 local MIN_STEP_SPEED = 3
 
 local random = Random.new()
@@ -128,20 +131,17 @@ local function update(dt: number)
 			continue
 		end
 
-		-- Jump / land
-		if tracker.grounded and not grounded and velocity.Y > 20 then
-			Sound3D.Play(Sounds.Jump.Id, feet, { volume = Sounds.Jump.Volume, range = Sounds.Jump.Range })
-		elseif not tracker.grounded and grounded and tracker.lastVerticalSpeed < -Sounds.Land.MinFallSpeed then
+		-- Landing from a fall (there's no jumping; vaults have their own sounds)
+		if not tracker.grounded and grounded and tracker.lastVerticalSpeed < -Sounds.Land.MinFallSpeed then
 			Sound3D.Play(Sounds.Land.Id, feet, { volume = Sounds.Land.Volume, range = Sounds.Land.Range })
 			tracker.distance = 0
 		end
 		tracker.grounded = grounded
 		tracker.lastVerticalSpeed = velocity.Y
 
-		-- Steps
+		-- Steps (not mid-vault: that's its own sound)
 		local crouching = character:GetAttribute("Crouching") == true
-		local sliding = crouching and speed > SPRINT_THRESHOLD * 0.7
-		if not grounded or sliding or speed < MIN_STEP_SPEED then
+		if not grounded or speed < MIN_STEP_SPEED or character:GetAttribute("Vaulting") == true then
 			continue
 		end
 
@@ -214,12 +214,65 @@ local function muteDefaultSounds(character: Model)
 	character.DescendantAdded:Connect(mute)
 end
 
+-- A vault starting at `feet`: hands and kit thumping onto the cover and a scuff of cloth
+function Footsteps.VaultStart(feet: Vector3, own: boolean)
+	local config = Sounds.Vault
+	local volume = config.Volume * (if own then Sounds.Footstep.OwnVolumeScale else 1)
+	Sound3D.Play(config.Id, feet + Vector3.new(0, 2, 0), {
+		volume = volume,
+		range = config.Range,
+		pitch = config.Pitch * random:NextNumber(0.92, 1.08),
+		duration = config.Duration,
+		muffle = not own,
+	})
+	Sound3D.Play(config.Cloth, feet + Vector3.new(0, 2, 0), {
+		volume = volume * config.ClothVolume,
+		range = config.Range * 0.6,
+		pitch = random:NextNumber(1.3, 1.5),
+		duration = 0.3,
+		muffle = not own,
+	})
+end
+
+-- ...and its landing: one firm step
+function Footsteps.VaultLand(feet: Vector3, own: boolean)
+	local config = Sounds.Vault
+	Sound3D.Play(Sounds.Footstep.Id, feet, {
+		volume = config.Volume * (if own then Sounds.Footstep.OwnVolumeScale else 1),
+		range = config.Range,
+		pitch = random:NextNumber(0.85, 0.95),
+		duration = Sounds.Footstep.Duration,
+		muffle = not own,
+	})
+end
+
+-- Someone else's vault (their "Vaulting" attribute), unless Ghost Step has them silent
+local function watchVaults(character: Model)
+	character:GetAttributeChangedSignal("Vaulting"):Connect(function()
+		local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if not root or not humanoid or character:GetAttribute("Silent") or Players:GetPlayerFromCharacter(character) == Players.LocalPlayer then
+			return
+		end
+		local feet = root.Position - Vector3.new(0, humanoid.HipHeight + root.Size.Y / 2, 0)
+		if character:GetAttribute("Vaulting") == true then
+			Footsteps.VaultStart(feet, false)
+		else
+			Footsteps.VaultLand(feet, false)
+		end
+	end)
+end
+
 function Footsteps.Start()
 	local function watchPlayer(player: Player)
-		if player.Character then
-			muteDefaultSounds(player.Character)
+		local function onCharacter(character: Model)
+			muteDefaultSounds(character)
+			watchVaults(character)
 		end
-		player.CharacterAdded:Connect(muteDefaultSounds)
+		if player.Character then
+			onCharacter(player.Character)
+		end
+		player.CharacterAdded:Connect(onCharacter)
 	end
 	for _, player in Players:GetPlayers() do
 		watchPlayer(player)

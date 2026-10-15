@@ -11,8 +11,10 @@ return {
 	MapVoteTime = 15, -- the map vote is also the countdown before the match starts
 	ArrivalTimeout = 40, -- match server: start anyway if someone still hasn't arrived by then
 
-	PreRoundTime = 5, -- everyone frozen at spawn (Random loadouts)
-	DraftTime = 10, -- frozen pre-round is this long in Draft mode, to pick a loadout
+	-- Every round starts with operator selection (Siege): everyone frozen at spawn picking an
+	-- operator (Draft), defenders picking the site, attackers picking their spawn point
+	PreRoundTime = 10, -- frozen pre-round with Random loadouts (still time to pick site / spawn)
+	DraftTime = 20, -- operator selection in Draft mode (anyone who doesn't pick gets a random one)
 
 	-- "Draft" = pick 1 of 3 loadouts each round, "Random" = you get a random one.
 	-- (Lobby voting will choose this later.)
@@ -26,11 +28,13 @@ return {
 	-- a defuser on one; "Elimination" = last team standing. (Lobby voting will choose this later.)
 	DefaultGameMode = "AttackDefend",
 	SwapSidesAfterRounds = 3, -- halftime: attackers and defenders switch
+	-- Overtime (3-3 and on, i.e. after round 2 × SwapSidesAfterRounds): sides switch every round
 
 	-- Attack / Defend
-	PrepTime = 45, -- defenders set up (barricade, reinforce) while attackers wait in spawn (Siege ranked: 45)
-	PlantTime = 4, -- attackers: hold G inside a bomb site to plant the defuser
-	DisableTime = 6, -- defenders: hold G next to the planted defuser to disable it
+	PrepTime = 45, -- defenders set up (barricade, reinforce) while attackers drone from spawn (Siege ranked: 45)
+	PlantTime = 7, -- attackers: the defuser carrier holds G inside a bomb site to plant (Siege: 7)
+	DisableTime = 7, -- defenders: hold G next to the planted defuser to disable it (Siege: 7)
+	DefuserPickupRange = 4, -- attackers walk over a dropped defuser (its carrier died) to pick it up
 	DefuserTime = 45, -- seconds from plant until the defuser has defused the bomb (attackers win)
 	DisableRange = 5, -- studs from the defuser
 	-- Defender fortifications (Siege numbers)
@@ -39,7 +43,7 @@ return {
 	ReinforceTime = 4.5, -- hold G to put a steel reinforcement on a soft wall section
 	ReinforcementsPerDefender = 2, -- team pool per round = this × defenders (Siege's original rule)
 	MeleeCooldown = 1.5, -- seconds between knife swings (a stab to the body kills)
-	RoundTime = 120,
+	RoundTime = 180, -- action phase (Siege: 3:00)
 	PostRoundTime = 5,
 	MatchOverTime = 10,
 	FreeRoamRespawnTime = 3, -- respawn delay between matches

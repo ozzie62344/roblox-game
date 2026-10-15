@@ -3,13 +3,16 @@
 -- to a match server); a match server waits for everyone teleported in, plays one match and
 -- sends them all back to a lobby. Devs can force a match anywhere (and in Studio, which can't
 -- teleport, a full queue does that too).
--- Each round: loadout freeze → (Attack/Defend: defender prep) → action → post-round. One life per round.
---   AttackDefend: defenders guard the bombs at A and B; attackers plant a defuser on one
---                 (ObjectiveService) and defenders have to disable it. On
+-- Each round, like Siege: operator selection ("PreRound": everyone frozen at spawn picks an
+-- operator, defenders pick the site, attackers their spawn) → (Attack/Defend: "Prep", the
+-- preparation phase: defenders set up, attackers drone from spawn) → "Action" (→ "Planted") →
+-- "PostRound". One life per round.
+--   AttackDefend: defenders guard the bombs at A and B; one attacker carries a defuser, plants it
+--                 on one (ObjectiveService) and defenders have to disable it. On
 --                 maps with several site pairs the defenders pick the pair during the freeze, and
 --                 the attackers hunt for it with drones during the setup (DroneService).
 --   Elimination:  wipe the other team, or have more players alive when time runs out.
--- One team attacks, the other defends; sides swap at halftime.
+-- One team attacks, the other defends; sides swap at halftime, and every round in overtime.
 -- Ranked matches (MatchState "Ranked", from the teleport data): Classic rules only, a team that
 -- has all left forfeits, and RankedService rates everyone at the end.
 -- Clients read the current state from attributes on ReplicatedStorage.MatchState.
@@ -157,23 +160,40 @@ local function getSpawns(side: string): { BasePart }
 end
 
 -- Puts a team on one of its side's pads (a random one if there are several), side by side,
--- frozen until the round starts
+-- frozen until the round starts. Attackers each go to the spawn they picked (player attribute
+-- "SpawnPick" = the pad's "SpawnName", MapService), like Siege's spawn select.
 local function placeTeam(teamName: string, side: string)
 	local members = teams[teamName]:GetPlayers()
 	local spawns = getSpawns(side)
 	if #spawns == 0 then
 		return
 	end
-	local pad = spawns[math.random(#spawns)]
-	for i, player in members do
-		local character = player.Character
-		local root = getRoot(player)
-		if character and root then
-			-- Spread teammates out side by side on the pad, facing the way the pad faces
-			local sideOffset = (i - (#members + 1) / 2) * 4
-			character:PivotTo(pad.CFrame * CFrame.new(sideOffset, standHeight(character), 0))
-			player:SetAttribute("ServerTeleport", os.clock()) -- (AntiCheat: our own teleport, not a cheat)
-			root.Anchored = true
+	local fallback = spawns[math.random(#spawns)]
+	local groups: { [BasePart]: { Player } } = {}
+	for _, player in members do
+		local pad = fallback
+		local pick = player:GetAttribute("SpawnPick")
+		if side == "Attack" and pick then
+			for _, candidate in spawns do
+				if candidate:GetAttribute("SpawnName") == pick then
+					pad = candidate
+				end
+			end
+		end
+		groups[pad] = groups[pad] or {}
+		table.insert(groups[pad], player)
+	end
+	for pad, group in groups do
+		for i, player in group do
+			local character = player.Character
+			local root = getRoot(player)
+			if character and root then
+				-- Spread teammates out side by side on the pad, facing the way the pad faces
+				local sideOffset = (i - (#group + 1) / 2) * 4
+				character:PivotTo(pad.CFrame * CFrame.new(sideOffset, standHeight(character), 0))
+				player:SetAttribute("ServerTeleport", os.clock()) -- (AntiCheat: our own teleport, not a cheat)
+				root.Anchored = true
+			end
 		end
 	end
 end
@@ -244,6 +264,7 @@ local function resetToFreeRoam()
 	for _, player in Players:GetPlayers() do
 		player.Team = nil
 		player.Neutral = true
+		player:SetAttribute("SpawnPick", nil)
 		LoadoutService.Reset(player)
 		task.spawn(spawnFreeRoam, player)
 	end
@@ -293,8 +314,9 @@ local function checkElimination(attack: string, defend: string, attackOut: boole
 	return nil, nil
 end
 
--- Returns winner ("Blue" / "Orange" / "Draw") and a reason, or nil if the match was aborted
-local function runRound(round: number, mode: string, attack: string): (string?, string?)
+-- Returns winner ("Blue" / "Orange" / "Draw") and a reason, or nil if the match was aborted.
+-- `title` is the round's opening banner ("ROUND 4 · MATCH POINT").
+local function runRound(round: number, mode: string, attack: string, title: string): (string?, string?)
 	local defend = otherTeam(attack)
 	-- Fresh map every round: broken walls, glass and barricades all come back
 	MapService.Load(MatchState:GetAttribute("Map") or MatchConfig.DefaultMap)
@@ -311,6 +333,12 @@ local function runRound(round: number, mode: string, attack: string): (string?, 
 			player.Character:Destroy()
 		end
 	end
+	-- Attackers start on a random spawn together until they pick their own (PickSite "Spawn")
+	local attackPads = getSpawns("Attack")
+	local defaultSpawn = if #attackPads > 0 then attackPads[math.random(#attackPads)]:GetAttribute("SpawnName") else nil
+	for _, player in Players:GetPlayers() do
+		player:SetAttribute("SpawnPick", if player.Team == teams[attack] then defaultSpawn else nil)
+	end
 	spawnTeam(attack, "Attack")
 	spawnTeam(defend, "Defend")
 	local startedWith = {}
@@ -320,7 +348,8 @@ local function runRound(round: number, mode: string, attack: string): (string?, 
 	-- Defenders' shared wall reinforcements (FortifyService)
 	MatchState:SetAttribute("Reinforcements", startedWith[defend] * MatchConfig.ReinforcementsPerDefender)
 
-	-- Loadouts are handed out (or drafted) during the freeze
+	-- Operator selection (Siege): everyone's frozen at spawn picking an operator (Draft) while the
+	-- defenders pick the site (SitePicker) and the attackers their spawn point
 	local loadoutMode = MatchState:GetAttribute("LoadoutMode") or MatchConfig.DefaultLoadoutMode
 	local freezeTime = if loadoutMode == "Draft" then MatchConfig.DraftTime else MatchConfig.PreRoundTime
 	local roundPlayers = {}
@@ -335,14 +364,21 @@ local function runRound(round: number, mode: string, attack: string): (string?, 
 	LoadoutService.StartRound(roundPlayers, loadoutMode, pickTime)
 
 	local ranked = round == 1 and MatchState:GetAttribute("Ranked") == true
-	setPhase("PreRound", freezeTime, if ranked then "RANKED MATCH · ROUND 1" else `ROUND {round}`)
+	setPhase("PreRound", freezeTime, if ranked then "RANKED MATCH · ROUND 1" else title)
 	task.wait(freezeTime)
+	if abortMatch then
+		return nil, nil
+	end
+	-- Nobody goes into the setup without an operator (they can still change until the round starts)
+	LoadoutService.AssignUnpicked()
 
 	-- Attack / Defend: defenders get time to set up while attackers scout with drones from spawn
+	-- (every attacker starts the setup driving one, DroneService)
 	if mode == "AttackDefend" then
 		unfreezeTeam(defend)
 		ObjectiveService.PlaceBombs() -- the defenders' pick is final now
-		setPhase("Prep", MatchConfig.PrepTime, "DEFENDERS ARE SETTING UP")
+		ObjectiveService.GiveDefuser(teams[attack]) -- one attacker carries it (Siege)
+		setPhase("Prep", MatchConfig.PrepTime, "PREPARATION PHASE")
 		DroneService.StartPrep(teams[attack])
 		task.wait(MatchConfig.PrepTime)
 		if abortMatch then
@@ -358,10 +394,10 @@ local function runRound(round: number, mode: string, attack: string): (string?, 
 	-- Attackers only know where the defenders are if a drone found it (DroneService)
 	local sitePair = MatchState:GetAttribute("SitePair")
 	local found = MatchState:GetAttribute("SiteFound") == true
-	local actionBanner = if mode ~= "AttackDefend" then nil
-		elseif sitePair and found then `ATTACK · {string.upper(sitePair)}`
-		elseif sitePair then "ATTACK · FIND THE OBJECTIVE"
-		else "ATTACK!"
+	local actionBanner = if mode ~= "AttackDefend" then "ACTION PHASE"
+		elseif sitePair and found then `ACTION PHASE · {string.upper(sitePair)}`
+		elseif sitePair then "ACTION PHASE · FIND THE OBJECTIVE"
+		else "ACTION PHASE"
 	setPhase("Action", MatchConfig.RoundTime, actionBanner)
 	local deadline = os.clock() + MatchConfig.RoundTime
 	local planted = false
@@ -418,7 +454,12 @@ local function runMatch()
 		MatchState:SetAttribute("Round", round)
 		MatchState:SetAttribute("AttackTeam", attack)
 
-		local winner, reason = runRound(round, mode, attack)
+		-- Siege's round titles: match point when a round could win it, overtime after 3-3
+		local matchPoint = scores.Blue == MatchConfig.RoundsToWin - 1 or scores.Orange == MatchConfig.RoundsToWin - 1
+		local title = if round > MatchConfig.SwapSidesAfterRounds * 2 then `OVERTIME · ROUND {round}`
+			elseif matchPoint then `ROUND {round} · MATCH POINT`
+			else `ROUND {round}`
+		local winner, reason = runRound(round, mode, attack, title)
 		if not winner then
 			break
 		end
@@ -451,6 +492,11 @@ local function runMatch()
 		if round == MatchConfig.SwapSidesAfterRounds then
 			attack = otherTeam(attack)
 			setPhase("PostRound", 3, "HALFTIME · SWITCHING SIDES")
+			task.wait(3)
+		elseif round >= MatchConfig.SwapSidesAfterRounds * 2 then
+			-- Overtime: sides switch every round
+			attack = otherTeam(attack)
+			setPhase("PostRound", 3, "OVERTIME · SWITCHING SIDES")
 			task.wait(3)
 		end
 	end
@@ -762,10 +808,27 @@ function RoundService.Start()
 	Players.PlayerAdded:Connect(onPlayerAdded)
 
 	-- Defenders choosing where to defend during the freeze (SitePicker): the last pick counts, and
-	-- the whole team moves to that pair's spawn right away
-	PickSite.OnServerEvent:Connect(function(player, pair)
+	-- the whole team moves to that pair's spawn right away.
+	-- PickSite(name, "Spawn"): an attacker choosing their own spawn point (moved there right away).
+	PickSite.OnServerEvent:Connect(function(player, pair, kind)
 		local attackTeam = MatchState:GetAttribute("AttackTeam")
-		if not matchRunning or MatchState:GetAttribute("Phase") ~= "PreRound" or not player.Team or player.Team.Name == attackTeam then
+		if not matchRunning or MatchState:GetAttribute("Phase") ~= "PreRound" or not player.Team then
+			return
+		end
+		if kind == "Spawn" then
+			if player.Team.Name ~= attackTeam or typeof(pair) ~= "string" or player:GetAttribute("SpawnPick") == pair then
+				return
+			end
+			for _, pad in getSpawns("Attack") do
+				if pad:GetAttribute("SpawnName") == pair then
+					player:SetAttribute("SpawnPick", pair)
+					placeTeam(attackTeam, "Attack")
+					return
+				end
+			end
+			return
+		end
+		if player.Team.Name == attackTeam then
 			return
 		end
 		if typeof(pair) ~= "string" or not table.find(ObjectiveService.GetPairs(), pair) then

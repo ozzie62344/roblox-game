@@ -2,11 +2,11 @@
 -- src/Animate.client.luau). Everything is worked out every frame from what we know about them:
 --   • legs: feet stay planted on the ground — real steps when moving, knees bend when crouching
 --     (their body is lowered, so this is what stops them sinking into the floor), one leg out
---     when sliding, tucked up in the air
+--     in front going over cover (vaulting), tucked up in the air
 --   • a gun in their hands (the same detailed model you hold), both arms holding it, aimed where
 --     they're looking (up/down comes from the "LookPitch" attribute), kicking when they shoot
 --   • lean, sprint (gun lowered), reload (left hand to the mag and to a pouch), deploying cover
---     (reaching down), slide (leaning back)
+--     (reaching down), vaulting (leaning back over the cover, gun lowered)
 --   • lying down (prone): the body tips forward flat onto the floor, chest up on the elbows, head
 --     up, gun out in front, legs stretched behind; crawling draws one knee up at a time
 --   • rappelling: feet braced against the wall (stepping up / down it as they move), leaning back
@@ -44,7 +44,7 @@ local player = Players.LocalPlayer
 local BodyAnimator = {}
 
 -- Tuning
-local SPRINT_SPEED = 22 -- faster than this looks like sprinting
+local SPRINT_SPEED = Config.SprintThreshold -- faster than this looks like sprinting
 local MOVE_SPEED = 2 -- slower than this counts as standing still
 local STEP_HEIGHT = 0.55 -- how high feet lift while walking
 local SMOOTH = 12 -- how quickly poses blend
@@ -77,7 +77,7 @@ type Rig = {
 	prone: number,
 	rappel: number,
 	lastRootPos: Vector3?, -- (a rappeller's velocity reads zero: speed comes from how far they moved)
-	slide: number,
+	vault: number, -- going over cover (the "Vaulting" attribute)
 	sprint: number,
 	air: number,
 	lean: number,
@@ -247,7 +247,7 @@ local function makeRig(character: Model): Rig?
 	return {
 		character = character, humanoid = humanoid, root = root,
 		rootJoint = rootJoint, waist = waist, neck = neck, left = left, right = right,
-		phase = 0, stride = 0, crouch = 0, prone = 0, rappel = 0, slide = 0, sprint = 0, air = 0, lean = 0, pitch = 0,
+		phase = 0, stride = 0, crouch = 0, prone = 0, rappel = 0, vault = 0, sprint = 0, air = 0, lean = 0, pitch = 0,
 		busy = 0, kneel = 0, work = 0, workLeft = Vector3.zero, workRight = Vector3.zero,
 		kick = 0, reloadStart = 0, reloadEnd = 0,
 	}
@@ -275,16 +275,16 @@ local function poseLeg(side: Side, sign: number, lowerTorsoCF: CFrame, rig: Rig,
 	local lift = math.max(0, math.cos(phase)) * STEP_HEIGHT * math.min(rig.stride / 1.2, 1)
 	-- Crouch: one foot a little forward, the other back, slightly wider
 	local crouchOffset = forward * (if sign < 0 then 0.55 else -0.45) * rig.crouch + right * sign * 0.2 * rig.crouch
-	-- Slide: left leg straight out in front, right leg folded under
-	local slideOffset = if sign < 0 then forward * 2.4 else forward * -0.6 + right * 0.25
+	-- Vaulting: left leg straight out in front, right leg folded under (a speed vault)
+	local vaultOffset = if sign < 0 then forward * 2.4 else forward * -0.6 + right * 0.25
 
 	local groundY = (ground or (hipPos.Y - legLength)) + side.ankleHeight
 	local target = Vector3.new(hipPos.X, groundY, hipPos.Z)
 		+ right * sign * 0.15
-		+ moveDir * swing * (1 - rig.slide)
-		+ UP * lift * (1 - rig.slide)
-		+ crouchOffset * (1 - rig.slide)
-		+ slideOffset * rig.slide
+		+ moveDir * swing * (1 - rig.vault)
+		+ UP * lift * (1 - rig.vault)
+		+ crouchOffset * (1 - rig.vault)
+		+ vaultOffset * rig.vault
 	-- In the air: feet tucked up under the body
 	local tucked = hipPos - UP * legLength * 0.7 + forward * (if sign < 0 then 0.5 else -0.3)
 	target = target:Lerp(tucked, rig.air)
@@ -358,10 +358,10 @@ local function animate(rig: Rig, other: Player, dt: number)
 	local moveDir = if speed > 0.5 then flatVelocity.Unit else facing.LookVector
 
 	-- What are they doing? (attributes set by the server from their own client)
-	local lowered = character:GetAttribute("Crouching") == true -- crouching OR sliding OR lying down
+	local lowered = character:GetAttribute("Crouching") == true -- crouching OR lying down
 	local prone = character:GetAttribute("Prone") == true
-	local sliding = lowered and not prone and speed > SPRINT_SPEED * 0.8
-	local crouching = lowered and not sliding and not prone
+	local vaulting = character:GetAttribute("Vaulting") == true
+	local crouching = lowered and not prone and not vaulting
 	local deployingCover = character:GetAttribute("Deploying") == true
 	local interaction = other:GetAttribute("Interaction")
 	local busy = deployingCover or interaction ~= nil
@@ -378,7 +378,7 @@ local function animate(rig: Rig, other: Player, dt: number)
 	rig.crouch = smooth(rig.crouch, if crouching or kneeling then 1 else 0, dt)
 	rig.prone = smooth(rig.prone, if prone then 1 else 0, dt, 8)
 	rig.rappel = smooth(rig.rappel, if rappelling then 1 else 0, dt, 10)
-	rig.slide = smooth(rig.slide, if sliding then 1 else 0, dt, 16)
+	rig.vault = smooth(rig.vault, if vaulting then 1 else 0, dt, 16)
 	rig.sprint = smooth(rig.sprint, if speed > SPRINT_SPEED and not lowered then 1 else 0, dt, 8)
 	rig.air = smooth(rig.air, if airborne then 1 else 0, dt, 10)
 	rig.lean = smooth(rig.lean, character:GetAttribute("Lean") or 0, dt, Config.LeanSpeed)
@@ -406,9 +406,9 @@ local function animate(rig: Rig, other: Player, dt: number)
 		rig.phase = (rig.phase + gait * dt * math.pi / math.max(stepLength * 2, 0.5)) % (math.pi * 2)
 	end
 
-	-- ── Torso ── a slight bounce while walking, leaning back in a slide, tipped flat lying down
-	local bob = -math.abs(math.sin(rig.phase)) * 0.12 * math.min(rig.stride, 1) * (1 - rig.slide) * (1 - rig.prone)
-	local rootTransform = CFrame.new(0, bob, 0) * CFrame.Angles(math.rad(22) * rig.slide + math.rad(14) * rig.rappel, 0, 0)
+	-- ── Torso ── a slight bounce while walking, leaning back over cover, tipped flat lying down
+	local bob = -math.abs(math.sin(rig.phase)) * 0.12 * math.min(rig.stride, 1) * (1 - rig.vault) * (1 - rig.prone)
+	local rootTransform = CFrame.new(0, bob, 0) * CFrame.Angles(math.rad(22) * rig.vault + math.rad(14) * rig.rappel, 0, 0)
 	rootTransform = rootTransform:Lerp(CFrame.new(0, -PRONE_DROP, 0) * CFrame.Angles(-math.rad(88), 0, 0), rig.prone)
 	local lowerTorsoCF = childCFrame(rig.rootJoint, root.CFrame, rootTransform)
 	rig.rootJoint.motor.Transform = rootTransform
@@ -449,7 +449,7 @@ local function animate(rig: Rig, other: Player, dt: number)
 
 	local shoulderPos = (upperTorsoCF * rig.right.shoulder.c0).Position
 	local aim = facing * CFrame.Angles(rig.pitch, 0, 0)
-	local lowReady = math.max(rig.sprint, rig.busy)
+	local lowReady = math.max(rig.sprint, rig.busy, rig.vault)
 	local gunRotation = aim
 		* CFrame.Angles(-math.rad(40) * lowReady, math.rad(35) * lowReady, 0)
 		* CFrame.Angles(-math.rad(15) * reloadTilt, 0, math.rad(35) * reloadTilt)
@@ -588,12 +588,12 @@ local function sendPitch()
 end
 
 function BodyAnimator.Start()
-	ReloadStarted.OnClientEvent:Connect(function(reloader: Player, weaponName: string)
+	ReloadStarted.OnClientEvent:Connect(function(reloader: Player, weaponName: string, duration: number?)
 		local rig = reloader.Character and rigs[reloader.Character]
 		local weapon = Weapons[weaponName]
 		if rig and weapon then
 			rig.reloadStart = os.clock()
-			rig.reloadEnd = rig.reloadStart + weapon.ReloadTime
+			rig.reloadEnd = rig.reloadStart + (duration or weapon.ReloadTime) -- (empty reloads take longer)
 		end
 	end)
 	ShotFired.OnClientEvent:Connect(function(shooter: Player)

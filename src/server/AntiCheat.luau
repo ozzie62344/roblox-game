@@ -3,8 +3,8 @@
 --
 -- Movement is simulated on each player's own client (MovementController, RappelController), so the
 -- server can only watch where their HumanoidRootPart ends up. Every CHECK_EVERY seconds:
---   Speed     horizontal distance over the last SPEED_WINDOW seconds vs the fastest legit burst
---             (a dash straight into a full-speed slide, from MovementConfig) x SPEED_SLACK
+--   Speed     horizontal distance over the last SPEED_WINDOW seconds vs the fastest legit speed
+--             (a 3-speed operator's sprint, from MovementConfig) x SPEED_SLACK
 --   Teleport  one huge jump between two checks
 --   Flying    in the air and not falling for FLY_TIME seconds (rappelling doesn't count)
 --   Noclip    moved straight through solid, unbreakable map geometry (walls, concrete floors;
@@ -35,20 +35,21 @@ local AntiCheat = {}
 local OWNER_ID = 483786261
 local CHECK_EVERY = 0.25 -- seconds between movement checks
 
--- Speed. The fastest legit second: a dash (DashSpeed for DashDuration) straight into a slide at
--- its cap. Slide-hops, wall jumps and air dashes all stay under it (~58 studs/s).
-local MAX_BURST_SPEED = Config.DashSpeed * Config.DashDuration + Config.SlideMaxSpeed * (1 - Config.DashDuration)
-local SPEED_SLACK = 1.5 -- x the fastest legit burst (so ~87 studs/s over the window)
+-- Speed. The fastest legit second: a 3-speed operator sprinting (~22 studs/s; no jumps, slides or
+-- dashes any more). Vaults and pushing off a rope stay under it.
+local MAX_BURST_SPEED = Config.SprintSpeed * Config.SpeedRating[3]
+local SPEED_SLACK = 1.5 -- x the fastest legit speed (so ~33 studs/s over the window)
 local SPEED_WINDOW = 1 -- seconds the speed is averaged over
 local LAG_SLACK = 16 -- extra studs for positions arriving bunched up after a network hiccup
 local PING_SLACK = 2 -- plus this many seconds-of-ping worth of MAX_BURST_SPEED (high-ping players)
 
 -- Teleport: one step between two checks (on top of the speed allowance for that time)
-local TELEPORT_DISTANCE = 60 -- horizontal studs (a dash covers ~21 in a whole check)
-local TELEPORT_UP = 40 -- studs straight up (a wall jump climbs ~14)
+local TELEPORT_DISTANCE = 60 -- horizontal studs (a sprint covers ~6 in a whole check)
+local TELEPORT_UP = 40 -- studs straight up (climbing onto a ledge rises VaultMaxHeight, 4.5)
+local MAX_RISE_SPEED = Config.VaultMaxHeight / Config.ClimbTime * 3 -- studs/s up (a climb's quick push up, generously)
 
 -- Flying
-local FLY_TIME = 4 -- seconds in the air without falling (three wall jumps rise for ~1.5)
+local FLY_TIME = 4 -- seconds in the air without falling (there's no jumping: only vaults, ~0.6)
 local FALLING_SPEED = 4 -- dropping faster than this (studs/s) counts as falling
 local GROUND_REACH = 6 -- studs below your feet that still count as standing on something
 local RAPPEL_WALL_REACH = 4 -- a rappeller hangs within this many studs of a wall
@@ -58,6 +59,8 @@ local NOCLIP_MIN_STEP = 1 -- studs: smaller moves are just jitter against a wall
 local NOCLIP_DETOUR = 2.5 -- studs: the path shifted up / sideways by this much still has to be blocked
 local RAPPEL_HOP = 8 -- studs: the rope moves you in through windows and up onto roofs in one go
 local RAPPEL_GRACE = 1.5 -- seconds after letting go of the rope that those hops are still fine
+local VAULT_HOP = 6 -- studs: a vault carries you over cover / through a window in one go...
+local VAULT_GRACE = 1 -- ...while the "Vaulting" attribute is up (PoseService) and this long after
 local MAX_RAY_SKIPS = 8 -- see-through things one noclip ray steps past before giving up (= fine)
 
 -- Grace periods (no checks)
@@ -88,6 +91,7 @@ type Track = {
 	airTime: number, -- seconds in the air without falling, since last on something
 	settleUntil: number, -- after a rubber-band: no checks until the client has caught up
 	rappelSeen: number, -- os.clock() the rope was last up
+	vaultSeen: number, -- os.clock() they were last mid-vault
 	teleportStamp: any, -- the "ServerTeleport" attribute when we last looked
 	pendingNoclip: { from: Vector3, detail: string }?, -- seen last check, acted on this one
 }
@@ -192,7 +196,7 @@ end
 
 -- Did the root go straight through a wall / floor between `from` and `to`? Only if the line is
 -- blocked both ways (it came out the other side, not just stuck in something) AND every nearby
--- path is blocked too: shifted up (jumping over a sill, walking up stairs), down a little
+-- path is blocked too: shifted up (vaulting over a sill, walking up stairs), down a little
 -- (ducking under a beam) and to either side (cutting a doorway corner, curving round a pillar
 -- between two checks).
 local function throughWall(from: Vector3, to: Vector3): boolean
@@ -264,6 +268,7 @@ local function newTrack(root: BasePart, now: number, stamp: any): Track
 		airTime = 0,
 		settleUntil = 0,
 		rappelSeen = -math.huge,
+		vaultSeen = -math.huge,
 		teleportStamp = stamp,
 	}
 end
@@ -338,7 +343,7 @@ local function checkPlayer(player: Player, now: number)
 		violation(player, track, "Teleport", previous.pos, `{math.floor(horizontal)} studs in {string.format("%.2f", elapsed)}s`)
 		return
 	end
-	if step.Y > math.max(TELEPORT_UP, Config.WallJumpUp * SPEED_SLACK * elapsed + slack) then
+	if step.Y > math.max(TELEPORT_UP, MAX_RISE_SPEED * SPEED_SLACK * elapsed + slack) then
 		violation(player, track, "Teleport", previous.pos, `{math.floor(step.Y)} studs up in {string.format("%.2f", elapsed)}s`)
 		return
 	end
@@ -347,13 +352,17 @@ local function checkPlayer(player: Player, now: number)
 	-- only acted on one check later: stepping off a roof onto a rope can reach us a moment before
 	-- the "RappelTop" attribute that explains it.
 	local ropeTime = rappelling or now - track.rappelSeen < RAPPEL_GRACE
+	if character:GetAttribute("Vaulting") == true then
+		track.vaultSeen = now
+	end
+	local vaultTime = now - track.vaultSeen < VAULT_GRACE
 	local pending = track.pendingNoclip
 	track.pendingNoclip = nil
-	if pending and not ropeTime then
+	if pending and not ropeTime and not vaultTime then
 		violation(player, track, "Noclip", pending.from, pending.detail)
 		return
 	end
-	local ropeHop = ropeTime and step.Magnitude <= RAPPEL_HOP
+	local ropeHop = (ropeTime and step.Magnitude <= RAPPEL_HOP) or (vaultTime and step.Magnitude <= VAULT_HOP)
 	if step.Magnitude >= NOCLIP_MIN_STEP and not ropeHop and throughWall(previous.pos, position) then
 		track.pendingNoclip = { from = previous.pos, detail = `through the map, {math.floor(step.Magnitude)} studs` }
 	end

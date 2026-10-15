@@ -126,7 +126,7 @@ local function start()
 	if not humanoid or not root or not params or root.Anchored or not allowed() then
 		return
 	end
-	if state.droning or state.interacting or state.deploying then
+	if state.droning or state.interacting or state.deploying or state.vaulting then
 		return
 	end
 	local look = flat(Workspace.CurrentCamera.CFrame.LookVector)
@@ -296,7 +296,7 @@ local function drawRopes()
 	end
 end
 
--- Push off the wall (the phone's jump button, through MobileControls)
+-- In through the window or push off the wall (the phone's VAULT button, through MobileControls)
 function RappelController.Jump()
 	if state.rappelling then
 		jump()

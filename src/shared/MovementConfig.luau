@@ -2,53 +2,57 @@
 -- Speeds are in studs/second, accelerations in studs/second².
 
 return {
-	-- Running
-	WalkSpeed = 18,
-	SprintSpeed = 28,
-	AimWalkSpeed = 12, -- speed while aiming down sights
+	-- Running (Siege-style: no jumping, sliding or dashing; you get over things by vaulting).
+	-- These are a 2-speed operator's; SpeedRating scales them for 1- and 3-speeds.
+	WalkSpeed = 13,
+	SprintSpeed = 20, -- (Shift / L3 / thumbstick all the way forward; only while moving forward)
+	AimWalkSpeed = 8, -- speed while aiming down sights
+	StrafeScale = 0.9, -- moving sideways is a little slower than forward...
+	BackpedalScale = 0.8, -- ...and backing up slower still
 	SprintBlockAfterShot = 0.35, -- can't sprint for this long after shooting
-	GroundAccel = 220, -- how fast you reach your target speed
-	GroundDecel = 260, -- how fast you stop when you let go of the keys
-	MomentumFriction = 25, -- how fast extra speed (from slides/dashes) bleeds off on the ground
+	SprintOutTime = 0.25, -- seconds after a sprint (or a vault) ends before you can fire (state.canFire): the gun coming back up
+	GroundAccel = 70, -- how fast you reach your target speed (weighty: ~0.2 s from standing to a walk)
+	GroundDecel = 80, -- how fast you stop when you let go of the keys (a short glide, no instant stops)
+	MomentumFriction = 25, -- how fast extra speed (pushing off a rope, a fast vault) bleeds off on the ground
+	SprintThreshold = 16, -- others count as sprinting above this speed (loud footsteps, gun-down pose):
+	-- between the fastest walk (3-speed: 14.3) and the slowest sprint (1-speed: 18)
 
-	-- Air
-	AirAccel = 75, -- control when you're slower than run speed
+	-- Armor / speed ratings (Operators.luau): 3-speed operators move ~10% faster, 1-speed ~10%
+	-- slower, in everything (walk, sprint, crouch, crawl). No operator = 2.
+	SpeedRating = { 0.9, 1, 1.1 }, -- by Speed: 1, 2, 3
+
+	-- Air (falling off a ledge, pushing off a rope: there's no jumping)
+	AirAccel = 40, -- control when you're slower than run speed
 	AirDrag = 4, -- how fast extra speed bleeds off in the air (low = keep momentum)
-	AirSteer = 7, -- how quickly you can turn your momentum in the air
+	AirSteer = 4, -- how quickly you can turn your momentum in the air
 
-	-- Crouch (C / Left Ctrl when not sprinting — toggles)
-	CrouchSpeed = 9,
-	CrouchHeightDrop = 1.2, -- how far your body (and hitbox) lowers when crouching or sliding
+	-- Crouch (tap C / Left Ctrl to toggle; sprinting stands you up)
+	CrouchSpeed = 7.5,
+	CrouchHeightDrop = 1.2, -- how far your body (and hitbox) lowers when crouching
 	CrouchTransitionSpeed = 14,
 
 	-- Prone (tap C / Left Ctrl twice quickly; C again → crouch, Space or sprint → stand up)
-	ProneSpeed = 3.5,
+	ProneSpeed = 2.5,
 	ProneDoubleTap = 0.35, -- most seconds between the two taps
 	ProneHipHeight = 0.1, -- lying on the floor (the hitbox drops this low too)
 	ProneCameraDrop = 1.4, -- extra drop for your eyes (your body lies flat, so they're near the floor)
 
-	-- Slide (hold C / Left Ctrl while sprinting — lasts as long as you hold, up to SlideMaxDuration)
-	SlideMinStartSpeed = 14, -- must be moving at least this fast to slide
-	SlideBoost = 20, -- speed added when the slide starts
-	SlideBoostCooldown = 0.8, -- seconds before another slide gives the boost again (stops slide spam)
-	SlideMaxSpeed = 54,
-	SlideFriction = 15,
-	SlideBufferTime = 0.2, -- press slide this long before landing and it still triggers on touchdown
-	SlideSteer = 2,
-	SlideEndSpeed = 12, -- slide stops below this speed
-	SlideMaxDuration = 0.7,
-	SlideCooldown = 0.6, -- seconds after a slide ends before you can slide again
-
-	-- Dash (X) — ability
-	DashSpeed = 85,
-	DashDuration = 0.14,
-	DashExitSpeed = 34, -- speed you keep after the dash ends
-	DashCooldown = 1.8,
-
-	-- Abilities: dash and wall jump only work if the player has them.
-	-- Later the loadout system gives one out per round. Use the dev panel (P) to give yourself one.
-	-- Set this to true to give everyone every ability.
-	TestAllAbilities = false,
+	-- Vault (Space / gamepad A / the phone's VAULT button, facing low cover or a window): a short
+	-- scripted hop over it, or up onto it if it's too deep to clear. Not while aiming, reloading or
+	-- lying down; it ends a sprint. Heights are from your feet to the top of the cover.
+	VaultReach = 2.8, -- studs from your middle to the cover's face (about an arm's length in front)
+	VaultMinHeight = 1.2, -- lower than this you just walk over it
+	VaultMaxHeight = 4.5, -- the highest you can vault over or climb onto (the old jump height: no new roofs)
+	VaultMaxThickness = 2.4, -- deeper than this and you climb up onto it instead of over
+	VaultMinGap = 3.6, -- room needed above the cover / sill to get through (windows are 4)
+	VaultMaxDrop = 8, -- how far below the top the far side's floor can be (further: you drop off)
+	VaultTime = 0.6, -- seconds for a vault from a walk...
+	VaultFastTime = 0.42, -- ...or from a sprint (a quick speed vault)
+	ClimbTime = 0.75, -- seconds to climb up onto a ledge / crate
+	VaultExitSpeed = 4, -- speed you land with after a normal vault...
+	VaultFastExitSpeed = 11, -- ...and after a speed vault (you keep running)
+	VaultCameraDip = 0.45, -- studs the camera dips mid-vault
+	VaultCameraRoll = 4, -- degrees of camera roll mid-vault
 
 	-- Safety
 	MaxMoveAccel = 4000, -- caps the movement force (infinite force can fling you)
@@ -60,26 +64,10 @@ return {
 	LeanBodyAngle = 22, -- degrees other players see your upper body tilt
 	LeanSpeed = 26, -- how fast you lean in/out
 
-	-- Normal jump: how high (studs) a jump lifts you. Roblox's default is 7.2, enough to hit your
-	-- head on most ceilings; 4.5 still gets you up onto a crate or through a window.
-	JumpHeight = 4.5,
-
-	-- Wall jump (Space while in the air next to a wall) — ability
-	WallJumpUp = 75, -- upward speed of a wall jump
-	WallJumpPush = 30, -- how hard you're pushed away from the wall
-	WallJumpSteerLock = 0.3, -- seconds after a wall jump where holding keys can't steer you back into the wall
-	WallJumpKeepAlong = 0.9, -- how much of your speed along the wall you keep (1 = all)
-	WallJumpMaxPerAir = 3, -- wall jumps allowed before you touch the ground again
-	WallJumpCheckDistance = 3, -- how close to a wall you need to be
-	WallJumpMinAirTime = 0.1, -- can't wall jump right after leaving the ground
-	WallJumpFovKick = 5,
-
 	-- Camera
 	MouseSensitivity = 0.6, -- 1 = Roblox's normal speed; lower = slower turning (aiming is slower still, per gun)
 	BaseFov = 80,
-	FovSpeedBonus = 14, -- extra FOV at high speed
-	FovMaxSpeed = 50, -- speed where the FOV bonus is maxed out
-	DashFovKick = 8,
-	SlideTilt = 5, -- degrees of camera roll while sliding
+	FovSpeedBonus = 4, -- extra FOV at a full sprint (subtle)
+	FovMaxSpeed = 22, -- speed where the FOV bonus is maxed out
 	StrafeTilt = 1.5, -- degrees of camera roll while strafing
 }

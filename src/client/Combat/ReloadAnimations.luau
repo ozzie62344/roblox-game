@@ -259,7 +259,9 @@ end
 -- SR-25: the same moves as the AR-15 (it has a bolt catch too)
 CLIPS.Marksman = CLIPS.Rifle
 
--- M249: pop the feed cover, swap the ammo box, lay the new belt on the tray, slam the cover shut
+-- M249: pop the feed cover, swap the ammo box, lay the new belt on the tray, slam the cover shut.
+-- Empty: the bolt ran forward on nothing, so first the left hand reaches over and pulls the
+-- charging handle back to cock it (the rest of the reload squeezes into the time after).
 CLIPS.LMG = function(info)
 	local tilt = CFrame.new(-0.04, -0.03, 0.02) * deg(8, -10, -14)
 	local cover = info.groups.FeedCover
@@ -269,15 +271,26 @@ CLIPS.LMG = function(info)
 	local latch = grabOn(info, Vector3.new(-0.05, -0.06, coverSize.Z / 2 - 0.03))
 	local tray = (if cover then cover.rest.Position else Vector3.new(0, 0.18, -0.04)) + Vector3.new(-0.07, -0.1, 0)
 	local box = pieceSize(info, "Magazine")
+	-- Times below are for the plain reload; an empty one starts them after the cocking
+	local start = if info.empty and info.groups.ChargingHandle then 0.16 else 0
+	local function at(t: number): number
+		return start + (1 - start) * t
+	end
 	local keys: { Keyframe } = {
-		{ t = 0, gun = CFrame.new(), left = { "grip" }, groups = { FeedCover = { "rest" }, Magazine = { "rest" } } },
-		{ t = 0.08, ease = "inOut", gun = tilt, left = { "group", "FeedCover", latch } },
-		{ t = 0.14, ease = "back", groups = { FeedCover = open }, left = { "group", "FeedCover", latch }, events = { "CoverOpen" } },
+		{ t = 0, gun = CFrame.new(), left = { "grip" }, groups = { FeedCover = { "rest" }, Magazine = { "rest" }, ChargingHandle = { "rest" } } },
 	}
-	append(keys, magSwap(info, 0.14, 0.66, tilt, Vector3.new(-box.X / 2 - 0.04, -box.Y * 0.15, 0)))
-	table.insert(keys, { t = 0.74, ease = "inOut", left = { "gun", grabOn(info, tray) }, events = { "BeltIn" } })
-	table.insert(keys, { t = 0.82, ease = "inOut", left = { "group", "FeedCover", latch * CFrame.new(0, 0.08, 0) } })
-	table.insert(keys, { t = 0.88, ease = "in", groups = { FeedCover = { "rest" } }, left = { "group", "FeedCover", latch }, gun = tilt * CFrame.new(0, -0.02, 0), events = { "CoverClose" } })
+	if start > 0 then
+		local handle = grabOn(info, Vector3.new(0.05, 0, 0)) -- (it's on the right side: reach over)
+		table.insert(keys, { t = 0.06, ease = "inOut", gun = tilt * deg(0, 10, 8), left = { "group", "ChargingHandle", handle } })
+		table.insert(keys, { t = 0.1, ease = "out", groups = { ChargingHandle = { "gun", CFrame.new(0, 0, 0.22) } }, events = { "BoltBack" } })
+		table.insert(keys, { t = 0.14, ease = "in", groups = { ChargingHandle = { "rest" } }, left = { "group", "ChargingHandle", handle * CFrame.new(0, 0, 0.1) } })
+	end
+	table.insert(keys, { t = at(0.08), ease = "inOut", gun = tilt, left = { "group", "FeedCover", latch } })
+	table.insert(keys, { t = at(0.14), ease = "back", groups = { FeedCover = open }, left = { "group", "FeedCover", latch }, events = { "CoverOpen" } })
+	append(keys, magSwap(info, at(0.14), at(0.66), tilt, Vector3.new(-box.X / 2 - 0.04, -box.Y * 0.15, 0)))
+	table.insert(keys, { t = at(0.74), ease = "inOut", left = { "gun", grabOn(info, tray) }, events = { "BeltIn" } })
+	table.insert(keys, { t = at(0.82), ease = "inOut", left = { "group", "FeedCover", latch * CFrame.new(0, 0.08, 0) } })
+	table.insert(keys, { t = at(0.88), ease = "in", groups = { FeedCover = { "rest" } }, left = { "group", "FeedCover", latch }, gun = tilt * CFrame.new(0, -0.02, 0), events = { "CoverClose" } })
 	table.insert(keys, { t = 1, ease = "inOut", gun = CFrame.new(), left = { "grip" } })
 	return keys
 end

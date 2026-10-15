@@ -1,6 +1,9 @@
 -- Your gun: firing, aiming down sights, recoil, spread, reloading, scopes.
 -- Shots are raycast here for instant feedback, then sent to the server, which
--- double-checks them and applies the damage.
+-- double-checks them and applies the damage. Hit markers wait for the server's word
+-- (HitConfirmed), so a marker always means real damage.
+-- Recoil follows each gun's learnable pattern (Weapons.luau, the top); hip fire blooms with each
+-- shot; you can't fire while sprinting or until the gun is back up after one (SprintOutTime).
 -- Your current weapon follows the "Weapon" attribute the server sets (loadouts / dev panel).
 -- Knives Only (GameRules.NoGun): no gun at all; the fire button stabs instead.
 
@@ -19,6 +22,7 @@ local Sounds = require(ReplicatedStorage.Shared.Sounds)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 local Sound3D = require(script.Parent.Parent.Audio.Sound3D)
 local SoundCache = require(script.Parent.Parent.Audio.SoundCache)
+local SoundGroups = require(script.Parent.Parent.Audio.SoundGroups)
 local state = require(script.Parent.Parent.PlayerState)
 local Effects = require(script.Parent.Effects)
 local Hud = require(script.Parent.Hud)
@@ -37,17 +41,28 @@ local random = Random.new()
 
 local MAX_PENETRATIONS = 4 -- same as WeaponService
 local SPIN_SPEED = math.pi * 2 * 4 -- the gatling's barrels at full speed: turns per second (radians)
+-- A pause this much longer than the gun's shot interval starts a new burst (the recoil pattern
+-- starts over from its first shot)
+local BURST_GAP = 0.12
+local BREATH_RATE = math.pi * 2 / 4 -- one breath every 4 seconds (the aim's slow drift when aimed in)
+local ADS_BLOOM = 0.15 -- how much of the hip bloom is left fully aimed in
 
 local WeaponController = {}
 
 local weapon = Weapons.Rifle
-local ammo = weapon.MagazineSize
+local ammo = weapon.MagazineSize + weapon.Chamber
 local reloading = false
 local reloadToken = 0
 local triggerHeld = false
 local aimHeld = false
 local nextFireTime = 0
 local currentSpread = weapon.HipSpread
+local bloom = 0 -- extra hip spread from shooting (Weapons HipBloom), settles when you stop
+local burstShots = 0 -- shots in the current burst (where you are in the recoil pattern)
+local sprintEndedAt = -math.huge -- the last moment you were sprinting (sprint-out delay)
+-- The aim's breathing drift (radians) currently added on top of the recoil
+local breathTime = 0
+local breathPitch, breathYaw = 0, 0
 local viewmodel = nil
 local viewmodelSkin: Skins.Skin? = nil -- the skin `viewmodel` was built in
 local viewmodelMods = "" -- and its attachments (Attachments.Key)
@@ -80,6 +95,7 @@ end
 
 local function computeSpread(): number
 	local spread = weapon.HipSpread + (weapon.AdsSpread - weapon.HipSpread) * state.aimAlpha
+	spread += bloom * (1 - state.aimAlpha * (1 - ADS_BLOOM))
 	local moveAlpha = math.clamp(state.speed / Config.SprintSpeed, 0, 1)
 	spread += weapon.MoveSpreadBonus * moveAlpha * (1 - state.aimAlpha * 0.7)
 	if not state.grounded or state.sliding then
@@ -108,7 +124,7 @@ local function updateAmmoHud()
 	if unarmed then
 		Hud.SetAmmoText("KNIFE")
 	else
-		Hud.SetAmmo(ammo, weapon.MagazineSize, reloading)
+		Hud.SetAmmo(ammo, weapon.MagazineSize, reloading) -- (30+1 with one in the chamber)
 	end
 end
 
@@ -163,32 +179,40 @@ local function setWeapon(weaponName: string)
 	weapon = Attachments.Apply(newWeapon, Attachments.For(player, weaponName)) -- (scope zoom, quieter shots...)
 	reloadToken += 1
 	reloading = false
-	ammo = weapon.MagazineSize
+	ammo = weapon.MagazineSize + weapon.Chamber
 	triggerHeld = false
+	bloom, burstShots = 0, 0
 	state.recoilPitch, state.recoilYaw = 0, 0
+	breathPitch, breathYaw = 0, 0
 	buildViewmodel()
 	viewmodel:PlayDraw()
 	updateAmmoHud()
 	updateLoadoutHud()
 end
 
+-- Tactical reload (rounds left): the round in the chamber stays, so you end up with 30+1. Empty:
+-- slower (EmptyReloadTime: the bolt / slide / pump gets worked) and that chambers one from the
+-- new mag, so 30. WeaponService does the same sums.
 local function reload()
-	if unarmed or reloading or ammo >= weapon.MagazineSize or not getAliveCharacter() then
+	if unarmed or reloading or ammo >= weapon.MagazineSize + weapon.Chamber or not getAliveCharacter() then
 		return
 	end
 	reloading = true
 	reloadToken += 1
 	local token = reloadToken
+	local empty = ammo <= 0
+	local duration = if empty then weapon.EmptyReloadTime else weapon.ReloadTime
+	local loaded = weapon.MagazineSize + (if empty then 0 else math.min(ammo, weapon.Chamber))
 	ReloadRemote:FireServer()
-	-- The animation (and its sounds) lasts exactly as long as the reload
+	-- The animation (and its sounds) lasts exactly as long as the reload (the empty one racks)
 	if viewmodel then
-		viewmodel:PlayReload(weapon.ReloadTime, ammo == 0, weapon.MagazineSize - ammo)
+		viewmodel:PlayReload(duration, empty, loaded - ammo)
 	end
 	updateAmmoHud()
 
-	task.delay(weapon.ReloadTime, function()
+	task.delay(duration, function()
 		if token == reloadToken then
-			ammo = weapon.MagazineSize
+			ammo = loaded
 			reloading = false
 			updateAmmoHud()
 		end
@@ -221,6 +245,11 @@ end
 
 local function fire(character: Model)
 	local now = os.clock()
+	-- Where we are in the recoil pattern: a pause longer than the fire rate starts it over
+	if now - state.lastShot > 60 / weapon.RPM + BURST_GAP then
+		burstShots = 0
+	end
+	burstShots += 1
 	nextFireTime = now + 60 / weapon.RPM
 	ammo -= 1
 	state.lastShot = now
@@ -235,7 +264,6 @@ local function fire(character: Model)
 	params.FilterType = Enum.RaycastFilterType.Exclude
 
 	local shots = {}
-	local hitKind: string? = nil
 	for _ = 1, weapon.Pellets do
 		local direction = if weapon.Pellets > 1 then spreadDirection(aimCFrame, weapon.PelletSpread) else aimDirection
 		-- Bullets go through glass, drywall and barricades (the server breaks them, see WeaponService)
@@ -254,18 +282,14 @@ local function fire(character: Model)
 		local endPosition = if result then result.Position else origin + direction * weapon.Range
 		table.insert(shots, { direction, if result then result.Instance else nil, endPosition })
 
-		-- Instant feedback (server confirms damage separately)
+		-- Instant feedback (the server confirms damage separately, and that drives the hit marker)
 		if viewmodel and viewmodel.model.Parent then
 			Effects.Tracer(viewmodel:GetMuzzlePosition(), endPosition)
 		end
 		if result then
 			local humanoid = findHumanoid(result.Instance)
 			if humanoid and humanoid.Health > 0 then
-				if result.Instance.Name == "Head" then
-					hitKind = "head"
-				elseif not hitKind then
-					hitKind = "body"
-				end
+				Effects.BodyHit(result.Position, result.Normal)
 			else
 				Effects.Impact(result.Position, result.Normal)
 			end
@@ -273,9 +297,6 @@ local function fire(character: Model)
 	end
 	FireRemote:FireServer(origin, shots)
 
-	if hitKind then
-		Hud.HitMarker(hitKind)
-	end
 	if viewmodel then
 		viewmodel:Kick(weapon.ViewKick)
 	end
@@ -285,15 +306,22 @@ local function fire(character: Model)
 		Effects.Sound(Sounds.Pick(weapon.TailSound), nil, volume * 0.6, weapon.FirePitch)
 	end
 
-	-- Recoil: climb + consistent drift + random jitter, plus a visual camera jolt.
-	-- Aiming controls it a bit better.
-	local control = 1 - state.aimAlpha * 0.3
-	state.recoilPitch =
-		math.min(state.recoilPitch + math.rad(weapon.RecoilUp) * control, math.rad(weapon.RecoilMax))
-	-- (negative yaw turns the camera right)
-	local side = random:NextNumber(-1, 1) * weapon.RecoilSide + weapon.RecoilDrift
-	state.recoilYaw -= math.rad(side) * control
-	state.recoilRoll += math.rad(weapon.RecoilRoll) * (if random:NextNumber() < 0.5 then -1 else 1)
+	-- Recoil: the gun's pattern (Weapons.luau, the top). The first shot snaps up harder, then a
+	-- steady climb; sideways a steady drift plus a slow left-right wave that grows over the first
+	-- few shots; a little randomness on top. Aimed in it's all a bit smaller (AdsRecoil).
+	local n = burstShots
+	local control = 1 - state.aimAlpha * (1 - weapon.AdsRecoil)
+	local jitter = weapon.RecoilJitter
+	local up = (weapon.RecoilUp + (if n == 1 then weapon.RecoilFirstShot else 0)) * (1 + random:NextNumber(-jitter, jitter))
+	local ramp = 0.35 + 0.65 * math.clamp((n - 1) / math.max(weapon.RecoilRamp, 1), 0, 1)
+	local wave = math.cos((n - 1) / weapon.RecoilSwayPeriod * math.pi * 2)
+	local side = (weapon.RecoilDrift + weapon.RecoilSway * wave) * ramp
+	side += random:NextNumber(-1, 1) * jitter * (math.abs(side) + weapon.RecoilUp * 0.25)
+	state.recoilPitch = math.min(state.recoilPitch + math.rad(up) * control, math.rad(weapon.RecoilMax))
+	state.recoilYaw -= math.rad(side) * control -- (negative yaw turns the camera right)
+	state.recoilRoll += math.rad(weapon.RecoilRoll) * (if side >= 0 then 1 else -1) * random:NextNumber(0.7, 1)
+	-- Hip fire spreads out the longer you hold it (aimed in, only a little: computeSpread)
+	bloom = math.min(bloom + weapon.HipBloom, weapon.HipBloomMax)
 
 	if not weapon.Automatic then
 		triggerHeld = false
@@ -315,6 +343,7 @@ local function update(dt: number)
 		state.aiming = false
 		state.aimAlpha = 0
 		state.aimSensitivity = 1
+		state.fireHeld = false
 		Hud.SetCrosshair(4, unarmed and character ~= nil and not state.inLobby)
 		Hud.SetScoped(false)
 		return
@@ -323,19 +352,49 @@ local function update(dt: number)
 	local uiOpen = state.devPanelOpen or state.mouseUnlocked or state.draftOpen or state.voteOpen or state.modsOpen or state.settingsOpen
 	-- cover / plant / disable / fortify / knife / gadget moves / driving a drone
 	local handsBusy = state.deploying or state.interacting or state.meleeing or state.gesturing or state.droning
+	local now = os.clock()
+
+	-- Sprinting (or vaulting): the gun is down and can't fire or aim; once you stop it takes the
+	-- gun's own SprintOutTime to come back up (heavier guns longer). MovementController's canFire
+	-- has a one-size sprint-out of its own, so it only counts here once that has run out (it's
+	-- then down for some other reason).
+	local moving = state :: any
+	if state.sprinting or moving.vaulting == true then
+		sprintEndedAt = now
+	end
+	local movementSprintOut = ((Config :: any).SprintOutTime or 0.25) + 0.05
+	local gunDown = now - sprintEndedAt < weapon.SprintOutTime
+		or (moving.canFire == false and now - sprintEndedAt > movementSprintOut)
+	-- Holding fire stops a sprint (MovementController), so the shot comes after the sprint-out
+	state.fireHeld = triggerHeld and not uiOpen and not handsBusy
+
 	state.aiming = aimHeld and not reloading and not uiOpen and not handsBusy
 	local aimStep = dt / weapon.AdsTime
-	state.aimAlpha = math.clamp(state.aimAlpha + (if state.aiming then aimStep else -aimStep), 0, 1)
+	local aimingIn = state.aiming and not gunDown
+	state.aimAlpha = math.clamp(state.aimAlpha + (if aimingIn then aimStep else -aimStep), 0, 1)
 	state.adsFovScale = weapon.AdsFovScale
 
-	-- Recoil recovers once you stop shooting (single-shot guns settle between shots)
-	local now = os.clock()
+	-- Recoil (and hip bloom) recover once you stop shooting (single-shot guns settle between
+	-- shots). The breathing drift rides on the same camera offset but isn't recoil, so it's
+	-- taken out first and put back after.
+	local recoilPitch, recoilYaw = state.recoilPitch - breathPitch, state.recoilYaw - breathYaw
 	if now - state.lastShot > math.min(60 / weapon.RPM * 1.5, 0.15) then
 		local recover = 1 - math.exp(-weapon.RecoilRecover * dt)
-		state.recoilPitch -= state.recoilPitch * recover
-		state.recoilYaw -= state.recoilYaw * recover
+		recoilPitch -= recoilPitch * recover
+		recoilYaw -= recoilYaw * recover
+		bloom -= bloom * recover
 	end
 	state.recoilRoll -= state.recoilRoll * (1 - math.exp(-18 * dt))
+
+	-- Breathing: aimed in, your aim drifts a hair in a slow loop (Weapons Breath; steadier
+	-- crouched, steadiest lying down)
+	breathTime += dt
+	local steady = if state.prone then 0.4 elseif state.crouching then 0.7 else 1
+	local aimEase = state.aimAlpha * state.aimAlpha * (3 - 2 * state.aimAlpha)
+	local breath = math.rad(weapon.Breath) * steady * aimEase
+	breathPitch = math.sin(breathTime * BREATH_RATE) * breath
+	breathYaw = math.sin(breathTime * BREATH_RATE * 0.5) * breath * 0.6
+	state.recoilPitch, state.recoilYaw = recoilPitch + breathPitch, recoilYaw + breathYaw
 
 	-- Slower mouse while aimed in (especially scoped) for precise aiming (MouseUnlock applies it),
 	-- times the player's ADS sensitivity setting
@@ -365,7 +424,7 @@ local function update(dt: number)
 	end
 	local spunUp = not weapon.SpinUp or spin >= 1
 
-	if triggerHeld and spunUp and not frozen and not uiOpen and not handsBusy and not reloading and now >= nextFireTime then
+	if triggerHeld and spunUp and not gunDown and not frozen and not uiOpen and not handsBusy and not reloading and now >= nextFireTime then
 		if ammo > 0 then
 			fire(character)
 		else
@@ -392,6 +451,7 @@ local function update(dt: number)
 		viewmodel:Update(dt, camera.CFrame, {
 			aimAlpha = state.aimAlpha,
 			sprinting = state.sprinting,
+			raiseTime = weapon.SprintOutTime, -- (the gun comes up from a sprint in about this long)
 			crawling = (state.prone and state.speed > 1) or (state.rappelling and state.rappelSpeed > 1), -- (hand over hand on a rope rocks the same way)
 			reloading = reloading,
 			speed = if state.rappelling then state.rappelSpeed else state.speed,
@@ -406,7 +466,7 @@ function WeaponController.Refill()
 	if viewmodel then
 		viewmodel:StopAnimation()
 	end
-	ammo = weapon.MagazineSize
+	ammo = weapon.MagazineSize + weapon.Chamber
 	updateAmmoHud()
 end
 
@@ -464,7 +524,9 @@ function WeaponController.Start()
 	player.CharacterAdded:Connect(function()
 		WeaponController.Refill()
 		triggerHeld, aimHeld = false, false
+		bloom, burstShots = 0, 0
 		state.recoilPitch, state.recoilYaw = 0, 0
+		breathPitch, breathYaw = 0, 0
 		if viewmodel then
 			viewmodel:PlayDraw() -- pull the gun out on spawn
 		end
@@ -472,13 +534,18 @@ function WeaponController.Start()
 
 	-- Other players' shots: tracers, impacts and a 3D gunshot sound
 	ShotFired.OnClientEvent:Connect(
-		function(shooter: Player, origin: Vector3, endPositions: { Vector3 }, weaponName: string)
+		function(shooter: Player, origin: Vector3, endPositions: { Vector3 }, weaponName: string, inFlesh: { boolean }?)
 			if shooter == player then
 				return
 			end
-			for _, endPosition in endPositions do
+			for i, endPosition in endPositions do
 				Effects.Tracer(origin, endPosition)
-				Effects.Impact(endPosition)
+				-- (a bullet that ended in someone: blood, not a bullet hole hanging in the air)
+				if inFlesh and inFlesh[i] then
+					Effects.BodyHit(endPosition)
+				else
+					Effects.Impact(endPosition)
+				end
 			end
 			local shooterWeapon = Weapons[weaponName]
 			if shooterWeapon then
@@ -515,10 +582,15 @@ function WeaponController.Start()
 		})
 	end)
 
-	HitConfirmed.OnClientEvent:Connect(function(_damage: number, _headshot: boolean, killed: boolean)
-		if killed then
-			Hud.HitMarker("kill")
-		end
+	-- The server says a hit landed: the hit marker (white = body, orange-red = head, a big red X =
+	-- a kill, bigger and bolder for a headshot kill) and a tick / chime to go with it
+	HitConfirmed.OnClientEvent:Connect(function(_damage: number, headshot: boolean, killed: boolean)
+		local kind = if killed then (if headshot then "headkill" else "kill") elseif headshot then "head" else "body"
+		Hud.HitMarker(kind)
+		local sounds = Sounds.HitMarker
+		local tone = if killed then sounds.Kill elseif headshot then sounds.Head else sounds.Body
+		-- (played in Effects: the same ping as the shop's blips would otherwise count as a menu sound)
+		Effects.Sound(sounds.Id, nil, tone.Volume, tone.Pitch, SoundGroups.Effects)
 	end)
 
 	RunService:BindToRenderStep("Weapon", Enum.RenderPriority.Camera.Value + 3, update)

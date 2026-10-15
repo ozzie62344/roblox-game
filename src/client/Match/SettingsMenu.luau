@@ -51,10 +51,10 @@ local CONFIRM_TIME = 3 -- seconds RESET waits for the second press
 -- Everything the game binds (Actions.Bind in the controllers): action, keyboard / mouse, gamepad
 local KEYBINDS = {
 	{ "MOVE", "W A S D", "LEFT STICK" },
-	{ "JUMP · WALL JUMP", "SPACE", "A" },
+	{ "VAULT · CLIMB (GET UP FROM PRONE)", "SPACE", "A" },
 	{ "SPRINT (HOLD)", "LEFT SHIFT", "L3" },
-	{ "CROUCH (2 TAPS: PRONE) · SLIDE", "C / LEFT CTRL", "B" },
-	{ "ABILITY (OR DASH)", "X", "L1" },
+	{ "CROUCH (2 TAPS: PRONE)", "C / LEFT CTRL", "B" },
+	{ "ABILITY (GADGET)", "X", "L1" },
 	{ "FIRE", "LEFT MOUSE", "R2" },
 	{ "AIM", "RIGHT MOUSE", "L2" },
 	{ "RELOAD", "R", "X" },

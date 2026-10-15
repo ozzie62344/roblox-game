@@ -44,8 +44,8 @@ end
 
 local function update(dt: number)
 	local target = (if rightOn then 1 else 0) - (if leftOn then 1 else 0)
-	-- Can't lean mid-slide, mid-dash, or while spectating
-	if state.sliding or state.dashing or state.spectating then
+	-- Can't lean mid-vault or while spectating (aiming down sights is fine)
+	if state.vaulting or state.spectating then
 		target = 0
 	end
 
