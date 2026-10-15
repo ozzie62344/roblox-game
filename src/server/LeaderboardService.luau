@@ -242,6 +242,9 @@ end
 
 -- A player's numbers changed (or they just joined): written with the next batch
 function LeaderboardService.Note(player: Player)
+	if ReplicatedStorage.MatchState:GetAttribute("Custom") == true then
+		return -- custom matches (shared/CustomMatch) never touch the boards (nothing changes in one anyway)
+	end
 	local data = PlayerData.Get(player)
 	-- (offline data is fresh, not theirs: never written; Studio's test players have ids ≤ 0)
 	if not data or player.UserId <= 0 or not PlayerData.IsSaving(player) then

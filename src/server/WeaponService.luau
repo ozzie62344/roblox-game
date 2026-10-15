@@ -6,6 +6,8 @@
 -- Damage rules (Siege): a bullet to the head kills (Weapons HeadshotKills; shotgun pellets don't),
 -- arms and legs take 75%, armor takes body / limb damage down (1 / 2 / 3 armor: x1 / x0.9 / x0.8),
 -- and every gun loses damage with range (Weapons FalloffStart / FalloffEnd / MinDamageScale).
+-- A hit that would kill a player in a match can down them instead (DBNOService, Siege's down but
+-- not out); downed players can't shoot or knife.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -15,6 +17,7 @@ local GameRules = require(ReplicatedStorage.Shared.GameRules)
 local Operators = require(ReplicatedStorage.Shared.Operators)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 local AntiCheat = require(script.Parent.AntiCheat)
+local DBNOService = require(script.Parent.DBNOService)
 local DestructionService = require(script.Parent.DestructionService)
 local MatchStats = require(script.Parent.MatchStats)
 
@@ -159,6 +162,13 @@ local function bulletDamage(weapon: Weapons.Weapon, distance: number, zone: Zone
 	return weapon.Damage * rangeScale(weapon, distance) * zoneScale * armorScale(targetHumanoid) * through
 end
 
+-- No team damage, unless a custom match's host turned friendly fire on (MatchState
+-- "FriendlyFire"): then teammates' bullets, knives and blasts hurt (and down) each other too
+local function isTeammate(attacker: Player, target: Player?): boolean
+	return target ~= nil and target ~= attacker and not attacker.Neutral and target.Team == attacker.Team
+		and ReplicatedStorage.MatchState:GetAttribute("FriendlyFire") ~= true
+end
+
 -- Players frozen in their spawn (pre-round / attackers during defender prep) can't be hurt
 local function isProtected(targetHumanoid: Humanoid): boolean
 	local targetPlayer = Players:GetPlayerFromCharacter(targetHumanoid.Parent)
@@ -178,8 +188,13 @@ local function applyDamage(attacker: Player, targetHumanoid: Humanoid, damage: n
 	targetHumanoid:SetAttribute("LastHitHeadshot", headshot)
 	targetHumanoid:SetAttribute("LastHitWith", with)
 	MatchStats.Damage(attacker, targetHumanoid, damage) -- (before it lands: only the health they had counts)
-	targetHumanoid:TakeDamage(damage)
-	HitConfirmed:FireClient(attacker, damage, headshot, targetHumanoid.Health <= 0)
+	-- A hit that would kill can down a player instead (their health becomes the down pool)
+	local downed = DBNOService.TryDown(targetHumanoid, damage, headshot, with)
+	if not downed then
+		targetHumanoid:TakeDamage(damage)
+	end
+	-- (the 5th argument: it downed them, the attacker's hit marker says so)
+	HitConfirmed:FireClient(attacker, damage, headshot, targetHumanoid.Health <= 0, downed)
 	local victim = Players:GetPlayerFromCharacter(targetHumanoid.Parent)
 	if victim then
 		Damaged:FireClient(victim, from)
@@ -293,9 +308,9 @@ local function checkShot(player: Player, character: Model, weapon: Weapons.Weapo
 	if (endPosition - hitPart.Position).Magnitude > hitPart.Size.Magnitude / 2 + HIT_TOLERANCE then
 		return endPosition, nil
 	end
-	-- No friendly fire
+	-- No friendly fire (unless it's on: isTeammate)
 	local targetPlayer = Players:GetPlayerFromCharacter(targetHumanoid.Parent)
-	if targetPlayer and not player.Neutral and targetPlayer.Team == player.Team then
+	if isTeammate(player, targetPlayer) then
 		return endPosition, nil, true
 	end
 	if isProtected(targetHumanoid) then
@@ -329,8 +344,8 @@ local function onFire(player: Player, origin: any, shots: any)
 	end
 	-- Frozen during the pre-round countdown
 	local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if not root or root.Anchored or character:GetAttribute("Deploying") then
-		return -- frozen, or hands busy deploying cover
+	if not root or root.Anchored or character:GetAttribute("Deploying") or character:GetAttribute("Downed") then
+		return -- frozen, hands busy deploying cover, or downed (DBNOService)
 	end
 	local weapon = data.weapon
 	if #shots < 1 or #shots > weapon.Pellets then
@@ -442,6 +457,9 @@ local function onMelee(player: Player, targetPart: any, hitPoint: any)
 	if not character or not humanoid or humanoid.Health <= 0 or not root or root.Anchored or character:GetAttribute("Deploying") then
 		return
 	end
+	if character:GetAttribute("Downed") then
+		return -- (downed: no knife, DBNOService)
+	end
 	if not (typeof(targetPart) == "Instance" and targetPart:IsA("BasePart")) then
 		return -- a swing that hit nothing
 	end
@@ -463,7 +481,7 @@ local function onMelee(player: Player, targetPart: any, hitPoint: any)
 		return -- not in front of the attacker
 	end
 	local targetPlayer = Players:GetPlayerFromCharacter(targetHumanoid.Parent)
-	if targetPlayer and not player.Neutral and targetPlayer.Team == player.Team then
+	if isTeammate(player, targetPlayer) then
 		return
 	end
 	if isProtected(targetHumanoid) or isBlocked(root.Position, targetRoot.Position, character) then
@@ -490,7 +508,7 @@ end
 
 -- An explosion (breach charge, thermite) at `center`: damage falls off with distance. Anyone on
 -- `shieldedSide` (the placer's side of the wall) only takes 40%, like Siege's breach charge.
--- Teammates are spared; you can still hurt yourself.
+-- Teammates are spared (unless friendly fire is on: isTeammate); you can still hurt yourself.
 function WeaponService.Blast(attacker: Player, center: Vector3, radius: number, maxDamage: number, shieldedSide: Vector3?)
 	local done: { [Humanoid]: boolean } = {}
 	for _, part in Workspace:GetPartBoundsInRadius(center, radius) do
@@ -509,7 +527,7 @@ function WeaponService.Blast(attacker: Player, center: Vector3, radius: number, 
 			damage *= 0.4
 		end
 		local target = Players:GetPlayerFromCharacter(humanoid.Parent)
-		local teammate = target ~= nil and target ~= attacker and not attacker.Neutral and target.Team == attacker.Team
+		local teammate = isTeammate(attacker, target)
 		if damage >= 1 and not teammate and not isProtected(humanoid) then
 			applyDamage(attacker, humanoid, damage, false, center, "Blast")
 		end

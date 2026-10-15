@@ -66,6 +66,7 @@ local function allowed(): boolean
 	return player:GetAttribute("Location") == "Match"
 		and not player.Neutral and player.Team ~= nil and attackTeam ~= nil and player.Team.Name ~= attackTeam
 		and LIVE_PHASES[MatchState:GetAttribute("Phase")] == true
+		and not state.downed -- (downed: back to your body, DBNO; dead is fine)
 end
 
 local function eye(camera: Model): CFrame

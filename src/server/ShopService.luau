@@ -51,6 +51,9 @@ end
 
 -- Gives a player credits and tells them why ("KILL", "ROUND WON"...)
 function ShopService.Award(player: Player, amount: number, reason: string)
+	if MATCH_REASONS[reason] and ReplicatedStorage.MatchState:GetAttribute("Custom") == true then
+		return -- custom matches (shared/CustomMatch) give no credits
+	end
 	if MATCH_REASONS[reason] then
 		amount = math.floor(amount * matchMultiplier(player) + 0.5)
 	end

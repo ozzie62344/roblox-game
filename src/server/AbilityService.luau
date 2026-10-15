@@ -248,8 +248,8 @@ function AbilityService.Start()
 
 		local character = player.Character
 		local root = aliveRoot(character)
-		if not character or not root or root.Anchored or character:GetAttribute("Deploying") then
-			return -- dead, frozen in the pre-round, or busy deploying cover
+		if not character or not root or root.Anchored or character:GetAttribute("Deploying") or character:GetAttribute("Downed") then
+			return -- dead, frozen in the pre-round, busy deploying cover, or downed (DBNOService)
 		end
 
 		if handler(player, character, root, ability, look) then

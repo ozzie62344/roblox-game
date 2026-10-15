@@ -13,6 +13,8 @@
 --   along the arc here every physics step (PlatformStand, like the rappel); the server hears about
 --   it (Vault remote → the character's "Vaulting" attribute) so others hear it and see the pose,
 --   and the anti-cheat lets the hop through.
+--   Downed (state.downed, DBNOController): forced flat on the floor, crawling at DBNO.CrawlSpeed
+--   (still while holding the wound), no sprinting, vaulting or getting up until you're revived.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -20,6 +22,7 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage.Shared.MovementConfig)
+local DBNO = require(ReplicatedStorage.Shared.DBNO)
 local Operators = require(ReplicatedStorage.Shared.Operators)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 
@@ -53,6 +56,7 @@ local sentProne = false
 local lastCrouchTap = -math.huge
 local sprintOutUntil = 0 -- os.clock(): the gun is back up after a sprint / vault
 local reloadingUntil = 0 -- os.clock(): our own reload (ReloadStarted comes back to us too)
+local wasDowned = false -- downed last step (revived: stand back up)
 
 -- A vault / climb in progress: the root follows `points` (keyframes of where your middle is) over
 -- `duration` seconds; `ends` is the share of the time each segment finishes at
@@ -518,8 +522,18 @@ local function step(dt: number)
 
 	local grounded = isGrounded()
 
-	-- Pulling up cover / planting / disabling / driving a drone: rooted in place
-	local rooted = state.deploying or state.interacting or state.droning
+	-- Downed: flat on the floor until a teammate picks you up, then back on your feet (crouched
+	-- if there's no room)
+	if state.downed then
+		state.prone, state.crouching = true, false
+	elseif wasDowned then
+		getUp(false)
+	end
+	wasDowned = state.downed
+
+	-- Pulling up cover / planting / disabling / reviving / driving a drone / holding your wound:
+	-- rooted in place
+	local rooted = state.deploying or state.interacting or state.droning or (state.downed and state.holdingWound)
 	local wish = if rooted then Vector3.zero else wishDirection()
 	local stickSprint, stickScale = stickSpeed()
 	local sprintInput = sprintHeld or stickSprint
@@ -528,7 +542,7 @@ local function step(dt: number)
 	local wantsToSprint = sprintInput and wish:Dot(lookDirection()) > 0.5
 	-- A fresh sprint press gets you up off the floor / out of a crouch (just holding it doesn't:
 	-- crouch while running and you stay down until you press it again)
-	if sprintPressed and wantsToSprint then
+	if sprintPressed and wantsToSprint and not state.downed then
 		if state.prone then
 			getUp(false)
 		end
@@ -575,6 +589,9 @@ local function step(dt: number)
 	if held and held.MoveSpeedScale then
 		targetSpeed *= held.MoveSpeedScale * (1 - (held.SpinSlow or 0) * state.weaponSpin)
 	end
+	if state.downed then
+		targetSpeed = math.min(targetSpeed, DBNO.CrawlSpeed * stickScale) -- (a slow crawl, any operator)
+	end
 	local speed = velocity.Magnitude
 
 	if grounded then
@@ -609,7 +626,7 @@ local function step(dt: number)
 	-- disabling kneels too; barricading and reinforcing are done standing. Lying down drops it
 	-- nearly to the floor (other players see the body lie flat: BodyAnimator).
 	local interaction = player:GetAttribute("Interaction")
-	local kneeling = state.interacting and (interaction == "Plant" or interaction == "Disable")
+	local kneeling = state.interacting and (interaction == "Plant" or interaction == "Disable" or interaction == "Revive")
 	local lowered = state.crouching or state.deploying or kneeling or state.prone
 	local targetDrop = if state.prone then math.max(standHipHeight - Config.ProneHipHeight, Config.CrouchHeightDrop)
 		elseif lowered then Config.CrouchHeightDrop
@@ -658,6 +675,7 @@ local function cleanupCharacter()
 	sentProne = false
 	sprintOutUntil = 0
 	reloadingUntil = 0
+	wasDowned = false
 end
 
 local function setupCharacter(character: Model)
@@ -694,8 +712,8 @@ end
 
 -- The vault key (Space / gamepad A / the phone's VAULT button): up from prone, otherwise vault
 function MovementController.VaultPressed()
-	if state.droning or state.spectating then
-		return -- (Space hops the drone)
+	if state.droning or state.spectating or state.downed then
+		return -- (Space hops the drone; downed you can't get up)
 	elseif state.prone then
 		getUp(false)
 	else
@@ -712,7 +730,7 @@ function MovementController.Start()
 	-- C / Ctrl: tap to toggle crouch (crouching ends a sprint). Two quick taps: lie down (prone);
 	-- tap again to come back up to a crouch.
 	Actions.Bind("Crouch", function(_, inputState)
-		if inputState ~= Enum.UserInputState.Begin or state.deploying or state.interacting or state.vaulting then
+		if inputState ~= Enum.UserInputState.Begin or state.deploying or state.interacting or state.vaulting or state.downed then
 			return Enum.ContextActionResult.Sink
 		end
 		local now = os.clock()

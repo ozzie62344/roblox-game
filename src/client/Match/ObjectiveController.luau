@@ -5,17 +5,21 @@
 --   • A / B site markers (only the defended pair's, on maps with several), and a countdown
 --     marker on the planted defuser
 --   • The defuser blinks and beeps faster as it gets close to defusing the bomb
+--   • Hold G next to a downed teammate to revive them (DBNOController finds them and draws the
+--     revive ring instead of the progress bar); downed, G does nothing
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
+local DBNO = require(ReplicatedStorage.Shared.DBNO)
 local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local Sounds = require(ReplicatedStorage.Shared.Sounds)
 local state = require(script.Parent.Parent.PlayerState)
 local Sound3D = require(script.Parent.Parent.Audio.Sound3D)
 local Actions = require(script.Parent.Parent.Input.Actions)
+local DBNOController = require(script.Parent.DBNOController)
 
 local MatchState = ReplicatedStorage:WaitForChild("MatchState")
 local Interact = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Interact") :: RemoteEvent
@@ -35,6 +39,7 @@ local INTERACTIONS = {
 	Barricade = { time = MatchConfig.BarricadeTime, label = "BARRICADING...", prompt = "BARRICADE", color = Color3.fromRGB(200, 150, 90) },
 	Unbarricade = { time = MatchConfig.UnbarricadeTime, label = "TAKING IT DOWN...", prompt = "TAKE DOWN THE BARRICADE", color = Color3.fromRGB(200, 150, 90) },
 	Reinforce = { time = MatchConfig.ReinforceTime, label = "REINFORCING...", prompt = "REINFORCE", color = Color3.fromRGB(150, 160, 175) },
+	Revive = { time = DBNO.ReviveTime, label = "REVIVING...", prompt = "REVIVE YOUR TEAMMATE", color = Color3.fromRGB(90, 220, 120) },
 }
 
 local prompt: TextLabel
@@ -206,8 +211,13 @@ end
 local function availableAction(): (string?, BasePart?)
 	local phase = MatchState:GetAttribute("Phase")
 	local root = aliveRoot()
-	if not root or root.Anchored or state.droning then
+	if not root or root.Anchored or state.droning or state.downed then
 		return nil, nil
+	end
+	-- A downed teammate next to you: pick them up first
+	local downedRoot = DBNOController.ReviveTarget()
+	if downedRoot then
+		return "Revive", downedRoot
 	end
 	local role = myRole()
 	local defuserPosition = MatchState:GetAttribute("DefuserPosition")
@@ -427,10 +437,11 @@ local function update()
 	state.interacting = interaction ~= nil
 	local info = interaction and INTERACTIONS[interaction]
 	if info and endsAt then
-		progressBack.Visible = true
+		-- (reviving: DBNOController's ring shows the progress instead)
+		progressBack.Visible = interaction ~= "Revive"
 		progressFill.Size = UDim2.fromScale(math.clamp(1 - (endsAt - now) / info.time, 0, 1), 1)
 		progressFill.BackgroundColor3 = info.color
-		prompt.Visible = true
+		prompt.Visible = interaction ~= "Revive"
 		prompt.Text = info.label
 		state.interactAction = interaction
 		return

@@ -107,6 +107,9 @@ function ProgressService.Record(player: Player, event: Progression.Event)
 	if not PlayerData.Get(player) then
 		return
 	end
+	if ReplicatedStorage.MatchState:GetAttribute("Custom") == true then
+		return -- custom matches (shared/CustomMatch) give no XP, career stats or challenge progress
+	end
 	local weapon = player:GetAttribute("Weapon")
 	local finished: { Progression.Challenge } = {}
 	PlayerData.Update(player, function(d)

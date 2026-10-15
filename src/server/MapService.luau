@@ -160,6 +160,10 @@ function MapService.Start()
 	PhysicsService:RegisterCollisionGroup("Characters")
 	PhysicsService:RegisterCollisionGroup("Guards")
 	PhysicsService:CollisionGroupSetCollidable("Guards", "Default", false)
+	-- Flying debris from destruction (DestructionEffects): lands on the map, passes through people
+	PhysicsService:RegisterCollisionGroup("Debris")
+	PhysicsService:CollisionGroupSetCollidable("Debris", "Characters", false)
+	PhysicsService:CollisionGroupSetCollidable("Debris", "Guards", false)
 
 	-- The lobby always exists, floating above whatever map is loaded
 	local lobby = Lobby.Build()

@@ -1442,6 +1442,9 @@ end
 
 -- Something worth counting for the clan happened to `player` in a match (ProgressService.Record)
 function ClanService.Note(player: Player, event: string)
+	if MatchState:GetAttribute("Custom") == true then
+		return -- custom matches (shared/CustomMatch) don't count for clans
+	end
 	local id = clanOf[player]
 	if not id or (event ~= "Kill" and event ~= "MatchWin") then
 		return

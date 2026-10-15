@@ -194,7 +194,7 @@ end
 -- slower (EmptyReloadTime: the bolt / slide / pump gets worked) and that chambers one from the
 -- new mag, so 30. WeaponService does the same sums.
 local function reload()
-	if unarmed or reloading or ammo >= weapon.MagazineSize + weapon.Chamber or not getAliveCharacter() then
+	if unarmed or reloading or ammo >= weapon.MagazineSize + weapon.Chamber or not getAliveCharacter() or state.downed then
 		return
 	end
 	reloading = true
@@ -350,8 +350,8 @@ local function update(dt: number)
 	end
 
 	local uiOpen = state.devPanelOpen or state.mouseUnlocked or state.draftOpen or state.voteOpen or state.modsOpen or state.settingsOpen
-	-- cover / plant / disable / fortify / knife / gadget moves / driving a drone
-	local handsBusy = state.deploying or state.interacting or state.meleeing or state.gesturing or state.droning
+	-- cover / plant / disable / fortify / revive / knife / gadget moves / driving a drone / downed
+	local handsBusy = state.deploying or state.interacting or state.meleeing or state.gesturing or state.droning or state.downed
 	local now = os.clock()
 
 	-- Sprinting (or vaulting): the gun is down and can't fire or aim; once you stop it takes the
@@ -445,7 +445,7 @@ local function update(dt: number)
 	local halfFov = math.rad(camera.FieldOfView / 2)
 	local shownSpread = currentSpread + (if weapon.Pellets > 1 then weapon.PelletSpread else 0)
 	local gap = math.tan(math.rad(shownSpread)) / math.tan(halfFov) * camera.ViewportSize.Y / 2
-	Hud.SetCrosshair(gap, state.aimAlpha < 0.5)
+	Hud.SetCrosshair(gap, state.aimAlpha < 0.5 and not state.downed)
 
 	if viewmodel then
 		viewmodel:Update(dt, camera.CFrame, {
@@ -582,13 +582,14 @@ function WeaponController.Start()
 		})
 	end)
 
-	-- The server says a hit landed: the hit marker (white = body, orange-red = head, a big red X =
-	-- a kill, bigger and bolder for a headshot kill) and a tick / chime to go with it
-	HitConfirmed.OnClientEvent:Connect(function(_damage: number, headshot: boolean, killed: boolean)
-		local kind = if killed then (if headshot then "headkill" else "kill") elseif headshot then "head" else "body"
+	-- The server says a hit landed: the hit marker (white = body, orange-red = head, amber = it
+	-- downed them (DBNO), a big red X = a kill, bigger and bolder for a headshot kill) and a tick /
+	-- chime to go with it
+	HitConfirmed.OnClientEvent:Connect(function(_damage: number, headshot: boolean, killed: boolean, downed: boolean?)
+		local kind = if killed then (if headshot then "headkill" else "kill") elseif downed then "down" elseif headshot then "head" else "body"
 		Hud.HitMarker(kind)
 		local sounds = Sounds.HitMarker
-		local tone = if killed then sounds.Kill elseif headshot then sounds.Head else sounds.Body
+		local tone = if killed or downed then sounds.Kill elseif headshot then sounds.Head else sounds.Body
 		-- (played in Effects: the same ping as the shop's blips would otherwise count as a menu sound)
 		Effects.Sound(sounds.Id, nil, tone.Volume, tone.Pitch, SoundGroups.Effects)
 	end)

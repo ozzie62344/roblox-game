@@ -149,7 +149,7 @@ function AbilityController.Start()
 		if not ability or ability.Kind ~= "Active" then
 			return Enum.ContextActionResult.Pass -- (no ability: nothing to do)
 		end
-		if state.devPanelOpen or state.mouseUnlocked or state.draftOpen or state.spectating or state.deploying or state.interacting or state.droning then
+		if state.devPanelOpen or state.mouseUnlocked or state.draftOpen or state.spectating or state.deploying or state.interacting or state.droning or state.downed then
 			return Enum.ContextActionResult.Sink
 		end
 		-- (a placed breach charge can still be set off with no charges left; the server decides)

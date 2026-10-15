@@ -26,6 +26,7 @@ local Melee = {}
 
 local REACH = 6 -- studs in front of the camera
 local HIT_RADIUS = 1.3 -- how forgiving the aim is
+local SPHERE_LEAD = 0.3 -- studs the sweep must reach something before the ray does to win
 local SWING_TIME = 0.42 -- whole animation
 local HIT_TIME = 0.13 -- when in the swing the blade connects
 
@@ -59,7 +60,10 @@ local function buildKnife(skin: Skins.Skin?): Model
 end
 
 -- What's right in front of us: someone to stab, or a wall / barricade / window to break?
--- A thin ray first, then a fatter sphere sweep so it's not too picky.
+-- A thin ray first, then a fatter sphere sweep so it's not too picky. Someone the ray hits comes
+-- first; otherwise whichever is nearer, so a stab at the edge of a hole you've already knocked
+-- in a wall chips the edge (making the hole bigger: a rotation hole) instead of reaching through
+-- it to whatever is in the next room.
 local function findTarget(character: Model): (BasePart?, Vector3?)
 	local camera = Workspace.CurrentCamera
 	local params = RaycastParams.new()
@@ -67,7 +71,16 @@ local function findTarget(character: Model): (BasePart?, Vector3?)
 	params.FilterDescendantsInstances = { character, camera }
 	local origin = camera.CFrame.Position
 	local direction = camera.CFrame.LookVector * REACH
-	local result = Workspace:Raycast(origin, direction, params) or Workspace:Spherecast(origin, HIT_RADIUS, direction, params)
+	local ray = Workspace:Raycast(origin, direction, params)
+	local rayModel = ray and ray.Instance:FindFirstAncestorOfClass("Model")
+	local rayHumanoid = rayModel and rayModel:FindFirstChildOfClass("Humanoid")
+	local result = ray
+	if not (rayHumanoid and rayHumanoid.Health > 0) then
+		local sphere = Workspace:Spherecast(origin, HIT_RADIUS, direction, params)
+		if sphere and (not ray or sphere.Distance < ray.Distance - HIT_RADIUS - SPHERE_LEAD) then
+			result = sphere
+		end
+	end
 	if not result then
 		return nil, nil
 	end
@@ -106,7 +119,7 @@ local function swing()
 	if not character or not humanoid or humanoid.Health <= 0 or not root or root.Anchored then
 		return
 	end
-	if state.devPanelOpen or state.mouseUnlocked or state.draftOpen or state.settingsOpen or state.deploying or state.interacting or state.gesturing or state.droning or state.spectating or state.inLobby then
+	if state.devPanelOpen or state.mouseUnlocked or state.draftOpen or state.settingsOpen or state.deploying or state.interacting or state.gesturing or state.droning or state.spectating or state.inLobby or state.downed then
 		return
 	end
 	local now = os.clock()

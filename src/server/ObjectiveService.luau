@@ -93,7 +93,8 @@ local function aliveRoot(player: Player): BasePart?
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if humanoid and humanoid.Health > 0 and root and not root.Anchored then
+	-- (downed players can't plant or disable: DBNOService)
+	if humanoid and humanoid.Health > 0 and root and not root.Anchored and character:GetAttribute("Downed") ~= true then
 		return root
 	end
 	return nil
@@ -239,7 +240,8 @@ local function updateCarrier()
 	end
 	for _, player in carrierTeam:GetPlayers() do
 		local root = livingRoot(player)
-		if root and not root.Anchored and (root.Position - dropped.Position).Magnitude <= MatchConfig.DefuserPickupRange then
+		local downed = root ~= nil and (root.Parent :: Instance):GetAttribute("Downed") == true -- (DBNOService: can't pick it up)
+		if root and not root.Anchored and not downed and (root.Position - dropped.Position).Magnitude <= MatchConfig.DefuserPickupRange then
 			local others = carrierTeam:GetPlayers()
 			table.remove(others, table.find(others, player) :: number)
 			setCarrier(player)
@@ -483,8 +485,9 @@ function ObjectiveService.Start()
 			stopInteracting(player)
 			return
 		end
-		-- Barricades / reinforcements share the G key but are FortifyService's job
-		if action ~= "Begin" or kind == "Barricade" or kind == "Reinforce" or kind == "Unbarricade" or interactors[player] then
+		-- Barricades / reinforcements share the G key but are FortifyService's job, reviving a
+		-- downed teammate DBNOService's
+		if action ~= "Begin" or kind == "Barricade" or kind == "Reinforce" or kind == "Unbarricade" or kind == "Revive" or interactors[player] then
 			return
 		end
 		local kind = if player.Team == attackTeam then "Plant" else "Disable"

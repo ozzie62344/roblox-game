@@ -15,6 +15,9 @@
 -- One team attacks, the other defends; sides swap at halftime, and every round in overtime.
 -- Ranked matches (MatchState "Ranked", from the teleport data): Classic rules only, a team that
 -- has all left forfeits, and RankedService rates everyone at the end.
+-- Custom matches (MatchState "Custom", from the teleport data: shared/CustomMatch): no vote (the
+-- host's map and mode), the host's rounds / timers / rules (rule()), players the host left off
+-- the teams spectate, and nobody earns anything.
 -- Clients read the current state from attributes on ReplicatedStorage.MatchState.
 
 local Players = game:GetService("Players")
@@ -23,6 +26,7 @@ local Teams = game:GetService("Teams")
 local TeleportService = game:GetService("TeleportService")
 local Workspace = game:GetService("Workspace")
 
+local CustomMatch = require(ReplicatedStorage.Shared.CustomMatch)
 local GameRules = require(ReplicatedStorage.Shared.GameRules)
 local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local AbilityService = require(script.Parent.AbilityService)
@@ -64,6 +68,12 @@ end
 
 local function isFreeRoam(): boolean
 	return not matchRunning
+end
+
+-- A match rule: a custom match's own ("Custom<name>" on MatchState, shared/CustomMatch) or MatchConfig's
+local function rule(name: string): any
+	local custom = MatchState:GetAttribute("Custom" .. name)
+	return if custom ~= nil then custom else (MatchConfig :: any)[name]
 end
 
 -- How high above the floor a character's root is when standing (in case a body ever isn't the
@@ -123,10 +133,12 @@ local function getRoot(player: Player): BasePart?
 	return character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 end
 
+-- Alive and standing: a downed player (DBNOService) doesn't count, so a team with nobody left on
+-- their feet is out (DBNOService finishes its downed off) and "more players alive" counts standing
 local function isAlive(player: Player): boolean
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	return humanoid ~= nil and humanoid.Health > 0
+	return humanoid ~= nil and humanoid.Health > 0 and character:GetAttribute("Downed") ~= true
 end
 
 local function aliveCount(teamName: string): number
@@ -253,7 +265,7 @@ local function assignTeams()
 		end
 	end
 	for _, player in players do
-		if player.Neutral then
+		if player.Neutral and not CustomMatch.IsCustom(MatchState) then -- (custom: the host's spectators watch)
 			joinSmaller(player)
 		end
 	end
@@ -346,7 +358,7 @@ local function runRound(round: number, mode: string, attack: string, title: stri
 		startedWith[teamName] = #teams[teamName]:GetPlayers()
 	end
 	-- Defenders' shared wall reinforcements (FortifyService)
-	MatchState:SetAttribute("Reinforcements", MatchConfig.Reinforcements)
+	MatchState:SetAttribute("Reinforcements", rule("Reinforcements"))
 
 	-- Operator selection (Siege): everyone's frozen at spawn picking an operator (Draft) while the
 	-- defenders pick the site (SitePicker) and the attackers their spawn point
@@ -360,7 +372,7 @@ local function runRound(round: number, mode: string, attack: string, title: stri
 	end
 	-- Loadouts can be picked (and changed) right up until the round starts, which in Attack /
 	-- Defend includes the defenders' setup time
-	local pickTime = freezeTime + (if mode == "AttackDefend" then MatchConfig.PrepTime else 0)
+	local pickTime = freezeTime + (if mode == "AttackDefend" then rule("PrepTime") else 0)
 	LoadoutService.StartRound(roundPlayers, loadoutMode, pickTime)
 
 	local ranked = round == 1 and MatchState:GetAttribute("Ranked") == true
@@ -378,9 +390,9 @@ local function runRound(round: number, mode: string, attack: string, title: stri
 		unfreezeTeam(defend)
 		ObjectiveService.PlaceBombs() -- the defenders' pick is final now
 		ObjectiveService.GiveDefuser(teams[attack]) -- one attacker carries it (Siege)
-		setPhase("Prep", MatchConfig.PrepTime, "PREPARATION PHASE")
+		setPhase("Prep", rule("PrepTime"), "PREPARATION PHASE")
 		DroneService.StartPrep(teams[attack])
-		task.wait(MatchConfig.PrepTime)
+		task.wait(rule("PrepTime"))
 		if abortMatch then
 			return nil, nil
 		end
@@ -398,8 +410,8 @@ local function runRound(round: number, mode: string, attack: string, title: stri
 		elseif sitePair and found then `ACTION PHASE · {string.upper(sitePair)}`
 		elseif sitePair then "ACTION PHASE · FIND THE OBJECTIVE"
 		else "ACTION PHASE"
-	setPhase("Action", MatchConfig.RoundTime, actionBanner)
-	local deadline = os.clock() + MatchConfig.RoundTime
+	setPhase("Action", rule("RoundTime"), actionBanner)
+	local deadline = os.clock() + rule("RoundTime")
 	local planted = false
 	endRoundNow = false
 
@@ -455,8 +467,9 @@ local function runMatch()
 		MatchState:SetAttribute("AttackTeam", attack)
 
 		-- Siege's round titles: match point when a round could win it, overtime after 3-3
-		local matchPoint = scores.Blue == MatchConfig.RoundsToWin - 1 or scores.Orange == MatchConfig.RoundsToWin - 1
-		local title = if round > MatchConfig.SwapSidesAfterRounds * 2 then `OVERTIME · ROUND {round}`
+		local roundsToWin, swapAfter = rule("RoundsToWin"), rule("SwapSidesAfterRounds")
+		local matchPoint = scores.Blue == roundsToWin - 1 or scores.Orange == roundsToWin - 1
+		local title = if round > swapAfter * 2 then `OVERTIME · ROUND {round}`
 			elseif matchPoint then `ROUND {round} · MATCH POINT`
 			else `ROUND {round}`
 		local winner, reason = runRound(round, mode, attack, title)
@@ -472,7 +485,7 @@ local function runMatch()
 				ProgressService.Record(player, "RoundWin")
 			end
 		end
-		if scores[winner] and scores[winner] >= MatchConfig.RoundsToWin then
+		if scores[winner] and scores[winner] >= roundsToWin then
 			matchWinner = winner
 			break
 		end
@@ -489,11 +502,11 @@ local function runMatch()
 		setPhase("PostRound", MatchConfig.PostRoundTime, banner)
 		task.wait(MatchConfig.PostRoundTime)
 
-		if round == MatchConfig.SwapSidesAfterRounds then
+		if round == swapAfter then
 			attack = otherTeam(attack)
 			setPhase("PostRound", 3, "HALFTIME · SWITCHING SIDES")
 			task.wait(3)
-		elseif round >= MatchConfig.SwapSidesAfterRounds * 2 then
+		elseif round >= swapAfter * 2 then
 			-- Overtime: sides switch every round
 			attack = otherTeam(attack)
 			setPhase("PostRound", 3, "OVERTIME · SWITCHING SIDES")
@@ -528,6 +541,7 @@ local function runMatch()
 	RankedService.Cancel() -- (stopped early: no ratings change; already done if it was won)
 	if not IS_MATCH_SERVER then
 		MatchState:SetAttribute("Ranked", nil) -- (a Studio / lobby ranked match was for this match only)
+		CustomMatch.Clear(MatchState) -- (...and so was a Studio custom match's settings)
 	end
 	table.clear(presetTeams) -- (Matchmaker's teams were for this match only)
 	ObjectiveService.EndRound()
@@ -596,6 +610,17 @@ local function voteMap()
 	task.wait(2.5) -- (the winning cards light up)
 end
 
+-- A custom match has no vote: the host picked the map ("Random": any of them) and the mode
+local function customSetup()
+	local map = MatchState:GetAttribute("CustomMap")
+	if not table.find(MapService.MapNames, map) then
+		map = MapService.MapNames[math.random(#MapService.MapNames)]
+	end
+	MapService.Load(map)
+	MatchState:SetAttribute("Rules", MatchState:GetAttribute("CustomRules") or "Classic")
+	task.wait(1)
+end
+
 -- Match server: start once everyone teleported in has arrived (or after a wait, with whoever made
 -- it). Lobby: only a dev / Studio queue starts one.
 local function readyToStart(waitingSince: number): boolean
@@ -644,7 +669,11 @@ local function mainLoop()
 			end
 		until readyToStart(waitingSince)
 
-		voteMap()
+		if CustomMatch.IsCustom(MatchState) then
+			customSetup()
+		else
+			voteMap()
+		end
 		runMatch()
 		if IS_MATCH_SERVER then
 			sendToLobby()
@@ -709,9 +738,16 @@ local function onPlayerAdded(player: Player)
 	-- Match server: Matchmaker's teleport data says the mode, who's coming and on which team
 	local data = if IS_MATCH_SERVER then player:GetJoinData().TeleportData else nil
 	if typeof(data) == "table" and typeof(data.Players) == "table" and not MatchState:GetAttribute("Expected") then
-		MatchState:SetAttribute("Expected", math.clamp(#data.Players, 2, MatchConfig.MaxTeamSize * 2))
-		MatchState:SetAttribute("QueueMode", if typeof(data.Mode) == "string" then data.Mode else nil)
-		MatchState:SetAttribute("Ranked", if data.Ranked == true then true else nil)
+		if data.Custom == true then
+			-- A custom match (CustomMatchService): the host's settings, never ranked, and it can be
+			-- just one player (testing) plus spectators
+			CustomMatch.Apply(MatchState, data.Settings, MapService.MapNames)
+			MatchState:SetAttribute("Expected", math.clamp(#data.Players, 1, CustomMatch.MaxPlayers))
+		else
+			MatchState:SetAttribute("Expected", math.clamp(#data.Players, 2, MatchConfig.MaxTeamSize * 2))
+			MatchState:SetAttribute("QueueMode", if typeof(data.Mode) == "string" then data.Mode else nil)
+			MatchState:SetAttribute("Ranked", if data.Ranked == true then true else nil)
+		end
 	end
 	if typeof(data) == "table" and typeof(data.Teams) == "table" then
 		for _, name in MatchConfig.TeamOrder do
@@ -727,7 +763,7 @@ local function onPlayerAdded(player: Player)
 		if presetTeams[player] then
 			join(player, presetTeams[player])
 		end
-		if player.Neutral then
+		if player.Neutral and not CustomMatch.IsCustom(MatchState) then -- (custom: spectators watch)
 			joinSmaller(player)
 		end
 	else
@@ -743,11 +779,15 @@ function RoundService.SpawnFreeRoam(player: Player)
 end
 
 -- `picks`: who plays on which team (Matchmaker in Studio, so a party plays together); `ranked`:
--- a full ranked queue in Studio (the match is rated)
-function RoundService.ForceStart(picks: { [Player]: string }?, ranked: boolean?)
+-- a full ranked queue in Studio (the match is rated); `custom`: a custom lobby's settings in
+-- Studio (CustomMatchService: played right here, no rewards)
+function RoundService.ForceStart(picks: { [Player]: string }?, ranked: boolean?, custom: { [string]: any }?)
 	forceStart = true
 	if not IS_MATCH_SERVER then
-		MatchState:SetAttribute("Ranked", if ranked then true else nil)
+		MatchState:SetAttribute("Ranked", if ranked and not custom then true else nil)
+		if custom then
+			CustomMatch.Apply(MatchState, custom, MapService.MapNames)
+		end
 	end
 	if picks then
 		for player, name in picks do

@@ -1,15 +1,18 @@
 -- Siege defender fortifications, both on G (the same key as plant / disable):
 --   Barricade  look at an empty doorway / window, hold G. Wooden boards (a doorway's leave a gap
 --              at the bottom that drones fit under, like Siege) that are Breakable
---              (DestructionService): bullets chip them, 3 knife hits or ~20 bullets smash them.
+--              (DestructionService): bullets punch holes in them; 3 knife hits, ~20 bullets,
+--              2-3 close shotgun shells or any explosive smash them.
 --              Where they can go: invisible parts in <Map>/BarricadeSlots (Kind = "Door" /
 --              "Window"). Slots with Exterior = true start every round already barricaded.
 --              Defenders can take one down again (look at it, hold G: "Unbarricade") without
 --              shooting it apart.
 --   Reinforce  look at a soft wall, hold G. A steel plate goes up on your side of that wall
---              section and stops bullets, knives and people (only hard breachers will get
---              through, later). The defending team shares 6 per round, however many defenders
---              (MatchConfig.Reinforcements; RoundService fills the pool).
+--              section and stops bullets, knives, shotguns, breach charges and people: only a
+--              hard breach (thermite) gets through. The slot is tagged "Reinforced" while the
+--              steel is up (DestructionService: hits on that section only clang, and holes cut
+--              next to it stop at its edge). The defending team shares 6 per round, however
+--              many defenders (MatchConfig.Reinforcements; RoundService fills the pool).
 --              Sections are cut when the map loads: every full-height soft wall is split into
 --              ~10-stud pieces (<Map>/ReinforceSlots), like Siege's fixed wall sections. Hatches
 --              (trapdoors) are sections too: their plate goes on top.
@@ -19,6 +22,7 @@
 -- client can animate the plate / boards going up (FortifyEffects). Everything resets when the
 -- map reloads.
 
+local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -39,6 +43,7 @@ local SECTION_LENGTH = 10 -- studs, roughly; each wall is split into equal secti
 local DRONE_GAP = 0.9 -- studs left open under a barricaded door (DroneService drones are 0.7 tall)
 local WOOD = Color3.fromRGB(176, 136, 92)
 local STEEL = Color3.fromRGB(92, 97, 104)
+local REINFORCED_TAG = "Reinforced" -- on a slot with steel on it (DestructionService reads it)
 
 type Kind = "Barricade" | "Reinforce" | "Unbarricade"
 local KINDS = {
@@ -83,6 +88,9 @@ local function canWork(player: Player, kind: Kind, slot: BasePart): boolean
 	local map = Workspace:FindFirstChild("Map")
 	if not humanoid or humanoid.Health <= 0 or not root or not head or root.Anchored or not map then
 		return false
+	end
+	if (character :: Model):GetAttribute("Downed") then
+		return false -- (downed: DBNOService)
 	end
 	if not slot:IsDescendantOf(map) or slot.Parent.Name ~= KINDS[kind].folder then
 		return false
@@ -195,6 +203,7 @@ local function buildReinforcement(slot: BasePart, side: number)
 	end
 	model.Parent = slot.Parent
 	slot:SetAttribute("Built", true)
+	CollectionService:AddTag(slot, REINFORCED_TAG)
 	reinforcements[slot] = model
 end
 
@@ -257,6 +266,7 @@ function FortifyService.RemoveReinforcement(slot: BasePart)
 	end
 	slot:SetAttribute("Built", nil)
 	slot:SetAttribute("Breached", true)
+	CollectionService:RemoveTag(slot, REINFORCED_TAG)
 end
 
 -- Called by MapService after a map is (re)loaded: cut the walls into reinforcement sections and

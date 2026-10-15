@@ -141,6 +141,9 @@ local function canWatch(player: Player): boolean
 	if player:GetAttribute("Location") == "Lobby" then
 		return false
 	end
+	if player.Character and player.Character:GetAttribute("Downed") then
+		return false -- downed (DBNOService); dead is fine
+	end
 	if player.Neutral then
 		local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 		return humanoid ~= nil and humanoid.Health > 0 -- free roam, to try them

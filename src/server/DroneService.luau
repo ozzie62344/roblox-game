@@ -242,6 +242,9 @@ local function toggle(player: Player)
 		setDroning(player, false)
 		return
 	end
+	if player.Character and player.Character:GetAttribute("Downed") then
+		return -- downed: no drone (DBNOService kicks you out of it)
+	end
 	local root = aliveRoot(player.Character)
 	if not root then
 		-- Dead attackers can still drive the drone they left out (like Siege), not throw a new one
@@ -368,6 +371,9 @@ end
 
 -- Defenders' setup: every attacker gets their drones and drives the first one out of spawn
 function DroneService.StartPrep(attackers: Team)
+	if MatchState:GetAttribute("NoDrones") == true then
+		return -- custom match "No drones" (shared/CustomMatch): nobody gets any (DronesLeft stays 0)
+	end
 	for _, player in attackers:GetPlayers() do
 		player:SetAttribute("DronesLeft", DRONES_PER_ROUND - 1)
 		deploy(player)

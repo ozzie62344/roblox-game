@@ -76,6 +76,7 @@ local INTERACT_LABELS = {
 	Barricade = "BARRI-\nCADE",
 	Unbarricade = "REMOVE",
 	Reinforce = "REIN-\nFORCE",
+	Revive = "REVIVE",
 }
 
 local BUTTON = Color3.fromRGB(18, 20, 26)
@@ -174,10 +175,28 @@ local leanLeftPress, leanLeftRelease = hold("LeanLeft")
 local leanRightPress, leanRightRelease = hold("LeanRight")
 local crouchPress, crouchRelease = hold("Crouch")
 local usePress, useRelease = hold("Interact")
+local woundPress, woundRelease = hold("HoldWound")
 
 local SPECS: { Spec } = {
 	-- Playing: right thumb
-	{ id = "Fire", label = fireLabel, side = "Right", x = 2.4, y = 2.0, size = 1.9, modes = { "Play" }, press = firePress, release = fireRelease, color = FIRE },
+	{
+		id = "Fire", label = fireLabel, side = "Right", x = 2.4, y = 2.0, size = 1.9, modes = { "Play" }, press = firePress, release = fireRelease, color = FIRE,
+		visible = function()
+			return not state.downed
+		end,
+	},
+	-- Downed (DBNO): FIRE's spot holds your wound instead (F on a keyboard)
+	{
+		id = "Wound", follows = "Fire", label = "HOLD\nWOUND", side = "Right", x = 2.4, y = 2.0, size = 1.6, modes = { "Play" },
+		press = woundPress, release = woundRelease,
+		visible = function()
+			return state.downed
+		end,
+		on = function()
+			return state.holdingWound
+		end,
+		color = Color3.fromRGB(150, 30, 30),
+	},
 	{
 		id = "Aim", label = "AIM", side = "Right", x = 4.75, y = 1.1, size = 1.2, modes = { "Play" },
 		press = function()
@@ -650,7 +669,7 @@ local function update()
 	for _, entry in buttons do
 		local spec = entry.spec
 		local visible = if mode == "Edit"
-			then table.find(spec.modes, "Play") ~= nil and (spec.id ~= "Dev" or player:GetAttribute("IsDev") == true)
+			then table.find(spec.modes, "Play") ~= nil and spec.follows == nil and (spec.id ~= "Dev" or player:GetAttribute("IsDev") == true) -- (HOLD WOUND moves with FIRE)
 			else table.find(spec.modes, mode) ~= nil and (spec.visible == nil or spec.visible())
 		entry.button.Visible = visible
 		if not visible then

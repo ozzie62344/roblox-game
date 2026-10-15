@@ -249,11 +249,13 @@ end
 local HIT_MARKERS = {
 	body = { color = WHITE, length = 9, thickness = 2, duration = 0.25, pop = 0 },
 	head = { color = Color3.fromRGB(255, 120, 90), length = 10, thickness = 2, duration = 0.3, pop = 0 },
+	down = { color = Color3.fromRGB(255, 185, 50), length = 12, thickness = 2, duration = 0.4, pop = 3 }, -- (downed them: DBNO)
 	kill = { color = RED, length = 14, thickness = 2, duration = 0.4, pop = 4 },
 	headkill = { color = RED, length = 16, thickness = 3, duration = 0.5, pop = 6 },
 }
 
--- kind: "body", "head", "kill" or "headkill" (a headshot that killed: a bigger, bolder X)
+-- kind: "body", "head", "down" (put them down, not out), "kill" or "headkill" (a headshot that
+-- killed: a bigger, bolder X)
 function Hud.HitMarker(kind: string)
 	if not hitMarkersOn then
 		return

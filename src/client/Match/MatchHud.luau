@@ -40,6 +40,7 @@ local CHIP_WIDTH, CHIP_HEIGHT, CHIP_GAP = 78, 40, 4
 local TIMER_WIDTH, SCORE_WIDTH, GAP = 104, 46, 6
 local TOP_WIDTH = TIMER_WIDTH + 2 * (GAP + SCORE_WIDTH + GAP + MatchConfig.MaxTeamSize * (CHIP_WIDTH + CHIP_GAP))
 local DEAD_COLOR = Color3.fromRGB(48, 50, 56)
+local DOWNED_COLOR = Color3.fromRGB(120, 24, 24) -- (down but not out)
 
 type Chip = { frame: Frame, operator: TextLabel, player: TextLabel, badge: TextLabel }
 
@@ -238,20 +239,21 @@ local function colorHex(color: Color3): string
 	return "#" .. color:ToHex()
 end
 
-local function addKillFeedEntry(killer: Player?, victim: Player, headshot: boolean)
+-- `downed`: a down, not a kill (DBNO): a smaller line, "DOWNED" in amber
+local function addKillFeedEntry(killer: Player?, victim: Player, headshot: boolean, downed: boolean?)
 	local function name(p: Player): string
 		local color = if p.Team then p.Team.TeamColor.Color else Color3.new(1, 1, 1)
 		return `<font color="{colorHex(color)}">{p.DisplayName}</font>`
 	end
 
 	local entry = Instance.new("TextLabel")
-	entry.Size = UDim2.fromOffset(360, 24)
+	entry.Size = UDim2.fromOffset(360, if downed then 20 else 24)
 	entry.BackgroundColor3 = Color3.fromRGB(15, 16, 20)
 	entry.BackgroundTransparency = 0.35
 	entry.BorderSizePixel = 0
 	entry.RichText = true
 	entry.Font = Enum.Font.GothamMedium
-	entry.TextSize = 15
+	entry.TextSize = if downed then 13 else 15
 	entry.TextColor3 = Color3.new(1, 1, 1)
 	entry.TextXAlignment = Enum.TextXAlignment.Right
 	entry.AutomaticSize = Enum.AutomaticSize.X
@@ -260,7 +262,10 @@ local function addKillFeedEntry(killer: Player?, victim: Player, headshot: boole
 	padding.PaddingRight = UDim.new(0, 8)
 	padding.Parent = entry
 
-	if killer and killer ~= victim then
+	if downed then
+		local tag = '<font color="#ffb932">DOWNED</font>'
+		entry.Text = if killer and killer ~= victim then `{name(killer)}  {tag}  {name(victim)}` else `{name(victim)}  {tag}`
+	elseif killer and killer ~= victim then
 		local marker = if headshot then '  <font color="#ff5050">[HEADSHOT]</font>  ' else "  ▸  "
 		entry.Text = name(killer) .. marker .. name(victim)
 	else
@@ -342,8 +347,9 @@ local function update()
 		-- overtime / match point, like Siege)
 		local rules = GameRules.Current()
 		local prefix = `ROUND {round}`
-		local need = MatchConfig.RoundsToWin - 1
-		if round > MatchConfig.SwapSidesAfterRounds * 2 then
+		-- (a custom match's own rounds to win: shared/CustomMatch)
+		local need = (MatchState:GetAttribute("CustomRoundsToWin") or MatchConfig.RoundsToWin) - 1
+		if round > (MatchState:GetAttribute("CustomSwapSidesAfterRounds") or MatchConfig.SwapSidesAfterRounds) * 2 then
 			prefix ..= " · OVERTIME"
 		elseif (MatchState:GetAttribute("ScoreBlue") or 0) == need or (MatchState:GetAttribute("ScoreOrange") or 0) == need then
 			prefix ..= " · MATCH POINT"
@@ -353,6 +359,8 @@ local function update()
 		end
 		if MatchState:GetAttribute("Ranked") == true then
 			prefix = "RANKED · " .. prefix
+		elseif MatchState:GetAttribute("Custom") == true then
+			prefix = "CUSTOM · " .. prefix
 		end
 		phaseText = if phaseText == "" then prefix else `{prefix} · {phaseText}`
 	elseif phase == "Waiting" then
@@ -411,7 +419,9 @@ local function update()
 				elseif operator then string.upper(operator.Name)
 				else "..."
 			chip.player.Text = if alive then member.DisplayName else `<s>{member.DisplayName}</s>`
-			chip.frame.BackgroundColor3 = if alive then teamColor(name):Lerp(Color3.new(0, 0, 0), 0.35) else DEAD_COLOR
+			-- (downed, DBNO: a dark red chip until they're up again or dead; the kill feed says so too)
+			local downed = alive and (member.Character :: Model):GetAttribute("Downed") == true
+			chip.frame.BackgroundColor3 = if downed then DOWNED_COLOR elseif alive then teamColor(name):Lerp(Color3.new(0, 0, 0), 0.35) else DEAD_COLOR
 			chip.frame.BackgroundTransparency = if alive then 0.1 else 0.35
 			local textColor = if alive then Color3.new(1, 1, 1) else Color3.fromRGB(130, 134, 142)
 			chip.operator.TextColor3 = if alive and operator and (friendly or revealEnemies) then operator.Color:Lerp(Color3.new(1, 1, 1), 0.45) else textColor
@@ -421,13 +431,20 @@ local function update()
 	end
 end
 
+-- Someone was downed, not killed (DBNOController): a smaller kill feed line
+function MatchHud.AddDownedEntry(attacker: Player?, victim: Player)
+	addKillFeedEntry(attacker, victim, false, true)
+end
+
 function MatchHud.Start()
 	build()
 	MatchState:GetAttributeChangedSignal("Banner"):Connect(function()
 		showBanner(MatchState:GetAttribute("Banner") or "")
 		roundSting(MatchState:GetAttribute("Banner") or "") -- Music: RoundStart / RoundWin / RoundLoss sting
 	end)
-	KillFeed.OnClientEvent:Connect(addKillFeedEntry)
+	KillFeed.OnClientEvent:Connect(function(killer: Player?, victim: Player, headshot: boolean)
+		addKillFeedEntry(killer, victim, headshot)
+	end)
 	RunService.RenderStepped:Connect(update)
 end
 

@@ -49,11 +49,25 @@ for _, r in GameRules.List do
 	GameRules.ById[r.Id] = r
 end
 
+-- A custom match can turn Headshots Only on for any mode (MatchState "HeadshotsOnly",
+-- shared/CustomMatch): the mode's rules plus that, made once per mode
+local withHeadshotsOnly: { [string]: Rules } = {}
+
 -- The rules this match is played with (Classic outside a match)
 function GameRules.Current(): Rules
 	local state = ReplicatedStorage:FindFirstChild("MatchState")
 	local id = state and state:GetAttribute("Rules")
-	return GameRules.ById[id] or GameRules.ById.Classic
+	local current = GameRules.ById[id] or GameRules.ById.Classic
+	if state and state:GetAttribute("HeadshotsOnly") == true and not current.HeadshotsOnly then
+		local variant = withHeadshotsOnly[current.Id]
+		if not variant then
+			variant = table.clone(current)
+			variant.HeadshotsOnly = true
+			withHeadshotsOnly[current.Id] = variant
+		end
+		return variant
+	end
+	return current
 end
 
 function GameRules.MeleeCooldown(): number

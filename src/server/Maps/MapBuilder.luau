@@ -314,8 +314,9 @@ function MapBuilder.Railing(self: Builder, a: Vector3, b: Vector3, color: Color3
 end
 
 -- Trapdoor in a floor whose top is at `top`: a wooden cover over a size × size hole (the floor
--- itself must leave the hole, see FloorWithHoles). The knife (3 hits) or an explosive breaks the
--- cover (DestructionService); defenders can reinforce it like a wall section (FortifyService).
+-- itself must leave the hole, see FloorWithHoles). The knife or close shotgun blasts (5 hits) or
+-- an explosive break the cover (DestructionService); defenders can reinforce it like a wall
+-- section (FortifyService), and then only a hard breach opens it.
 function MapBuilder.Hatch(self: Builder, x: number, z: number, top: number, size: number)
 	local half = size / 2
 	local cover = Instance.new("Model")

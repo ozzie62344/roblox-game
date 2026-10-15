@@ -13,6 +13,8 @@
 -- "QueueRanked2v2"; you have "QueuedRanked" = true), so ranked players only meet ranked players.
 -- Only level 20+ can queue, and a party only if every member is. The teleport data says Ranked,
 -- and the match server rates the match (RankedService).
+-- CUSTOM matches skip the queues altogether (CustomMatchService): nobody in a custom lobby (player
+-- attribute "CustomLobby") can queue, and going into one stops your party's search.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -215,6 +217,16 @@ local function check()
 	publish()
 end
 
+-- Stops the search `player` is in (their whole party's), telling the rest of the party `reason`:
+-- CustomMatchService, when someone goes into a custom lobby
+function Matchmaker.StopSearch(player: Player, reason: string)
+	local unit = unitOf(player)
+	if unit then
+		leaveUnit(unit, reason, player)
+		publish()
+	end
+end
+
 function Matchmaker.Start()
 	for _, mode in MatchConfig.QueueModes do
 		queues[queueKey(mode, false)] = {}
@@ -243,6 +255,14 @@ function Matchmaker.Start()
 			return
 		end
 		local unit = PartyService.MembersOf(player)
+		-- (in a custom lobby you play that match: CustomMatchService)
+		for _, member in unit do
+			if member:GetAttribute("CustomLobby") then
+				local who = if member == player then "YOU'RE" else `{string.upper(member.DisplayName)} IS`
+				Queue:FireClient(player, "Stopped", `{who} IN A CUSTOM LOBBY · LEAVE IT TO QUEUE`)
+				return
+			end
+		end
 		ranked = ranked == true
 		local blocked = if ranked then rankedBlock(unit) else nil
 		if blocked then

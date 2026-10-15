@@ -29,7 +29,8 @@ local closing = false -- (the server shutting down kicks everyone: that's not le
 local entries: { [number]: Entry } = {} -- by UserId: everyone who played this match
 
 function RankedService.IsRanked(): boolean
-	return MatchState:GetAttribute("Ranked") == true
+	-- (a custom match is never rated, whatever else says: shared/CustomMatch)
+	return MatchState:GetAttribute("Ranked") == true and MatchState:GetAttribute("Custom") ~= true
 end
 
 -- (anyone on a team who isn't in yet: a late arrival)

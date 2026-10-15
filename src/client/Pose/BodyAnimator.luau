@@ -13,6 +13,8 @@
 --     off it, left hand up on the rope, gun in the right
 --   • gadget / ability moves and plant / disable / barricade / reinforce holds: the same hand
 --     moves as first person (HandsAnimator), with the gun slung at the hip
+--   • downed (DBNO, the "Downed" attribute): lying down like prone, gun slung, both hands pressed
+--     to their middle; reviving someone kneels and reaches down like deploying cover
 --
 -- How the joints are moved: each R15 joint (a Motor6D, or an AnimationConstraint on avatars with
 -- Roblox's upgraded joints — both work the same way) places its part like this
@@ -359,13 +361,14 @@ local function animate(rig: Rig, other: Player, dt: number)
 
 	-- What are they doing? (attributes set by the server from their own client)
 	local lowered = character:GetAttribute("Crouching") == true -- crouching OR lying down
-	local prone = character:GetAttribute("Prone") == true
+	local downed = character:GetAttribute("Downed") == true -- (DBNO: always lying down)
+	local prone = character:GetAttribute("Prone") == true or downed
 	local vaulting = character:GetAttribute("Vaulting") == true
 	local crouching = lowered and not prone and not vaulting
 	local deployingCover = character:GetAttribute("Deploying") == true
 	local interaction = other:GetAttribute("Interaction")
-	local busy = deployingCover or interaction ~= nil
-	local kneeling = not prone and (deployingCover or interaction == "Plant" or interaction == "Disable")
+	local busy = deployingCover or interaction ~= nil or downed
+	local kneeling = not prone and (deployingCover or interaction == "Plant" or interaction == "Disable" or interaction == "Revive")
 	local rootPos = root.CFrame.Position
 	local ground = groundHeight(rig, rootPos)
 	local rappelling = typeof(character:GetAttribute("RappelTop")) == "number"
@@ -511,9 +514,10 @@ local function animate(rig: Rig, other: Player, dt: number)
 		leftHand = leftHand:Lerp(rig.workLeft, rig.work)
 		rightHand = rightHand:Lerp(rig.workRight, rig.work)
 	elseif rig.busy > 0.01 then
-		-- Deploying cover: both hands reach down in front
-		local reachLeft = (root.CFrame * CFrame.new(-0.5, -2.3, -1.8)).Position
-		local reachRight = (root.CFrame * CFrame.new(0.5, -2.3, -1.8)).Position
+		-- Deploying cover (or reviving): both hands reach down in front. Downed: both hands
+		-- pressed to their middle (holding the wound)
+		local reachLeft = (if downed then lowerTorsoCF * CFrame.new(-0.25, 0.3, -0.75) else root.CFrame * CFrame.new(-0.5, -2.3, -1.8)).Position
+		local reachRight = (if downed then lowerTorsoCF * CFrame.new(0.25, 0.45, -0.75) else root.CFrame * CFrame.new(0.5, -2.3, -1.8)).Position
 		leftHand = leftHand:Lerp(reachLeft, rig.busy)
 		rightHand = rightHand:Lerp(reachRight, rig.busy * 0.8)
 	end

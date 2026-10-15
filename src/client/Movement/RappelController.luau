@@ -126,7 +126,7 @@ local function start()
 	if not humanoid or not root or not params or root.Anchored or not allowed() then
 		return
 	end
-	if state.droning or state.interacting or state.deploying or state.vaulting then
+	if state.droning or state.interacting or state.deploying or state.vaulting or state.downed then
 		return
 	end
 	local look = flat(Workspace.CurrentCamera.CFrame.LookVector)
@@ -193,7 +193,8 @@ local function step(dt: number)
 	end
 	local humanoid, root = parts()
 	local params = mapParams()
-	if not humanoid or not root or not params or root.Anchored or not allowed() then
+	-- (downed on the rope: you let go, DBNO)
+	if not humanoid or not root or not params or root.Anchored or not allowed() or state.downed then
 		stop(humanoid)
 		return
 	end
