@@ -566,7 +566,10 @@ local function step(dt: number)
 			targetSpeed *= directionScale(wish)
 		end
 	end
-	targetSpeed *= speedRating()
+	-- (Siege: everyone aims in at the same speed, so 3-speed wins rotations, not gunfights)
+	if not state.aiming then
+		targetSpeed *= speedRating()
+	end
 	-- Heavy guns (the gatling) slow you down, sprinting too, and more again while it's spinning
 	local held = Weapons[player:GetAttribute("Weapon") or ""]
 	if held and held.MoveSpeedScale then

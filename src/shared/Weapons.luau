@@ -120,7 +120,7 @@ local Weapons: { [string]: Weapon } = {
 		AirSpreadBonus = 4,
 		CrouchSpreadScale = 0.75,
 		AdsFovScale = 0.84,
-		AdsTime = 0.28,
+		AdsTime = 0.52, -- (Siege Y9S1 class value)
 		Scope = false,
 		SprintOutTime = 0.25,
 
@@ -178,7 +178,7 @@ local Weapons: { [string]: Weapon } = {
 		AirSpreadBonus = 3,
 		CrouchSpreadScale = 0.75,
 		AdsFovScale = 0.88,
-		AdsTime = 0.22,
+		AdsTime = 0.46, -- (Siege Y9S1 class value)
 		Scope = false,
 		SprintOutTime = 0.18,
 
@@ -237,7 +237,7 @@ local Weapons: { [string]: Weapon } = {
 		AirSpreadBonus = 1,
 		CrouchSpreadScale = 1,
 		AdsFovScale = 0.9,
-		AdsTime = 0.28,
+		AdsTime = 0.34, -- (Siege Y9S1 class value)
 		Scope = false,
 		SprintOutTime = 0.25,
 
@@ -296,7 +296,7 @@ local Weapons: { [string]: Weapon } = {
 		AirSpreadBonus = 6,
 		CrouchSpreadScale = 0.7,
 		AdsFovScale = 0.3,
-		AdsTime = 0.5,
+		AdsTime = 0.6, -- (heavier than a DMR: Siege bolt-actions are slow to aim)
 		Scope = true,
 		SprintOutTime = 0.38,
 
@@ -355,7 +355,7 @@ local Weapons: { [string]: Weapon } = {
 		AirSpreadBonus = 3,
 		CrouchSpreadScale = 0.75,
 		AdsFovScale = 0.86,
-		AdsTime = 0.22,
+		AdsTime = 0.24, -- (Siege Y9S1 class value)
 		Scope = false,
 		SprintOutTime = 0.15,
 
@@ -414,7 +414,7 @@ local Weapons: { [string]: Weapon } = {
 		AirSpreadBonus = 5,
 		CrouchSpreadScale = 0.6, -- settle in and it's accurate
 		AdsFovScale = 0.84,
-		AdsTime = 0.42,
+		AdsTime = 0.56, -- (Siege Y9S1 class value)
 		Scope = false,
 		SprintOutTime = 0.35,
 
@@ -472,7 +472,7 @@ local Weapons: { [string]: Weapon } = {
 		AirSpreadBonus = 5,
 		CrouchSpreadScale = 0.7,
 		AdsFovScale = 0.55, -- through the prism scope, not a full-screen one
-		AdsTime = 0.34,
+		AdsTime = 0.52, -- (Siege Y9S1 class value)
 		Scope = false,
 		SprintOutTime = 0.3,
 
@@ -531,7 +531,7 @@ local Weapons: { [string]: Weapon } = {
 		AirSpreadBonus = 2,
 		CrouchSpreadScale = 0.8,
 		AdsFovScale = 0.9,
-		AdsTime = 0.16,
+		AdsTime = 0.38, -- (Siege Y9S1 class value)
 		Scope = false,
 		SprintOutTime = 0.12,
 
@@ -590,7 +590,7 @@ local Weapons: { [string]: Weapon } = {
 		AirSpreadBonus = 6,
 		CrouchSpreadScale = 0.6, -- brace it and it tightens up
 		AdsFovScale = 0.88,
-		AdsTime = 0.6,
+		AdsTime = 0.75, -- (heaviest gun in the game: slower than an LMG)
 		Scope = false,
 		SprintOutTime = 0.45,
 
