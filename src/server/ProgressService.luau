@@ -19,6 +19,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local Progression = require(ReplicatedStorage.Shared.Progression)
 local Skins = require(ReplicatedStorage.Shared.Skins)
+local ClanService = require(script.Parent.ClanService)
 local LeaderboardService = require(script.Parent.LeaderboardService)
 local PlayerData = require(script.Parent.PlayerData)
 local ShopService = require(script.Parent.ShopService)
@@ -137,6 +138,7 @@ function ProgressService.Record(player: Player, event: Progression.Event)
 		addXp(player, challenge.Xp, "CHALLENGE")
 	end
 	LeaderboardService.Note(player)
+	ClanService.Note(player, event) -- (kills and match wins add up for their clan)
 end
 
 -- Dev panel: jump `player` up `levels` levels (exactly the XP it takes, so they land at the start

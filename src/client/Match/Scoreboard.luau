@@ -113,7 +113,9 @@ local function addRow(other: Player, order: number, inMatch: boolean)
 	if ranked then
 		RankBadge.ForPlayer(row, other, 26, UDim2.new(0, 282, 0.5, 0), Vector2.new(0.5, 0.5))
 	end
-	cell(row, other.DisplayName, 16, if ranked then 250 else 280, 20, if dead then DEAD else nil, true)
+	local tag = other:GetAttribute("ClanTag") -- ("[TAG] Name" for clan members: ClanService)
+	local name = if typeof(tag) == "string" and tag ~= "" then `[{tag}] {other.DisplayName}` else other.DisplayName
+	cell(row, name, 16, if ranked then 250 else 280, 20, if dead then DEAD else nil, true)
 	for i, attribute in { "MatchKills", "MatchDeaths", "MatchAssists" } do
 		local column = COLUMNS[i]
 		local value = other:GetAttribute(attribute)

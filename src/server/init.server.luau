@@ -1,6 +1,7 @@
 require(script.PlayerData).Start()
 require(script.ShopService).Start()
 require(script.StoreService).Start() -- (Robux purchases: after PlayerData and ShopService)
+require(script.ClanService).Start() -- (after PlayerData and ShopService)
 require(script.LeaderboardService).Start()
 require(script.ProgressService).Start()
 require(script.SettingsService).Start()

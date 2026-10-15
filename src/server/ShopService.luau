@@ -76,6 +76,17 @@ function ShopService.Adjust(player: Player, amount: number, reason: string)
 	end
 end
 
+-- Takes `amount` credits if they have that many (founding a clan: ClanService). True if it did.
+function ShopService.Spend(player: Player, amount: number): boolean
+	local data = PlayerData.Get(player)
+	if not data or amount < 0 or data.Credits < amount then
+		return false
+	end
+	return PlayerData.Update(player, function(d)
+		d.Credits -= amount
+	end, true)
+end
+
 local function buy(player: Player, id: any, item: any)
 	local skin = typeof(id) == "string" and Skins.ById[id]
 	local data = PlayerData.Get(player)

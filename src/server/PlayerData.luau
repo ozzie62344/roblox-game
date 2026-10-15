@@ -59,6 +59,7 @@ export type Data = {
 	RankedWins: number,
 	Purchases: { string }, -- Robux store (StoreService): PurchaseIds of receipts already granted, newest last
 	StoreBought: { [string]: boolean }, -- one-time Robux products bought (shared/Store Key: "StarterPack")
+	ClanId: string, -- the clan they're in (ClanService checks it against the clan), "" = none
 }
 
 local PlayerData = {}
@@ -97,6 +98,7 @@ local function newData(): Data
 		TutorialDone = false, TutorialSeen = false,
 		Mmr = Ranked.StartMmr, RankedMatches = 0, RankedWins = 0,
 		Purchases = {}, StoreBought = {},
+		ClanId = "",
 	}
 end
 
@@ -193,6 +195,9 @@ local function fromStored(stored: any): Data
 		while #data.Purchases > PlayerData.PurchaseHistory do
 			table.remove(data.Purchases, 1)
 		end
+	end
+	if typeof(stored.ClanId) == "string" and #stored.ClanId <= 64 then
+		data.ClanId = stored.ClanId
 	end
 	if typeof(stored.StoreBought) == "table" then
 		for key, bought in stored.StoreBought do
@@ -334,6 +339,7 @@ local function save(player: Player, release: boolean): boolean
 				RankedWins = data.RankedWins,
 				Purchases = data.Purchases,
 				StoreBought = data.StoreBought,
+				ClanId = data.ClanId,
 				Lock =if USE_LOCKS and not release then { Job = game.JobId, At = os.time() } else nil,
 			}
 		end)

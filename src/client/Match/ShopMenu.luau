@@ -20,7 +20,6 @@ local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local TextChatService = game:GetService("TextChatService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
@@ -33,6 +32,7 @@ local Effects = require(script.Parent.Parent.Combat.Effects)
 local GunModels = require(script.Parent.Parent.Combat.GunModels)
 local Stickers = require(script.Parent.Parent.Combat.Stickers)
 local state = require(script.Parent.Parent.PlayerState)
+local ChatTags = require(script.Parent.ChatTags)
 local MenuStyle = require(script.Parent.MenuStyle)
 
 local MatchState = ReplicatedStorage:WaitForChild("MatchState")
@@ -1233,15 +1233,9 @@ function ShopMenu.Start()
 	end)
 
 	-- VIPs (the VIP pass: the server sets their "VIP" attribute) get a gold [VIP] tag in chat
-	TextChatService.OnIncomingMessage = function(message: TextChatMessage)
-		local properties = Instance.new("TextChatMessageProperties")
-		local source = message.TextSource
-		local sender = if source then Players:GetPlayerByUserId(source.UserId) else nil
-		if sender and Store.Owns(sender, "VIP") then
-			properties.PrefixText = `<font color="#FFC43C">[VIP]</font> {message.PrefixText}`
-		end
-		return properties
-	end
+	ChatTags.Add(1, function(sender)
+		return if Store.Owns(sender, "VIP") then `<font color="#FFC43C">[VIP]</font>` else nil
+	end)
 
 	UserInputService.InputChanged:Connect(function(input)
 		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then

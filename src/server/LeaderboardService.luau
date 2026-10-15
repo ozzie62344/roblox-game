@@ -27,6 +27,7 @@ local Workspace = game:GetService("Workspace")
 
 local Progression = require(ReplicatedStorage.Shared.Progression)
 local Ranked = require(ReplicatedStorage.Shared.Ranked)
+local ClanService = require(script.Parent.ClanService)
 local PlayerData = require(script.Parent.PlayerData)
 
 local LeaderboardService = {}
@@ -193,6 +194,12 @@ local function show()
 		if board == "Level" then
 			for _, entry in list do
 				entry.Value = (Progression.LevelFor(entry.Value))
+			end
+		end
+		for _, entry in list do
+			local tag = ClanService.TagOf(entry.Id) -- ("[TAG] Name" for clan members this server knows)
+			if tag then
+				entry.Name = `[{tag}] {entry.Name}`
 			end
 		end
 		lists[board] = list
