@@ -37,30 +37,30 @@ local Music = {}
 --   (nothing) round over / match over (the stings cover those), dev free roam on the map
 Music.Contexts = {
 	Lobby = {
-		{ Id = "", Volume = 0.45 }, -- Lobby 1
-		{ Id = "", Volume = 0.45 }, -- Lobby 2
-		{ Id = "", Volume = 0.45 }, -- Lobby 3
-		{ Id = "", Volume = 0.45 }, -- Lobby 4 (optional)
+		{ Id = "rbxassetid://126463622617576", Volume = 0.45 }, -- Lobby 1: "Chill Electronic Lofi Beats" (2:03)
+		{ Id = "rbxassetid://110213863394929", Volume = 0.45 }, -- Lobby 2: "Lofi Electronic Chill" (3:15)
+		{ Id = "rbxassetid://113801392230181", Volume = 0.4 }, -- Lobby 3: "Public Arena (Freestyle Trap Beat)" (2:04)
+		{ Id = "rbxassetid://98381931721677", Volume = 0.42 }, -- Lobby 4: "Before Strangers (Hip Hop Instrumental)" (2:37)
 	},
 	Prep = {
-		{ Id = "", Volume = 0.35, Looped = true }, -- Prep
+		{ Id = "rbxassetid://1843739491", Volume = 0.35, Looped = true }, -- Prep: APM "Tension Repeat Drones 39" (2:09)
 	},
 	Tension = {
-		{ Id = "", Volume = 0.18, Looped = true }, -- Tension
+		{ Id = "rbxassetid://1843729378", Volume = 0.16, Looped = true }, -- Tension: APM "Heavy Drone 25" (2:05)
 	},
 }
 
 -- One-shots, played over everything (not positional); one at a time, the next waits its turn
 Music.Stings = {
-	RoundStart = { Id = "", Volume = 0.6 },
-	RoundWin = { Id = "", Volume = 0.6 },
-	RoundLoss = { Id = "", Volume = 0.55 },
-	MatchWin = { Id = "", Volume = 0.7 },
-	MatchLoss = { Id = "", Volume = 0.6 },
-	MVP = { Id = "", Volume = 0.65 },
-	LevelUp = { Id = "", Volume = 0.6 },
-	RankUp = { Id = "", Volume = 0.7 },
-	RankDown = { Id = "", Volume = 0.55 },
+	RoundStart = { Id = "rbxassetid://9047103106", Volume = 0.5 }, -- APM "All It Takes Sting 2" (3.4 s)
+	RoundWin = { Id = "rbxassetid://1846901578", Volume = 0.55 }, -- APM "Bigger Than Big 9" (5.8 s)
+	RoundLoss = { Id = "rbxassetid://125909120236588", Volume = 0.5 }, -- APM "Mounting Consequences StingA" (5.7 s)
+	MatchWin = { Id = "rbxassetid://9045751375", Volume = 0.65 }, -- APM "1812 Overture (sting b)" (4.7 s)
+	MatchLoss = { Id = "rbxassetid://115055593775910", Volume = 0.55 }, -- APM "Downfall StingB" (7 s)
+	MVP = { Id = "rbxassetid://1836860458", Volume = 0.6 }, -- APM "Elated In Love" horn sting (5.7 s)
+	LevelUp = { Id = "rbxassetid://9042807094", Volume = 0.55 }, -- APM pop sting (3.9 s)
+	RankUp = { Id = "rbxassetid://119099828605032", Volume = 0.65 }, -- APM "Pride & Ambition StingB" (6.5 s)
+	RankDown = { Id = "rbxassetid://95364696869699", Volume = 0.5 }, -- APM "Arch Rivalry StingB" (6.2 s)
 }
 
 Music.CrossfadeTime = 1.5 -- seconds: one context fading into the next
