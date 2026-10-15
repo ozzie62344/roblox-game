@@ -9,9 +9,9 @@
 --   Reinforce  look at a soft wall, hold G. A steel plate goes up on your side of that wall
 --              section and stops bullets, knives and people (only hard breachers will get
 --              through, later). The defending team shares 2 per defender per round
---              (MatchConfig.ReinforcementsPerDefender; RoundService fills the pool).
+--              (MatchConfig.Reinforcements; RoundService fills the pool).
 --              Sections are cut when the map loads: every full-height soft wall is split into
---              ~6-stud pieces (<Map>/ReinforceSlots), like Siege's fixed wall sections. Hatches
+--              ~10-stud pieces (<Map>/ReinforceSlots), like Siege's fixed wall sections. Hatches
 --              (trapdoors) are sections too: their plate goes on top.
 -- Defenders can fortify during a match (prep + action); anyone can while free roaming, for free.
 -- While working, the player is locked in place through the same Interaction / InteractEndsAt
@@ -34,7 +34,8 @@ local FortifyService = {}
 
 local REACH = 8 -- studs from the head to the doorway / wall (a bit more than the client's 7)
 local BUILD_PHASES = { Prep = true, Action = true, Planted = true }
-local SECTION_LENGTH = 6 -- studs, roughly; each wall is split into equal sections
+local SECTION_LENGTH = 10 -- studs, roughly; each wall is split into equal sections (wide, like Siege's:
+-- with only 6 reinforcements a team, each one has to cover a lot of wall)
 local DRONE_GAP = 0.9 -- studs left open under a barricaded door (DroneService drones are 0.7 tall)
 local WOOD = Color3.fromRGB(176, 136, 92)
 local STEEL = Color3.fromRGB(92, 97, 104)

@@ -346,7 +346,7 @@ local function runRound(round: number, mode: string, attack: string, title: stri
 		startedWith[teamName] = #teams[teamName]:GetPlayers()
 	end
 	-- Defenders' shared wall reinforcements (FortifyService)
-	MatchState:SetAttribute("Reinforcements", startedWith[defend] * MatchConfig.ReinforcementsPerDefender)
+	MatchState:SetAttribute("Reinforcements", MatchConfig.Reinforcements)
 
 	-- Operator selection (Siege): everyone's frozen at spawn picking an operator (Draft) while the
 	-- defenders pick the site (SitePicker) and the attackers their spawn point
