@@ -206,9 +206,10 @@ function Skins.Granted(player: Player, skin: Skin): boolean
 	return false
 end
 
--- Shows up in the shop for this player (everything but other people's dev / exclusive skins)
+-- Shows up in the shop for this player: everything but other people's dev skins. Exclusives
+-- (OnlyFor) show for everyone to admire, locked unless they're yours (Skins.Granted).
 function Skins.Listed(player: Player, skin: Skin): boolean
-	return not (skin.DevOnly or skin.OnlyFor) or Skins.Granted(player, skin)
+	return not skin.DevOnly or Skins.Granted(player, skin)
 end
 
 -- Decoded EquippedSkins, cached per attribute string (BodyAnimator asks every frame)
@@ -227,7 +228,7 @@ function Skins.EquippedFor(player: Player, item: string): Skin?
 		decoded[json] = equipped
 	end
 	local found = equipped[item] and Skins.ById[equipped[item]]
-	if not found or not Skins.Listed(player, found) then
+	if not found or ((found.DevOnly or found.OnlyFor) and not Skins.Granted(player, found)) then
 		return nil
 	end
 	return found

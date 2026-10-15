@@ -714,6 +714,11 @@ function refresh()
 		setButtonText(actionButton, `{skin.DailyOnly}-day streak`)
 		MenuStyle.SetButtonColor(actionButton, MenuStyle.Grey)
 		hintLabel.Text = `A daily reward · claim the daily reward {skin.DailyOnly} days in a row (PROGRESS)`
+	elseif not owned and skin and (skin.OnlyFor or skin.DevOnly) then
+		-- (someone else's exclusive: on show, but only its owners can wear it)
+		setButtonText(actionButton, "Exclusive")
+		MenuStyle.SetButtonColor(actionButton, MenuStyle.Grey)
+		hintLabel.Text = (skin.Note or "An exclusive skin") .. " · can't be bought"
 	elseif not owned and skin and skin.PassOnly then
 		setButtonText(actionButton, "Get it")
 		MenuStyle.SetButtonColor(actionButton, MenuStyle.Gold)
@@ -913,6 +918,8 @@ local function buildPreviewPanel(content: Frame)
 		if skin and skin.PassOnly and not owns(skin.Id) then
 			view = "Robux" -- (it comes with a pass / pack: show it)
 			refresh()
+		elseif skin and (skin.OnlyFor or skin.DevOnly) and not owns(skin.Id) then
+			return -- (someone else's exclusive: look, don't touch)
 		elseif skin and not owns(skin.Id) then
 			local amount = credits()
 			if amount and amount >= skin.Price and not skin.TrackOnly and not skin.DailyOnly then
