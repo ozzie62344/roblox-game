@@ -53,7 +53,7 @@ CustomMatch.Settings = {
 	{ Key = "Reinforcements", Label = "REINFORCEMENTS", Default = MatchConfig.Reinforcements, Options = including({ 0, 3, 6, 10, 20 }, MatchConfig.Reinforcements) },
 	{ Key = "HeadshotsOnly", Label = "HEADSHOTS ONLY", Default = false, Options = { false, true } },
 	{ Key = "NoDrones", Label = "NO DRONES", Default = false, Options = { false, true } },
-	{ Key = "FriendlyFire", Label = "FRIENDLY FIRE", Default = false, Options = { false, true } },
+	{ Key = "FriendlyFire", Label = "FRIENDLY FIRE", Default = true, Options = { true, false } },
 } :: { Setting }
 
 CustomMatch.ByKey = {} :: { [string]: Setting }
@@ -146,7 +146,7 @@ function CustomMatch.Apply(state: Instance, raw: any, maps: { string })
 	state:SetAttribute("CustomReinforcements", settings.Reinforcements)
 	state:SetAttribute("HeadshotsOnly", if settings.HeadshotsOnly then true else nil)
 	state:SetAttribute("NoDrones", if settings.NoDrones then true else nil)
-	state:SetAttribute("FriendlyFire", if settings.FriendlyFire then true else nil) -- (WeaponService)
+	state:SetAttribute("FriendlyFire", if settings.FriendlyFire == false then false else nil) -- (WeaponService: on unless false)
 end
 
 -- The match is over: back to normal matches (only matters in Studio, where it ran on the lobby server)

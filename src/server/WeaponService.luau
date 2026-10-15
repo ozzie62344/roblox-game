@@ -162,11 +162,12 @@ local function bulletDamage(weapon: Weapons.Weapon, distance: number, zone: Zone
 	return weapon.Damage * rangeScale(weapon, distance) * zoneScale * armorScale(targetHumanoid) * through
 end
 
--- No team damage, unless a custom match's host turned friendly fire on (MatchState
--- "FriendlyFire"): then teammates' bullets, knives and blasts hurt (and down) each other too
+-- Friendly fire is on, like Siege: teammates' bullets, knives and blasts hurt (and down) each
+-- other. Only a custom match with friendly fire turned off (MatchState "FriendlyFire" = false)
+-- protects teammates. (The lobby and practice range are protected separately: isProtected.)
 local function isTeammate(attacker: Player, target: Player?): boolean
 	return target ~= nil and target ~= attacker and not attacker.Neutral and target.Team == attacker.Team
-		and ReplicatedStorage.MatchState:GetAttribute("FriendlyFire") ~= true
+		and ReplicatedStorage.MatchState:GetAttribute("FriendlyFire") == false
 end
 
 -- Players frozen in their spawn (pre-round / attackers during defender prep) can't be hurt
