@@ -45,6 +45,7 @@ export type Skin = {
 	TrimMaterial: Enum.Material,
 	DevOnly: boolean?,
 	OnlyFor: { number }?, -- UserIds of the only players (besides devs) who get it
+	DevClan: boolean?, -- (with OnlyFor = {}) also everyone in the dev clan (ClanService "DevClan" attribute)
 	Note: string?, -- shown in the shop under a dev / exclusive skin
 	Rainbow: boolean?, -- glowing trim cycles through the rainbow
 	Stickers: ("Cat" | "Cheeto" | "Holds")?,
@@ -181,6 +182,14 @@ crag.Note = "Made just for @trashcan648"
 crag.Stickers = "Holds"
 table.insert(Skins.List, crag)
 
+-- Matte black with Breachpoint-orange stripes and a glowing orange edge, for everyone in the dev
+-- clan (the clan the game's owner runs) and devs. Works like the other exclusives (OnlyFor).
+local breachCrew = skin("BreachCrew", "Breach Crew", "Exclusive", "Stripes", { rgb(22, 22, 26), rgb(255, 150, 40), rgb(40, 40, 46) }, M.Metal, rgb(255, 180, 60), M.Neon, 0.15)
+breachCrew.OnlyFor = {}
+breachCrew.DevClan = true
+breachCrew.Note = "Only for members of the dev clan"
+table.insert(Skins.List, breachCrew)
+
 Skins.ById = {} :: { [string]: Skin }
 for _, s in Skins.List do
 	Skins.ById[s.Id] = s
@@ -192,6 +201,7 @@ function Skins.Granted(player: Player, skin: Skin): boolean
 		return player:GetAttribute("IsDev") == true
 	elseif skin.OnlyFor then
 		return player:GetAttribute("IsDev") == true or table.find(skin.OnlyFor, player.UserId) ~= nil
+			or (skin.DevClan == true and player:GetAttribute("DevClan") == true)
 	end
 	return false
 end

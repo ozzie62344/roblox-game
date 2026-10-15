@@ -67,6 +67,7 @@ local BOARD_NAMES = { Wins = "TopClans_v1", Kills = "TopClanKills_v1" }
 local INDEX_NAME = "ClanIndex_v1"
 local JOIN_TOPIC = "ClanJoins"
 local INVITE_TIME = 30 -- seconds an invite can be answered
+local DEV_CLAN_OWNER = 483786261 -- the game's owner: the clan they own is the dev clan
 local REFRESH_INTERVAL = 60 -- seconds between re-reads of the clans with members here (and stat writes)
 local LISTS_INTERVAL = 120 -- seconds between reads of the top clans and the recommended ones
 local SHOW_INTERVAL = 15 -- seconds between rebuilding ClanBoard (no requests)
@@ -458,6 +459,8 @@ local function show(player: Player, id: string?, record: Record?)
 	player:SetAttribute("ClanTag", if record then record.Tag else nil)
 	player:SetAttribute("ClanBadge", if record then record.Badge else nil)
 	player:SetAttribute("ClanRole", if member then member.Role else nil)
+	-- The dev clan (the one the game's owner runs): its members get the Breach Crew skin (Skins DevClan)
+	player:SetAttribute("DevClan", if record and record.OwnerId == DEV_CLAN_OWNER then true else nil)
 	if player.Parent then
 		Clan:FireClient(player, "Info", if id and record and member then infoFor(id, record, member.Role) else nil)
 	end
