@@ -1188,6 +1188,7 @@ end
 local function buildPopup()
 	local top = Instance.new("ScreenGui")
 	top.Name = "ClanInvite"
+	top.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 	top.IgnoreGuiInset = true
 	top.ResetOnSpawn = false
 	top.DisplayOrder = 8 -- over the clan screen and the shop
@@ -1262,6 +1263,9 @@ end
 local function build()
 	gui = Instance.new("ScreenGui")
 	gui.Name = "Clan"
+	-- (Sibling: what's inside a panel always draws over the panel. With Roblox's default (Global)
+	-- the invite list and request rows drew underneath their overlay's background: an empty list)
+	gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 	gui.IgnoreGuiInset = true
 	gui.ResetOnSpawn = false
 	gui.DisplayOrder = 8 -- (the screen: over the lobby menu, the shop's and the party's buttons)
