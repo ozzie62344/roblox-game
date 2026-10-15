@@ -8,7 +8,7 @@
 --              shooting it apart.
 --   Reinforce  look at a soft wall, hold G. A steel plate goes up on your side of that wall
 --              section and stops bullets, knives and people (only hard breachers will get
---              through, later). The defending team shares 2 per defender per round
+--              through, later). The defending team shares 6 per round, however many defenders
 --              (MatchConfig.Reinforcements; RoundService fills the pool).
 --              Sections are cut when the map loads: every full-height soft wall is split into
 --              ~10-stud pieces (<Map>/ReinforceSlots), like Siege's fixed wall sections. Hatches
