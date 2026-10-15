@@ -39,8 +39,8 @@ Music.Contexts = {
 	Lobby = {
 		{ Name = "Chill Electronic Lofi Beats", Id = "rbxassetid://126463622617576", Volume = 0.45 }, -- Lobby 1: "Chill Electronic Lofi Beats" (2:03)
 		{ Name = "Lofi Electronic Chill", Id = "rbxassetid://110213863394929", Volume = 0.45 }, -- Lobby 2: "Lofi Electronic Chill" (3:15)
-		{ Name = "Public Arena (Freestyle Trap Beat)", Id = "rbxassetid://113801392230181", Volume = 0.4 }, -- Lobby 3: "Public Arena (Freestyle Trap Beat)" (2:04)
-		{ Name = "Before Strangers (Hip Hop Instrumental)", Id = "rbxassetid://98381931721677", Volume = 0.42 }, -- Lobby 4: "Before Strangers (Hip Hop Instrumental)" (2:37)
+		{ Name = "Moving Round The Block", Id = "rbxassetid://9047105108", Volume = 0.45 }, -- Lobby 3: APM lo-fi hip hop, electric piano, instrumental (2:56)
+		{ Name = "All Straight Vibing Out", Id = "rbxassetid://9046133702", Volume = 0.45 }, -- Lobby 4: APM lo-fi beat, moody synths, instrumental (1:53)
 	},
 	Prep = {
 		{ Name = "Tension Repeat Drones 39", Id = "rbxassetid://1843739491", Volume = 0.35, Looped = true }, -- Prep: APM "Tension Repeat Drones 39" (2:09)
