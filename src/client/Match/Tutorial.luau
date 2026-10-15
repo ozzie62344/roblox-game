@@ -15,6 +15,7 @@
 -- you're playing, not in the lobby).
 -- In the range the mouse is locked: Left Alt frees it to click SKIP (MouseUnlock).
 
+local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -89,6 +90,23 @@ local beam: Beam
 local beamFrom: Attachment
 local doorway: Vector3? = nil -- the lobby side of the range's doorway
 local inside: Vector3? = nil -- where the corridor opens into the range
+
+-- The TUTORIAL button goes away for good once you've finished the tutorial or played a few
+-- matches (by then you know the game; it also frees the spot for the CUSTOM button)
+local RETIRE_AFTER_MATCHES = 3
+local statsCache: { json: string?, matches: number } = { json = nil, matches = 0 }
+local function retired(): boolean
+	if player:GetAttribute("TutorialDone") == true then
+		return true
+	end
+	local json = player:GetAttribute("Stats")
+	if typeof(json) == "string" and json ~= statsCache.json then
+		statsCache.json = json
+		local ok, stats = pcall(HttpService.JSONDecode, HttpService, json)
+		statsCache.matches = if ok and typeof(stats) == "table" and typeof(stats.Matches) == "number" then stats.Matches else 0
+	end
+	return statsCache.matches >= RETIRE_AFTER_MATCHES
+end
 
 local function gold(text: string): string
 	return `<font color="{GOLD_HEX}"><b>{text}</b></font>`
@@ -599,6 +617,11 @@ local function makePrompt()
 	end)
 end
 
+-- Whether the TUTORIAL button is on screen (CustomMatchMenu sits under it, or in its place)
+function Tutorial.ButtonShown(): boolean
+	return buttonHolder ~= nil and buttonHolder.Visible
+end
+
 -- The lobby's TUTORIAL button: on the right, under the PARTY (SettingsMenu's is under the SHOP)
 local function makeButton()
 	buttonHolder = Instance.new("Frame")
@@ -701,6 +724,7 @@ local function update(dt: number)
 	end
 
 	buttonHolder.Visible = lobbyMenu and not running and not prompt.Visible and not menuOpen() and not player:GetAttribute("Queued")
+		and not retired()
 
 	if not running then
 		return

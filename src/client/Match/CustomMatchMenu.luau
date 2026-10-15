@@ -20,6 +20,7 @@ local LoadingScreen = require(ReplicatedFirst:WaitForChild("LoadingScreen"))
 local CustomMatch = require(ReplicatedStorage.Shared.CustomMatch)
 local state = require(script.Parent.Parent.PlayerState)
 local MenuStyle = require(script.Parent.MenuStyle)
+local Tutorial = require(script.Parent.Tutorial)
 
 local MatchState = ReplicatedStorage:WaitForChild("MatchState")
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
@@ -700,6 +701,11 @@ local function update()
 		CustomMatchMenu.Close() -- a match is starting
 	end
 	buttonHolder.Visible = lobby and not screenOpen and not otherMenuOpen() and not player:GetAttribute("Queued")
+	-- Under the TUTORIAL button while it's showing (a gap that shrinks with the screen fit), in its
+	-- place once it's gone (finished the tutorial, or played a few matches)
+	local scale = buttonHolder:FindFirstChildOfClass("UIScale")
+	local below = if Tutorial.ButtonShown() then 50 * (if scale then scale.Scale else 1) + 12 else 0
+	buttonHolder.Position = UDim2.new(1, -20, 0.5, 100 + below)
 	;(lobbyButton:FindFirstChild("Label") :: TextLabel).Text = if view then `Lobby {view.Code}` else "Custom"
 
 	if screenOpen then
