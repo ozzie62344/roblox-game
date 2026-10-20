@@ -29,3 +29,19 @@ Every read and write, traced before changing:
 "Cleaned up when the gadget is destroyed or the round ends": a new round reloads the map, which
 destroys every plate and barricade (their `Destroying` runs) and the Deployables folder (the beep
 pruning sees it gone).
+
+### 1b. The other six weak tables (same approach clearly applied, so fixed too)
+Traced each before changing; every one now has a clean-up point:
+- GadgetService `breachCharges`, `scanning`, `nitroCells` (keyed by Player): read and written
+  only inside the breach charge, heartbeat sensor and nitro cell handlers. Now normal tables
+  emptied on `Players.PlayerRemoving` (a new module-level connection). Removing `scanning[player]`
+  also ends a running scan loop, which checks its token each beat.
+- RoundService `bodies` (Player → cached avatar): read in `loadCharacter` and by the MVP screen
+  (`MatchStats.Finish` callback). Emptied on PlayerRemoving (connected in `RoundService.Start`).
+  If the MVP has left, the body was already unavailable before this change.
+- MatchStats `damageTo` (Humanoid → damage per attacker, for assists): already cleared on each
+  death and at every match start, so only the table type changed. A body that despawns without
+  dying (a new round respawns everyone) stays until the next match starts: bounded, small.
+- BodyAnimator `warned` (character → "R6 avatar" warning shown): pruned in the same per-frame
+  loop that already forgets rigs of characters that are gone.
+- After this, `grep __mode` finds nothing in the project.

@@ -95,7 +95,7 @@ type Rig = {
 }
 
 local rigs: { [Model]: Rig } = {}
-local warned: { [Model]: boolean } = setmetatable({}, { __mode = "k" }) :: any
+local warned: { [Model]: boolean } = {} -- (plain: dropped below once the character is gone)
 
 -- ─── Math helpers ──────────────────────────────────────────────────────────────
 
@@ -568,6 +568,11 @@ local function update(dt: number)
 	for character in rigs do
 		if not character.Parent then
 			release(character)
+		end
+	end
+	for character in warned do
+		if not character.Parent then
+			warned[character] = nil
 		end
 	end
 end

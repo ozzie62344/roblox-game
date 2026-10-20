@@ -101,7 +101,7 @@ local STANDARD_BODY = {
 	Head = 0, Torso = 0, LeftArm = 0, RightArm = 0, LeftLeg = 0, RightLeg = 0,
 	HeightScale = 1, WidthScale = 1, DepthScale = 1, HeadScale = 1, BodyTypeScale = 0, ProportionScale = 0,
 }
-local bodies: { [Player]: HumanoidDescription } = setmetatable({}, { __mode = "k" }) :: any
+local bodies: { [Player]: HumanoidDescription } = {} -- (plain, emptied when they leave: RoundService.Start)
 
 local function loadCharacter(player: Player)
 	local description = bodies[player]
@@ -860,6 +860,9 @@ end
 
 function RoundService.Start()
 	Players.CharacterAutoLoads = false
+	Players.PlayerRemoving:Connect(function(player)
+		bodies[player] = nil
+	end)
 	MatchState:SetAttribute("ServerKind", if IS_MATCH_SERVER then "Match" else "Lobby")
 	MatchState:SetAttribute("LoadoutMode", MatchConfig.DefaultLoadoutMode)
 	MatchState:SetAttribute("GameMode", MatchConfig.DefaultGameMode)

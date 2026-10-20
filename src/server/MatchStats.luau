@@ -51,7 +51,7 @@ export type Line = {
 local active = false
 local lines: { [number]: Line } = {} -- by UserId (kept if they leave, so the scoreboard still has them)
 -- Damage each attacker did to a victim this life (for assists), forgotten when the body goes
-local damageTo: { [Humanoid]: { [Player]: number } } = setmetatable({}, { __mode = "k" }) :: any
+local damageTo: { [Humanoid]: { [Player]: number } } = {} -- (plain: cleared on each death and at every match start)
 
 -- The live numbers on the player (for the scoreboard), if they're here
 local function publish(line: Line)

@@ -56,8 +56,10 @@ local IMPACT_DAMAGE = 70 -- right on top of it; less further out
 local IMPACT_HOLE = 3 -- studs: a murder hole in a wall, a hole to shoot (or drop) through in a floor
 
 type Charge = { model: Model, point: Vector3, normal: Vector3 }
-local breachCharges: { [Player]: { Charge } } = setmetatable({}, { __mode = "k" }) :: any
-local scanning: { [Player]: number } = setmetatable({}, { __mode = "k" }) :: any -- heartbeat scan running (its token)
+-- (plain tables, emptied when the player leaves: a weak table can lose an entry for a player who's
+-- still here, and then a second press places a new charge instead of setting the old one off)
+local breachCharges: { [Player]: { Charge } } = {}
+local scanning: { [Player]: number } = {} -- heartbeat scan running (its token)
 local scanCount = 0
 local watchingWires = false
 
@@ -885,7 +887,7 @@ local NITRO_SPEED, NITRO_LIFT = 55, 10
 local ALARM_ARM_TIME = 1
 local ALARM_INTERVAL = 1 -- seconds between alarms (and reveal refreshes) while someone's near
 
-local nitroCells: { [Player]: Model } = setmetatable({}, { __mode = "k" }) :: any
+local nitroCells: { [Player]: Model } = {} -- (plain, emptied when they leave: see breachCharges)
 
 local function teamOf(player: Player): { Player }
 	return if player.Neutral or not player.Team then { player } else player.Team:GetPlayers()
@@ -1150,5 +1152,11 @@ GadgetService.Handlers = {
 	BarbedWire = barbedWire,
 	ImpactGrenade = impactGrenade,
 }
+
+Players.PlayerRemoving:Connect(function(player)
+	breachCharges[player] = nil
+	scanning[player] = nil
+	nitroCells[player] = nil
+end)
 
 return GadgetService
