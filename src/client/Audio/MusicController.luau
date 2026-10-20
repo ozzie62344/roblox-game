@@ -166,6 +166,11 @@ local function pickContext(): (string?, number)
 	if location == "Map" then
 		return nil, 1 -- (dev free roam on the map: plays like a match)
 	end
+	if MatchState:GetAttribute("ServerKind") == "Match" then
+		-- A match server's own little lobby (waiting for everyone to arrive, and after the match
+		-- before the teleport back) and late joiners: never the lobby playlist mid-game
+		return nil, 1
+	end
 	-- The lobby, the main menu, and before the server has said where you are
 	if state.inPractice then
 		return "Lobby", Music.PracticeVolume
