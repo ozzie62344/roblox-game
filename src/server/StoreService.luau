@@ -1,21 +1,23 @@
--- The ROBUX store: credit packs, the Starter Pack and game passes (what's for sale and the IDs:
--- shared/Store; the shop's ROBUX tab: client Match/ShopMenu). The client only opens Roblox's own
--- purchase prompt: everything is granted here, after Roblox says it was paid for.
+-- The ROBUX store: credit packs and game passes (the Starter Pack, VIP, Double XP). What's for
+-- sale and the IDs: shared/Store; the shop's ROBUX tab: client Match/ShopMenu. The client only
+-- opens Roblox's own purchase prompt: everything is granted here, after Roblox says it was paid for.
 --
--- Developer products (credit packs, the Starter Pack): Roblox calls ProcessReceipt, again and
--- again (now, when the player next joins any server...) until we answer PurchaseGranted. So:
+-- Developer products (credit packs): Roblox calls ProcessReceipt, again and again (now, when the
+-- player next joins any server...) until we answer PurchaseGranted. So:
 --   - each receipt's PurchaseId is kept in the player's data (PlayerData Purchases, the last 200):
 --     a receipt we've already granted is only confirmed, never granted twice
 --   - the grant and its PurchaseId go in together (one PlayerData.Update), and PurchaseGranted is
 --     only answered once that's saved (PlayerData.SaveNow). Player not here, data not loaded, the
 --     DataStore down or the save failing → NotProcessedYet, and Roblox asks again later.
 --   - Studio without a DataStore: granted for the session only (test purchases are free anyway)
--- The Starter Pack is one per player: the shop hides it once it's yours ("StarterPack" attribute).
--- If one gets bought twice anyway (two prompts at once), the second still gives its credits.
 --
--- Game passes (VIP, Double XP): checked when a player joins (UserOwnsGamePassAsync, kept for the
--- session) and the moment they buy one in-game (PromptGamePassPurchaseFinished). Owning one sets
--- the player attribute named after its Key ("VIP", "DoubleXp") for clients, and gives its skin.
+-- Game passes (the Starter Pack, VIP, Double XP): checked when a player joins
+-- (UserOwnsGamePassAsync, kept for the session) and the moment they buy one in-game
+-- (PromptGamePassPurchaseFinished). Owning one sets the player attribute named after its Key
+-- ("StarterPack", "VIP", "DoubleXp") for clients, and gives its skin.
+-- The Starter Pack's 1,000 credits and skin are granted once ever (grantStarterPack), whenever we
+-- see they own it (bought in-game, or on joining) and their saved StarterPackGranted flag isn't
+-- set. That covers a purchase made outside the game, and one whose grant didn't get saved.
 --   StoreService.HasPass(player, key)        owns the pass ("VIP", "DoubleXp")
 --   StoreService.CreditMultiplier(player)    x match credits (ShopService: match reasons only)
 --   StoreService.XpMultiplier(player)        x match XP (ProgressService.Record: the event's XP,
@@ -90,6 +92,30 @@ local function givePassSkin(player: Player, pass: Store.Pass)
 	end
 end
 
+-- The Starter Pack's credits and skin, once ever. Safe to run any number of times, even at the
+-- same time: the saved StarterPackGranted flag is checked and set in the same Update as the grant.
+local function grantStarterPack(player: Player)
+	if not waitForData(player, LOAD_WAIT) then
+		return -- (left, or no data: the next join tries again)
+	end
+	local pack = Store.StarterPack
+	local granted = false
+	PlayerData.Update(player, function(d)
+		if d.StarterPackGranted then
+			return
+		end
+		d.StarterPackGranted = true
+		d.Credits += pack.Credits or 0
+		if pack.Skin then
+			d.Skins[pack.Skin] = true
+		end
+		granted = true
+	end, true) -- (saved straight away)
+	if granted then
+		Shop:FireClient(player, "Reward", pack.Credits or 0, string.upper(pack.Name))
+	end
+end
+
 local function setOwned(player: Player, pass: Store.Pass)
 	local owned = passes[player]
 	if not owned or not player.Parent then
@@ -98,6 +124,9 @@ local function setOwned(player: Player, pass: Store.Pass)
 	owned[pass.Key] = true
 	player:SetAttribute(pass.Key, true)
 	givePassSkin(player, pass)
+	if pass == Store.StarterPack then
+		task.spawn(grantStarterPack, player) -- (bought just now, or owned when they joined)
+	end
 end
 
 local function checkPass(player: Player, pass: Store.Pass)
@@ -124,12 +153,6 @@ end
 -- (inside a PlayerData.Update) What the product gives, and the receipt noted as granted
 local function grant(d: PlayerData.Data, product: Store.Product, purchaseId: string)
 	d.Credits += product.Credits
-	if product.Skin then
-		d.Skins[product.Skin] = true
-	end
-	if product.OneTime then
-		d.StoreBought[product.Key] = true
-	end
 	table.insert(d.Purchases, purchaseId)
 	while #d.Purchases > PlayerData.PurchaseHistory do
 		table.remove(d.Purchases, 1)
@@ -158,10 +181,7 @@ local function handleReceipt(player: Player, product: Store.Product, purchaseId:
 	PlayerData.Update(player, function(d)
 		grant(d, product, purchaseId)
 	end)
-	if product.OneTime then
-		player:SetAttribute(product.Key, true)
-	end
-	Shop:FireClient(player, "Reward", product.Credits, if product.OneTime then string.upper(product.Name) else "PURCHASE")
+	Shop:FireClient(player, "Reward", product.Credits, "PURCHASE")
 	Shop:FireClient(player, "Store", product.Key)
 
 	-- Only confirmed once it's saved. If the save fails, Roblox asks again later, and the
@@ -208,12 +228,6 @@ local function onPlayerAdded(player: Player)
 	local data = waitForData(player, LOAD_WAIT)
 	if not data then
 		return
-	end
-	-- One-time products they already have (the shop shows them as owned)
-	for key in data.StoreBought do
-		if Store.ByKey[key] then
-			player:SetAttribute(key, true)
-		end
 	end
 	-- Passes checked before their data was in: their skins now
 	for _, pass in Store.Passes do

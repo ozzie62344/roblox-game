@@ -77,6 +77,7 @@ local previewPanel: Frame
 local robuxPanel: ScrollingFrame
 local robuxHeading: TextLabel
 local storeButtons: { [string]: TextButton } = {} -- the BUY button on each ROBUX card, by Store Key
+local starterCard: TextButton? = nil -- (hidden once they own the Starter Pack)
 local storeBanner: Frame
 
 local selectedItem = "Rifle"
@@ -412,12 +413,12 @@ local function storeLabel(key: string): string
 	if not item then
 		return "ROBUX STORE"
 	end
-	return string.upper(item.Name) .. (if isPass(item) then " PASS" else "")
+	return string.upper(item.Name) .. (if isPass(item) and item ~= Store.StarterPack then " PASS" else "")
 end
 
--- Owned (a pass, or a one-time product like the Starter Pack): the server sets the attribute
+-- Owned (a pass, the Starter Pack included): the server sets the attribute
 local function storeOwned(item: any): boolean
-	return (isPass(item) or item.OneTime == true) and Store.Owns(player, item.Key)
+	return isPass(item) and Store.Owns(player, item.Key)
 end
 
 -- Opens Roblox's purchase prompt; StoreService grants it once it's paid for
@@ -434,6 +435,9 @@ end
 
 -- The BUY buttons: R$ price, OWNED, or COMING SOON (no Id pasted into shared/Store yet)
 local function refreshStore()
+	if starterCard then
+		starterCard.Visible = not storeOwned(Store.StarterPack) -- (theirs already: nothing to sell)
+	end
 	for key, button in storeButtons do
 		local item: any = Store.ByKey[key]
 		local id = if isPass(item) then item.GamePassId else item.ProductId
@@ -458,7 +462,7 @@ local function storeCard(parent: Instance, order: number, item: any): TextButton
 	frame.Text = ""
 	frame.BackgroundColor3 = CARD
 	MenuStyle.Corner(frame, UDim.new(0, 12))
-	MenuStyle.Rim(frame, if item.Bonus or item.OneTime or isPass(item) then GOLD else Color3.fromRGB(60, 64, 76), 2)
+	MenuStyle.Rim(frame, if item.Bonus or isPass(item) then GOLD else Color3.fromRGB(60, 64, 76), 2)
 	frame.Parent = parent
 	local buy = MenuStyle.Button(frame, "", MenuStyle.Green, UDim2.new(1, -24, 0, 44), UDim2.new(0.5, 0, 1, -10), Vector2.new(0.5, 1))
 	buy.Activated:Connect(function()
@@ -498,7 +502,7 @@ local function packCard(parent: Instance, order: number, pack: Store.Product)
 end
 
 -- The Starter Pack or a pass: its skin's paint chip (or a big "x2 XP"), the name, what you get
-local function perkCard(parent: Instance, order: number, item: any, lines: { string })
+local function perkCard(parent: Instance, order: number, item: any, lines: { string }): TextButton
 	local frame = storeCard(parent, order, item)
 	local skin = item.Skin and Skins.ById[item.Skin]
 	if skin then
@@ -534,6 +538,7 @@ local function perkCard(parent: Instance, order: number, item: any, lines: { str
 	local limit = Instance.new("UITextSizeConstraint")
 	limit.MaxTextSize = 16
 	limit.Parent = info
+	return frame
 end
 
 -- Across the whole screen: a row of credit packs, then the Starter Pack and the passes
@@ -588,10 +593,11 @@ local function buildRobuxPanel(content: Frame)
 		packCard(packs, i, pack)
 	end
 	local perks = section(3, "PACKS & PASSES", Vector2.new(348, 236))
-	local starter = Store.StarterPack
-	perkCard(perks, 1, starter, { starter.Description or "", "One per player" })
-	for i, pass in Store.Passes do
-		perkCard(perks, i + 1, pass, pass.Perks)
+	for i, pass in Store.Passes do -- (the Starter Pack first)
+		local card = perkCard(perks, i, pass, pass.Perks)
+		if pass == Store.StarterPack then
+			starterCard = card
+		end
 	end
 end
 
@@ -604,7 +610,7 @@ local function showStoreBanner(key: string)
 	local label = storeBanner:FindFirstChild("Label") :: TextLabel
 	local sub = storeBanner:FindFirstChild("Sub") :: TextLabel
 	label.Text = `{string.upper(item.Name)} · THANK YOU!`
-	sub.Text = if isPass(item) then table.concat(item.Perks, " · ") else item.Description or `+{formatCredits(item.Credits)} credits`
+	sub.Text = if isPass(item) then table.concat(item.Perks, " · ") else `+{formatCredits(item.Credits)} credits`
 	local scale = storeBanner:FindFirstChildOfClass("UIScale") :: UIScale
 	storeBanner.Visible = true
 	scale.Scale = 0.4

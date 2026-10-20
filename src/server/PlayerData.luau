@@ -58,7 +58,7 @@ export type Data = {
 	RankedMatches: number, -- ranked matches finished (or left: a loss)
 	RankedWins: number,
 	Purchases: { string }, -- Robux store (StoreService): PurchaseIds of receipts already granted, newest last
-	StoreBought: { [string]: boolean }, -- one-time Robux products bought (shared/Store Key: "StarterPack")
+	StarterPackGranted: boolean, -- the Starter Pack pass's credits and skin have been given (StoreService)
 	ClanId: string, -- the clan they're in (ClanService checks it against the clan), "" = none
 }
 
@@ -102,7 +102,7 @@ local function newData(): Data
 		Xp = 0, RewardedLevel = 1, Kills = 0, Headshots = 0, Wins = 0, Matches = 0, DailyDay = 0, DailyStreak = 0, ChallengeDay = 0, Challenges = {},
 		TutorialDone = false, TutorialSeen = false,
 		Mmr = Ranked.StartMmr, RankedMatches = 0, RankedWins = 0,
-		Purchases = {}, StoreBought = {},
+		Purchases = {}, StarterPackGranted = false,
 		ClanId = "",
 	}
 end
@@ -204,13 +204,7 @@ local function fromStored(stored: any): Data
 	if typeof(stored.ClanId) == "string" and #stored.ClanId <= 64 then
 		data.ClanId = stored.ClanId
 	end
-	if typeof(stored.StoreBought) == "table" then
-		for key, bought in stored.StoreBought do
-			if typeof(key) == "string" and #key <= 50 and bought == true then
-				data.StoreBought[key] = true
-			end
-		end
-	end
+	data.StarterPackGranted = stored.StarterPackGranted == true
 	return data
 end
 
@@ -348,7 +342,7 @@ local function save(player: Player, release: boolean): boolean
 				RankedMatches = data.RankedMatches,
 				RankedWins = data.RankedWins,
 				Purchases = data.Purchases,
-				StoreBought = data.StoreBought,
+				StarterPackGranted = data.StarterPackGranted,
 				ClanId = data.ClanId,
 				Lock =if USE_LOCKS and not release then { Job = game.JobId, At = os.time() } else nil,
 			}
