@@ -39,6 +39,12 @@ HandsAnimator.Gestures = {
 	SmokeGrenade = { move = "throw", prop = "smoke", time = 0.65 },
 	Flashbang = { move = "throw", prop = "flash", time = 0.65 },
 	ImpactGrenade = { move = "throw", prop = "impact", time = 0.6 },
+	-- Secondary gadgets (B)
+	FragGrenade = { move = "throw", prop = "grenade", time = 0.65 },
+	NitroCell = { move = "throw", prop = "impact", time = 0.6 },
+	Claymore = { move = "place", prop = "jammer", time = 0.6 },
+	BulletproofCamera = { move = "place", prop = "battery", time = 0.6 },
+	ProximityAlarm = { move = "place", prop = "battery", time = 0.55 },
 	Detonate = { move = "detonate", prop = "detonator", time = 0.6 },
 	ReconPulse = { move = "scan", prop = "scanner", time = 0.8 },
 	GhostStep = { move = "wrist", prop = "band", time = 0.6 },

@@ -1,4 +1,5 @@
--- X uses your active ability: your operator's gadget (Recon Pulse, Ghost Step, Deployable Cover
+-- X uses your active ability: your operator's gadget; B your secondary gadget (frag, claymore,
+-- nitro cell...) (Recon Pulse, Ghost Step, Deployable Cover
 -- and the Siege gadgets; the heartbeat sensor and barbed wire draw in GadgetEffects).
 -- Also draws ability effects the server sends: reveals, pulse waves (scan / EMP), "scanned"
 -- warnings and gadget status messages ("JAMMED", "CHARGE SET"...).
@@ -140,11 +141,12 @@ end
 function AbilityController.Start()
 	player.CharacterAdded:Connect(endDeploy)
 
-	Actions.Bind("UseAbility", function(_, inputState)
+	-- X: your operator's gadget ("Ability"); B: your secondary gadget ("Secondary")
+	local function useSlot(slot: string, inputState: Enum.UserInputState): Enum.ContextActionResult
 		if inputState ~= Enum.UserInputState.Begin then
 			return Enum.ContextActionResult.Sink
 		end
-		local abilityName = player:GetAttribute("Ability")
+		local abilityName = player:GetAttribute(slot)
 		local ability = abilityName and Abilities[abilityName]
 		if not ability or ability.Kind ~= "Active" then
 			return Enum.ContextActionResult.Pass -- (no ability: nothing to do)
@@ -153,13 +155,20 @@ function AbilityController.Start()
 			return Enum.ContextActionResult.Sink
 		end
 		-- (a placed breach charge can still be set off with no charges left; the server decides)
-		if (player:GetAttribute("AbilityCharges") or 0) <= 0 and not ability.Detonates then
+		local charges = player:GetAttribute(if slot == "Secondary" then "SecondaryCharges" else "AbilityCharges")
+		if (charges or 0) <= 0 and not ability.Detonates then
 			Hud.ShowStatus("NO CHARGES LEFT", 1)
 			return Enum.ContextActionResult.Sink
 		end
-		UseAbility:FireServer(Workspace.CurrentCamera.CFrame.LookVector)
+		UseAbility:FireServer(Workspace.CurrentCamera.CFrame.LookVector, slot)
 		return Enum.ContextActionResult.Sink
+	end
+	Actions.Bind("UseAbility", function(_, inputState)
+		return useSlot("Ability", inputState)
 	end, Enum.KeyCode.X, Enum.KeyCode.ButtonL1)
+	Actions.Bind("UseSecondary", function(_, inputState)
+		return useSlot("Secondary", inputState)
+	end, Enum.KeyCode.B)
 
 	AbilityEffect.OnClientEvent:Connect(function(kind: string, ...)
 		if kind == "Reveal" then
@@ -184,6 +193,16 @@ function AbilityController.Start()
 		elseif kind == "CoverDeployed" then
 			local position = ...
 			local sound = Sounds.CoverDeploy
+			Sound3D.Play(sound.Id, position, { volume = sound.Volume, range = sound.Range, pitch = sound.Pitch })
+		elseif kind == "Alarm" then
+			local position = ...
+			local sound = Sounds.ProximityAlarm
+			for i = 0, sound.Repeats - 1 do
+				task.delay(i * 0.18, Sound3D.Play, sound.Id, position, { volume = sound.Volume, range = sound.Range, pitch = sound.Pitch })
+			end
+		elseif kind == "ClaymoreTrip" then
+			local position = ...
+			local sound = Sounds.ClaymoreTrip
 			Sound3D.Play(sound.Id, position, { volume = sound.Volume, range = sound.Range, pitch = sound.Pitch })
 		elseif kind == "GhostStep" then
 			local duration = ...

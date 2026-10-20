@@ -254,8 +254,8 @@ local function buildBreachCharge(player: Player, cf: CFrame): Model
 	return model
 end
 
-local function breachCharge(player: Player, character: Model, _root: BasePart, _ability: Abilities.Ability, look: Vector3): boolean
-	-- Already stuck on a wall? X sets it off (free)
+local function breachCharge(player: Player, character: Model, _root: BasePart, _ability: Abilities.Ability, look: Vector3, charges: string): boolean
+	-- Already stuck on a wall? The same key sets it off (free)
 	local mine = breachCharges[player]
 	if mine then
 		for i = #mine, 1, -1 do
@@ -268,7 +268,7 @@ local function breachCharge(player: Player, character: Model, _root: BasePart, _
 			return false
 		end
 	end
-	if (player:GetAttribute("AbilityCharges") or 0) <= 0 then
+	if (player:GetAttribute(charges) or 0) <= 0 then
 		status(player, "NO CHARGES LEFT")
 		return false
 	end
@@ -286,7 +286,7 @@ local function breachCharge(player: Player, character: Model, _root: BasePart, _
 	end
 	breachCharges[player] = { { model = buildBreachCharge(player, cf), point = hit.Position, normal = cf.LookVector } }
 	GadgetService.Gesture(character, "BreachCharge", cf)
-	status(player, "CHARGE SET: PRESS X TO BLOW IT")
+	status(player, `CHARGE SET: PRESS {if charges == "SecondaryCharges" then "B" else "X"} TO BLOW IT`)
 	return true
 end
 
@@ -515,14 +515,14 @@ end
 -- HEARTBEAT_INTERVAL the positions of enemies in range go to the scanner's screen only
 -- (AbilityController draws them through walls). Each enemy picked up is told once per scan.
 -- X while scanning puts it away early, free.
-local function heartbeatSensor(player: Player, character: Model, _root: BasePart, ability: Abilities.Ability, _look: Vector3): boolean
+local function heartbeatSensor(player: Player, character: Model, _root: BasePart, ability: Abilities.Ability, _look: Vector3, charges: string): boolean
 	if scanning[player] then
 		scanning[player] = nil
 		character:SetAttribute("Gesture", nil) -- hands back on the gun
 		AbilityEffect:FireClient(player, "HeartbeatEnd")
 		return false
 	end
-	if (player:GetAttribute("AbilityCharges") or 0) <= 0 then
+	if (player:GetAttribute(charges) or 0) <= 0 then
 		status(player, "NO CHARGES LEFT")
 		return false
 	end
@@ -842,8 +842,273 @@ local function impactGrenade(player: Player, character: Model, _root: BasePart, 
 	return true
 end
 
+-- ─── Secondary gadgets (B) ─────────────────────────────────────────────────────
+
+local FRAG_DAMAGE = 220 -- right on top of it: deadly within about 6 studs, hurts out to the radius
+local BREAK_RADIUS = { Frag = 6, Claymore = 4, Nitro = 5 } -- glass, barricades and gadgets this close go too
+local CLAYMORE_LASER = 9 -- studs the tripwire reaches out in front
+local CLAYMORE_ARM_TIME = 1.5 -- after it's set down, before the laser's live
+local CLAYMORE_DELAY = 0.35 -- tripped → bang (time to hear the click, not to get away)
+local CLAYMORE_DAMAGE = 180
+local NITRO_DAMAGE = 260
+local NITRO_SPEED, NITRO_LIFT = 55, 10
+local ALARM_ARM_TIME = 1
+local ALARM_INTERVAL = 1 -- seconds between alarms (and reveal refreshes) while someone's near
+
+local nitroCells: { [Player]: Model } = setmetatable({}, { __mode = "k" }) :: any
+
+local function teamOf(player: Player): { Player }
+	return if player.Neutral or not player.Team then { player } else player.Team:GetPlayers()
+end
+
+-- The explosion takes glass, barricades and gadgets right next to it with it
+local function breakAround(position: Vector3, radius: number)
+	for _, hit in Workspace:GetPartBoundsInRadius(position, radius) do
+		local kind = hit:GetAttribute("Breakable")
+		if not hit.Parent or not (kind == "Glass" or kind == "Barricade" or kind == "Gadget" or kind == "Bulletproof") then
+			continue
+		end
+		DestructionEvent:FireAllClients(if kind == "Glass" then "Glass" else "Smash", hit.Position, if kind == "Glass" then math.max(hit.Size.X, hit.Size.Z) else 3, hit.Color, hit.Material)
+		local model = hit:FindFirstAncestorOfClass("Model")
+		if kind == "Glass" or not model or model.Name == "Map" then
+			hit:Destroy()
+		else
+			model:Destroy()
+		end
+	end
+end
+
+-- A grenade-sized bang: the flash, debris and boom for everyone, then the damage
+local function bang(player: Player, position: Vector3, breakRadius: number, radius: number, damage: number, shieldedSide: Vector3?)
+	explosion(position)
+	DestructionEvent:FireAllClients("Blast", position, 1.5, Color3.fromRGB(90, 90, 90), Enum.Material.Concrete)
+	breakAround(position, breakRadius)
+	WeaponService.Blast(player, position, radius, damage, shieldedSide, true)
+end
+
+-- Frag: bounces like the smoke and flash, goes off when the fuse runs out
+local function fragGrenade(player: Player, character: Model, _root: BasePart, ability: Abilities.Ability, look: Vector3): boolean
+	if not character:FindFirstChild("Head") or look.Magnitude < 0.5 then
+		return false
+	end
+	GadgetService.Gesture(character, "FragGrenade")
+	local grenade = grenadeModel("FragGrenade", Color3.fromRGB(70, 78, 58), Color3.fromRGB(150, 150, 140))
+	grenade:SetAttribute("Warn", "FRAG") -- (GadgetEffects: a warning icon for anyone close)
+	throwGrenade(character, look, grenade, ability.Duration or 3, function(position)
+		grenade:Destroy()
+		bang(player, position, BREAK_RADIUS.Frag, ability.Radius or 18, FRAG_DAMAGE, nil)
+	end)
+	return true
+end
+
+-- Claymore: on the floor facing where you looked; once armed, an enemy crossing the laser sets it off
+local function claymore(player: Player, character: Model, root: BasePart, ability: Abilities.Ability, look: Vector3): boolean
+	local forward = Vector3.new(look.X, 0, look.Z)
+	forward = if forward.Magnitude > 0.1 then forward.Unit else root.CFrame.LookVector
+	local params = ignoreList(character)
+	local distance = 2
+	local blocked = Workspace:Raycast(root.Position, forward * (distance + 0.5), params)
+	if blocked then
+		distance = blocked.Distance - 0.6
+		if distance < 0.8 then
+			status(player, "TOO CLOSE TO A WALL")
+			return false
+		end
+	end
+	local ground = Workspace:Raycast(root.Position + forward * distance, Vector3.new(0, -8, 0), params)
+	if not ground or ground.Normal.Y < 0.7 then
+		status(player, "NO FLOOR HERE")
+		return false
+	end
+	local base = ground.Position + Vector3.new(0, 0.45, 0)
+	local facing = CFrame.lookAt(base, base + forward)
+	local body = part("Claymore", Vector3.new(1, 0.6, 0.25), facing, Color3.fromRGB(78, 84, 60), Enum.Material.Metal)
+	local model = device("Claymore", player, body, false)
+	for _, x in { -0.35, 0.35 } do
+		part("Leg", Vector3.new(0.06, 0.4, 0.06), facing * CFrame.new(x, -0.4, 0.05), DARK, Enum.Material.Metal, model)
+	end
+	part("Sensor", Vector3.new(0.12, 0.12, 0.06), facing * CFrame.new(0, 0.12, -0.15), Color3.fromRGB(255, 40, 40), Enum.Material.Neon, model)
+	local laser = part("Laser", Vector3.new(0.04, 0.04, CLAYMORE_LASER), facing * CFrame.new(0, 0.12, -0.2 - CLAYMORE_LASER / 2), Color3.fromRGB(255, 40, 40), Enum.Material.Neon, model)
+	laser.Transparency = 1 -- (shows once armed)
+	model:SetAttribute("Warn", "CLAYMORE")
+	model.Parent = deployables()
+	GadgetService.Gesture(character, "Claymore", CFrame.lookAt(ground.Position, ground.Position + Vector3.yAxis, forward))
+
+	task.spawn(function()
+		task.wait(CLAYMORE_ARM_TIME)
+		if not model.Parent then
+			return
+		end
+		laser.Transparency = 0.35
+		local from = facing.Position
+		while model.Parent do
+			for _, other in Players:GetPlayers() do
+				local otherRoot = aliveRoot(other.Character)
+				if not otherRoot or not isEnemy(player, other) then
+					continue
+				end
+				-- Feet to head anywhere along the beam
+				local offset = otherRoot.Position - from
+				local along = offset:Dot(forward)
+				local height = offset.Y
+				local side = (offset - forward * along - Vector3.yAxis * height).Magnitude
+				if along > 0 and along <= CLAYMORE_LASER and side <= 1.2 and height > -1 and height < 5 then
+					AbilityEffect:FireAllClients("ClaymoreTrip", from)
+					task.wait(CLAYMORE_DELAY)
+					if not model.Parent then
+						return -- shot off in time
+					end
+					model:Destroy()
+					-- Blows forward: whoever's behind it takes much less (Blast's shielded side)
+					bang(player, from + forward * 1.2, BREAK_RADIUS.Claymore, ability.Radius or 10, CLAYMORE_DAMAGE, -forward)
+					return
+				end
+			end
+			task.wait(0.05)
+		end
+	end)
+	return true
+end
+
+-- Nitro cell: thrown, sticks to whatever it hits; the same key sets it off (free)
+local function nitroCell(player: Player, character: Model, _root: BasePart, ability: Abilities.Ability, look: Vector3, charges: string): boolean
+	local mine = nitroCells[player]
+	if mine and mine.Parent and mine.PrimaryPart then
+		nitroCells[player] = nil
+		GadgetService.Gesture(character, "Detonate")
+		local position = mine.PrimaryPart.Position
+		mine:Destroy()
+		bang(player, position, BREAK_RADIUS.Nitro, ability.Radius or 12, NITRO_DAMAGE, nil)
+		return false
+	end
+	if (player:GetAttribute(charges) or 0) <= 0 then
+		status(player, "NO CHARGES LEFT")
+		return false
+	end
+	local head = character:FindFirstChild("Head") :: BasePart?
+	if not head or look.Magnitude < 0.5 then
+		return false
+	end
+	local params = ignoreList(character)
+	local position = head.Position + look.Unit * 1.5
+	local velocity = look.Unit * NITRO_SPEED + Vector3.new(0, NITRO_LIFT, 0)
+	GadgetService.Gesture(character, "NitroCell")
+	local body = part("Cell", Vector3.new(0.7, 0.35, 0.5), CFrame.new(position), Color3.fromRGB(46, 50, 44), Enum.Material.Metal)
+	local model = device("NitroCell", player, body, false)
+	part("Light", Vector3.new(0.12, 0.08, 0.12), CFrame.new(position + Vector3.new(0.2, 0.2, 0)), Color3.fromRGB(255, 50, 40), Enum.Material.Neon, model)
+	model:SetAttribute("Warn", "NITRO")
+	model.Parent = deployables()
+	nitroCells[player] = model
+	status(player, `NITRO CELL OUT: PRESS {if charges == "SecondaryCharges" then "B" else "X"} TO SET IT OFF`)
+	task.spawn(function()
+		local thrownAt = os.clock()
+		while model.Parent and os.clock() - thrownAt < 3 do
+			local dt = RunService.Heartbeat:Wait()
+			velocity += Vector3.new(0, -GRAVITY * dt, 0)
+			local step = velocity * dt
+			local hit = Workspace:Raycast(position, step, params)
+			if hit then
+				-- Stuck flat on the surface it hit
+				local stuck = hit.Position + hit.Normal * 0.18
+				model:PivotTo(CFrame.lookAt(stuck, stuck + hit.Normal) * CFrame.Angles(math.rad(-90), 0, 0))
+				return
+			end
+			position += step
+			model:PivotTo(CFrame.new(position))
+		end
+	end)
+	return true
+end
+
+-- Bulletproof camera: on the wall you're looking at, joins the team's cameras (CamsController)
+local function bulletproofCamera(player: Player, character: Model, _root: BasePart, _ability: Abilities.Ability, look: Vector3): boolean
+	local map = Workspace:FindFirstChild("Map")
+	local folder = map and map:FindFirstChild("Cameras")
+	if not folder then
+		status(player, "NO CAMERAS ON THIS MAP")
+		return false
+	end
+	local hit = aim(character, look)
+	local cf = hit and onSurface(hit, false)
+	if not hit or not cf then
+		status(player, "AIM AT A WALL")
+		return false
+	end
+	local count = 0
+	for _, other in folder:GetChildren() do
+		if other:GetAttribute("Bulletproof") then
+			count += 1
+		end
+	end
+	local model = Instance.new("Model")
+	model.Name = "Camera"
+	model:SetAttribute("CamName", "BULLETPROOF")
+	model:SetAttribute("CamIndex", 100 + count + 1) -- (after the map's own)
+	model:SetAttribute("Bulletproof", true)
+	model:SetAttribute("Electronic", true) -- (an EMP still fries it)
+	model:SetAttribute("OwnerTeam", teamName(player))
+	model:SetAttribute("Owner", player.UserId)
+	-- A squat armored housing flat on the wall, its lens looking out of it (CameraService.Eye)
+	local body = part("Body", Vector3.new(0.9, 0.65, 0.7), cf * CFrame.new(0, 0, -0.38), Color3.fromRGB(58, 62, 70), Enum.Material.DiamondPlate)
+	body.CanQuery = true
+	body:SetAttribute("Breakable", "Bulletproof")
+	body.Parent = model
+	model.PrimaryPart = body
+	part("Lens", Vector3.new(0.36, 0.36, 0.06), body.CFrame * CFrame.new(0, 0, -0.36), Color3.fromRGB(12, 12, 16), Enum.Material.Glass, model)
+	part("Light", Vector3.new(0.1, 0.1, 0.1), body.CFrame * CFrame.new(0.3, 0.22, -0.35), Color3.fromRGB(255, 50, 50), Enum.Material.Neon, model)
+	model.Parent = folder
+	GadgetService.Gesture(character, "BulletproofCamera", cf)
+	status(player, "BULLETPROOF CAMERA UP: Z TO WATCH")
+	return true
+end
+
+-- Proximity alarm: once armed, an enemy within its radius sets off a loud alarm (everyone hears
+-- it) and shows up to your team, refreshed while they stay close
+local function proximityAlarm(player: Player, character: Model, _root: BasePart, ability: Abilities.Ability, look: Vector3): boolean
+	local hit = aim(character, look)
+	local cf = hit and onSurface(hit, true)
+	if not hit or not cf then
+		status(player, "AIM AT A WALL OR THE FLOOR")
+		return false
+	end
+	local body = part("Alarm", Vector3.new(0.6, 0.6, 0.22), cf * CFrame.new(0, 0, -0.11), DARK, Enum.Material.Metal)
+	local model = device("ProximityAlarm", player, body, true)
+	local light = part("Light", Vector3.new(0.22, 0.22, 0.05), body.CFrame * CFrame.new(0, 0, -0.12), Color3.fromRGB(80, 30, 30), Enum.Material.Neon, model)
+	model.Parent = deployables()
+	GadgetService.Gesture(character, "ProximityAlarm", cf)
+	local radius = ability.Radius or 12
+	task.spawn(function()
+		task.wait(ALARM_ARM_TIME)
+		local lastAlarm = 0
+		while model.Parent do
+			local near: { Model } = {}
+			for _, other in Players:GetPlayers() do
+				local otherRoot = aliveRoot(other.Character)
+				if otherRoot and isEnemy(player, other) and (otherRoot.Position - body.Position).Magnitude <= radius then
+					table.insert(near, other.Character :: Model)
+				end
+			end
+			light.Color = if #near > 0 then Color3.fromRGB(255, 40, 40) else Color3.fromRGB(80, 30, 30)
+			if #near > 0 and os.clock() - lastAlarm >= ALARM_INTERVAL then
+				lastAlarm = os.clock()
+				AbilityEffect:FireAllClients("Alarm", body.Position)
+				for _, mate in teamOf(player) do
+					AbilityEffect:FireClient(mate, "Reveal", near, ALARM_INTERVAL + 0.25, "PROXIMITY ALARM")
+				end
+			end
+			task.wait(0.15)
+		end
+	end)
+	return true
+end
+
 -- Ability name → handler (AbilityService calls these; true = a charge was used)
 GadgetService.Handlers = {
+	FragGrenade = fragGrenade,
+	Claymore = claymore,
+	NitroCell = nitroCell,
+	BulletproofCamera = bulletproofCamera,
+	ProximityAlarm = proximityAlarm,
 	BreachCharge = breachCharge,
 	HardBreach = hardBreach,
 	EmpGrenade = empGrenade,

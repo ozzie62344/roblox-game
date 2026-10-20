@@ -155,6 +155,56 @@ local Abilities: { [string]: Ability } = {
 		Radius = 6, -- blast
 		Description = "Goes off the moment it hits something: punches a hole in a soft wall or floor (murder holes, rotations) and hurts anyone close.",
 	},
+
+	-- Secondary gadgets (Siege's): every operator also brings one of these, picked from their
+	-- Operators.Secondaries in operator select, and uses it with B (SecondaryKey). The Breach
+	-- Charge above is one of the attackers' too.
+	FragGrenade = {
+		Name = "Frag Grenade",
+		Key = "B",
+		Kind = "Active",
+		Side = "Attack",
+		Charges = 2,
+		Duration = 3, -- fuse
+		Radius = 18, -- deadly within about a third of this, hurts out to all of it
+		Description = "Bounces, then goes off after 3 seconds. Deadly up close, hurts further out, and breaks barricades and gadgets. Soft walls don't stop it.",
+	},
+	Claymore = {
+		Name = "Claymore",
+		Key = "B",
+		Kind = "Active",
+		Side = "Attack",
+		Charges = 1,
+		Radius = 10, -- blast, in front of it
+		Description = "Set it on the floor facing where they'll come from. An enemy crossing its laser sets it off a moment later. Shoot it to clear it.",
+	},
+	NitroCell = {
+		Name = "Nitro Cell",
+		Key = "B",
+		Kind = "Active",
+		Side = "Defend",
+		Charges = 1,
+		Detonates = true, -- B again sets it off
+		Radius = 12,
+		Description = "Throw it to stick it anywhere, then B again to set it off. Kills through soft walls and floors.",
+	},
+	BulletproofCamera = {
+		Name = "Bulletproof Camera",
+		Key = "B",
+		Kind = "Active",
+		Side = "Defend",
+		Charges = 1,
+		Description = "Stick a camera on a wall: bullets bounce off it, a knife or an explosive breaks it, an EMP fries it. Watch it with your team's cameras (Z).",
+	},
+	ProximityAlarm = {
+		Name = "Proximity Alarm",
+		Key = "B",
+		Kind = "Active",
+		Side = "Defend",
+		Charges = 2,
+		Radius = 12,
+		Description = "Stick it on a wall or floor. An enemy who comes close sets off a loud alarm and is shown to your team while they're near it.",
+	},
 }
 
 return Abilities

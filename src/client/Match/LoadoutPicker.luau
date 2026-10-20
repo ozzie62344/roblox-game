@@ -7,7 +7,7 @@
 --           with their name on it. Under the grid: the defenders' site / attackers' spawn choice
 --           (SitePicker's, so its own row stays hidden while this screen is up).
 --   Right:  the chosen operator: emblem, name, role, armor / speed pips, unique gadget, and the
---           loadout (pick the primary here; the knife is everyone's sidearm) with the primary
+--           loadout (pick the primary and the secondary gadget here; the knife is everyone's sidearm) with the primary
 --           turning slowly in a little viewport.
 --   Bottom: YOUR TEAM (who's playing whom, live) and LOCK IN (or Enter, or double-click a badge).
 --           After locking in you can still swap until the pick window closes (Draft: the round
@@ -103,7 +103,7 @@ type Offer = {
 	Random: boolean,
 	Deadline: number,
 	Operators: { OfferEntry },
-	Pick: { Operator: string, Weapon: string }?,
+	Pick: { Operator: string, Weapon: string, Secondary: string? }?,
 	Locked: boolean,
 }
 type Tile = {
@@ -157,6 +157,7 @@ local speedDots: { Frame } = {}
 local gadgetName: TextLabel
 local gadgetInfo: TextLabel
 local primaryRow: Frame
+local gadgetRow: Frame -- the secondary gadget (B): one button per choice
 local secondaryChip: TextLabel
 local viewport: ViewportFrame
 local viewCamera: Camera
@@ -186,6 +187,7 @@ local autoLocked = false
 local touched = false -- you've chosen a badge yourself this round (only then is it locked in for you)
 local teamOps: { [number]: string } = {} -- user id → operator on the team strip (to pop the slots that change)
 local chosenGun: { [string]: string } = {} -- the highlighted gun for each operator
+local chosenSecondary: { [string]: string } = {} -- the highlighted secondary gadget for each operator
 local lastPick: { [string]: string } = {} -- side → who you played last time (chosen for you next round)
 local keysBound = false
 local lastTick = -1
@@ -454,9 +456,14 @@ local function locked(): boolean
 	if offer and offer.Locked then
 		return true
 	end
-	local ability = Abilities[player:GetAttribute("Ability") or ""]
-	local charges = player:GetAttribute("AbilityCharges")
-	return ability ~= nil and ability.Charges ~= nil and typeof(charges) == "number" and charges < ability.Charges
+	for slot, chargesAttribute in { Ability = "AbilityCharges", Secondary = "SecondaryCharges" } do
+		local ability = Abilities[player:GetAttribute(slot) or ""]
+		local charges = player:GetAttribute(chargesAttribute)
+		if ability ~= nil and ability.Charges ~= nil and typeof(charges) == "number" and charges < ability.Charges then
+			return true
+		end
+	end
+	return false
 end
 
 local function entryFor(id: string?): OfferEntry?
@@ -495,6 +502,24 @@ local function gunFor(entry: OfferEntry): string
 		return holding
 	end
 	return entry.Weapons[1] or GameRules.NoGun
+end
+
+-- The secondary gadget an operator has highlighted: the one you clicked, the one you're playing them
+-- with, or their first
+local function secondaryFor(entry: OfferEntry): string?
+	local operator = Operators.ById[entry.Id]
+	if not operator then
+		return nil
+	end
+	local chosen = chosenSecondary[entry.Id]
+	if chosen and table.find(operator.Secondaries, chosen) then
+		return chosen
+	end
+	local holding = player:GetAttribute("Secondary")
+	if entry.Id == player:GetAttribute("Operator") and typeof(holding) == "string" and table.find(operator.Secondaries, holding) then
+		return holding
+	end
+	return operator.Secondaries[1]
 end
 
 local function tileFor(id: string?): Tile?
@@ -580,9 +605,11 @@ local function renderDetails()
 			detailArt:Destroy()
 			detailArt = nil
 		end
-		for _, child in primaryRow:GetChildren() do
-			if child:IsA("TextButton") then
-				child:Destroy()
+		for _, row in { primaryRow, gadgetRow } do
+			for _, child in row:GetChildren() do
+				if child:IsA("TextButton") then
+					child:Destroy()
+				end
 			end
 		end
 		showGun(nil)
@@ -598,7 +625,8 @@ local function renderDetails()
 		return
 	end
 	local gun = gunFor(entry)
-	local key = `{entry.Id}:{gun}:{tostring(entry.TakenBy)}:{tostring(selected)}`
+	local secondary = secondaryFor(entry)
+	local key = `{entry.Id}:{gun}:{tostring(secondary)}:{tostring(entry.TakenBy)}:{tostring(selected)}`
 	if key == shownDetail then
 		return
 	end
@@ -663,13 +691,52 @@ local function renderDetails()
 			uiSound(Sounds.Pick("GunFoley"), 0.45, 1.15)
 			-- Already playing them: the new gun goes straight to the server
 			if entry.Id == selected then
-				DraftPick:FireServer(entry.Id, name)
+				DraftPick:FireServer(entry.Id, name, secondaryFor(entry))
 			end
 			refresh()
 		end)
 		button.Parent = primaryRow
 	end
 	secondaryChip.Text = `KNIFE  ·  MELEE  [{if state.touchControls then "KNIFE" else "F"}]`
+
+	-- Secondary gadget: one button per choice (Siege's frags / claymores / nitro cells...)
+	for _, child in gadgetRow:GetChildren() do
+		if child:IsA("TextButton") then
+			child:Destroy()
+		end
+	end
+	local gadgetChoosable = choosable and not (entry.Id == selected and locked())
+	for i, name in operator.Secondaries do
+		local ability = Abilities[name]
+		local on = name == secondary
+		local button = Instance.new("TextButton")
+		button.LayoutOrder = i
+		button.Size = UDim2.new(1 / #operator.Secondaries, -6, 1, 0)
+		button.BackgroundColor3 = if on then GADGET_COLOR else CHIP
+		button.AutoButtonColor = gadgetChoosable
+		button.Font = Enum.Font.GothamBlack
+		button.TextSize = 13
+		button.TextColor3 = if on then Color3.fromRGB(15, 16, 20) elseif gadgetChoosable then WHITE else GREY
+		button.Text = if ability then `{string.upper(ability.Name)}{if ability.Charges then " ×" .. ability.Charges else ""}` else name
+		corner(button, 6)
+		if on then
+			stroke(button, WHITE, 2, 0.3)
+		end
+		button.Activated:Connect(function()
+			if not gadgetChoosable or name == secondaryFor(entry) then
+				return
+			end
+			chosenSecondary[entry.Id] = name
+			focused = entry.Id
+			touched = true
+			uiSound(Sounds.Pick("GunFoley"), 0.4, 1.4)
+			if entry.Id == selected then
+				DraftPick:FireServer(entry.Id, gunFor(entry), name)
+			end
+			refresh()
+		end)
+		button.Parent = gadgetRow
+	end
 
 	-- The primary on the right, turning
 	showGun(gun)
@@ -770,7 +837,7 @@ function lockIn()
 	if offer then
 		lastPick[offer.Side] = entry.Id
 	end
-	DraftPick:FireServer(entry.Id, gunFor(entry))
+	DraftPick:FireServer(entry.Id, gunFor(entry), secondaryFor(entry))
 	-- Siege's little "thunk": the badge jumps and flashes
 	uiSound(Sounds.Shop.Buy, Sounds.Shop.Volume, 1.25)
 	uiSound(Sounds.Pick("GunFoley"), 0.5, 1)
@@ -1090,6 +1157,7 @@ local function onOffer(newOffer: Offer)
 		focused = nil
 		siteKey = ""
 		table.clear(chosenGun)
+		table.clear(chosenSecondary)
 		clearPreviews() -- (skins / attachments may have changed since)
 	end
 	-- The server's word on who you are (it may have refused a pick: taken a moment ago)
@@ -1097,6 +1165,9 @@ local function onOffer(newOffer: Offer)
 	selected = if newOffer.Pick then newOffer.Pick.Operator else nil
 	if newOffer.Pick then
 		chosenGun[newOffer.Pick.Operator] = newOffer.Pick.Weapon
+		if newOffer.Pick.Secondary then
+			chosenSecondary[newOffer.Pick.Operator] = newOffer.Pick.Secondary
+		end
 		lastPick[newOffer.Side] = newOffer.Pick.Operator
 		-- Handed one (Random, or nobody chosen when selection ended): show them
 		if selected ~= before and not touched then
@@ -1272,13 +1343,20 @@ local function build()
 	primaryLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	primaryLayout.Padding = UDim.new(0, 6)
 	primaryLayout.Parent = primaryRow
-	label(details, "SECONDARY", 12, Enum.Font.GothamBlack, GREY, UDim2.fromOffset(16, 354), UDim2.fromOffset(90, 16))
+	label(details, "SIDEARM", 12, Enum.Font.GothamBlack, GREY, UDim2.fromOffset(16, 354), UDim2.fromOffset(90, 16))
 	secondaryChip = label(details, "", 13, Enum.Font.GothamBlack, WHITE, UDim2.fromOffset(106, 346), UDim2.fromOffset(280, 32))
 	secondaryChip.BackgroundColor3 = CHIP
 	secondaryChip.BackgroundTransparency = 0.3
 	secondaryChip.TextXAlignment = Enum.TextXAlignment.Center
 	secondaryChip.TextYAlignment = Enum.TextYAlignment.Center
 	corner(secondaryChip, 6)
+	label(details, "GADGET", 12, Enum.Font.GothamBlack, GREY, UDim2.fromOffset(16, 400), UDim2.fromOffset(90, 16))
+	gadgetRow = box(details, UDim2.fromOffset(106, 390), UDim2.fromOffset(286, 38), PANEL, 1)
+	local gadgetLayout = Instance.new("UIListLayout")
+	gadgetLayout.FillDirection = Enum.FillDirection.Horizontal
+	gadgetLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	gadgetLayout.Padding = UDim.new(0, 6)
+	gadgetLayout.Parent = gadgetRow
 
 	-- The primary, turning slowly
 	local stage = box(details, UDim2.new(1, -(VIEW_W + 16), 0, 16), UDim2.fromOffset(VIEW_W, VIEW_H), Color3.fromRGB(30, 33, 42))

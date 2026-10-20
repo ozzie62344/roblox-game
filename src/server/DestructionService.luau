@@ -13,6 +13,7 @@
 --                3 knife hits, ~20 bullets or 2-3 close shotgun shells smash the whole thing
 --   "Panel"      armor panels (GadgetService): bulletproof; 10 knife hits or an explosive
 --   "Gadget"     batteries, jammers, charges (GadgetService): any hit destroys the device
+--   "Bulletproof" bulletproof cameras (GadgetService): bullets stop, one knife hit or an explosive
 -- Reinforced wall sections and hatches (FortifyService tags their slots "Reinforced") are immune
 -- to bullets, knives and ordinary explosives: hits on the soft wall over the steel only clang,
 -- and any hole that would reach into a reinforced section stops at its edge. A hard breach
@@ -487,6 +488,15 @@ function DestructionService.Hit(part: BasePart, point: Vector3, hitKind: HitKind
 		broadcast("Spark", part, part.Position, 1)
 		local device = part:FindFirstAncestorOfClass("Model")
 		;(device or part):Destroy()
+		return
+	end
+	if breakable == "Bulletproof" then
+		-- Bulletproof cameras: bullets stop at them (WeaponService), one knife hit breaks one
+		if melee then
+			broadcast("Spark", part, part.Position, 1)
+			local device = part:FindFirstAncestorOfClass("Model")
+			;(device or part):Destroy()
+		end
 		return
 	end
 	if breakable == "Panel" then

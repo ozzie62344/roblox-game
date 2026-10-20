@@ -256,8 +256,8 @@ local function traceShot(origin: Vector3, endPosition: Vector3, shooter: Model, 
 			return multiplier
 		end
 		local breakable = result.Instance:GetAttribute("Breakable")
-		if not breakable or breakable == "Panel" then
-			return nil -- solid (armor panels are bulletproof)
+		if not breakable or breakable == "Panel" or breakable == "Bulletproof" then
+			return nil -- solid (armor panels and bulletproof cameras stop bullets)
 		end
 		multiplier *= PENETRATION_DAMAGE[breakable] or 1
 		DestructionService.Hit(result.Instance :: BasePart, result.Position, hitKind)
@@ -510,8 +510,33 @@ end
 -- An explosion (breach charge, thermite) at `center`: damage falls off with distance. Anyone on
 -- `shieldedSide` (the placer's side of the wall) only takes 40%, like Siege's breach charge.
 -- Teammates are spared (unless friendly fire is on: isTeammate); you can still hurt yourself.
-function WeaponService.Blast(attacker: Player, center: Vector3, radius: number, maxDamage: number, shieldedSide: Vector3?)
+-- Is there nothing solid between `from` and `to`? Soft things (drywall, wooden floors, glass,
+-- barricades) don't count, like bullets going through them; steel, concrete and armor do.
+local function softPathBetween(from: Vector3, to: Vector3, ignore: { Instance }): boolean
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	local skip = table.clone(ignore)
+	for _ = 1, MAX_PENETRATIONS + 1 do
+		params.FilterDescendantsInstances = skip
+		local result = Workspace:Raycast(from, to - from, params)
+		if not result or findHumanoid(result.Instance) then
+			return true
+		end
+		local breakable = result.Instance:GetAttribute("Breakable")
+		if not breakable or breakable == "Panel" or breakable == "Bulletproof" then
+			return false
+		end
+		table.insert(skip, result.Instance)
+	end
+	return false
+end
+
+-- Explosion damage around `center`, less further out. `shieldedSide`: people on that side take
+-- 40% (the far side of a wall a charge is on). `softOnly`: nobody behind anything solid is hurt
+-- (frags, claymores, nitro cells: through drywall and floors, not concrete).
+function WeaponService.Blast(attacker: Player, center: Vector3, radius: number, maxDamage: number, shieldedSide: Vector3?, softOnly: boolean?)
 	local done: { [Humanoid]: boolean } = {}
+	local deployables = Workspace:FindFirstChild("Deployables")
 	for _, part in Workspace:GetPartBoundsInRadius(center, radius) do
 		local humanoid = findHumanoid(part)
 		if not humanoid or done[humanoid] or humanoid.Health <= 0 then
@@ -520,6 +545,9 @@ function WeaponService.Blast(attacker: Player, center: Vector3, radius: number, 
 		done[humanoid] = true
 		local root = humanoid.Parent and humanoid.Parent:FindFirstChild("HumanoidRootPart") :: BasePart?
 		if not root then
+			continue
+		end
+		if softOnly and not softPathBetween(center, root.Position, if deployables then { humanoid.Parent :: Instance, deployables } else { humanoid.Parent :: Instance }) then
 			continue
 		end
 		local offset = root.Position - center

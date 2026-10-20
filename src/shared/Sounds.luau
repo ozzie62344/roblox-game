@@ -119,6 +119,23 @@ local Sounds = {
 		Volume = 0.5,
 	},
 
+	-- Proximity alarm going off: the beep, loud and shrill, three quick ones a second, heard
+	-- through walls by both teams (that's the point: the attacker knows they've been caught too)
+	ProximityAlarm = {
+		Id = "rbxasset://sounds/electronicpingshort.wav",
+		Range = 110,
+		Volume = 1,
+		Pitch = 2.1,
+		Repeats = 3,
+	},
+	-- A claymore's laser tripped: the relay click just before it goes off
+	ClaymoreTrip = {
+		Id = "rbxassetid://9118138519", -- Relay Clicks 10 (Pro Sound Effects), like the rappel clip
+		Range = 45,
+		Volume = 1,
+		Pitch = 0.8,
+	},
+
 	-- A teammate's ping (TeamPing): the same beep, softer and pitched up so it isn't mistaken for
 	-- the defuser. Plays flat (not from the spot), like a radio blip.
 	Ping = {

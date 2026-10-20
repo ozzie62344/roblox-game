@@ -250,6 +250,24 @@ local SPECS: { Spec } = {
 		end,
 	},
 	{
+		-- The secondary gadget (B on a keyboard): frag, claymore, nitro cell...
+		label = function()
+			local ability = Abilities[player:GetAttribute("Secondary") or ""]
+			if not ability then
+				return ""
+			end
+			local charges = player:GetAttribute("SecondaryCharges")
+			return string.upper(ability.Name) .. (if typeof(charges) == "number" then `\n{charges}` else "")
+		end,
+		id = "Secondary", side = "Right", x = 7.3, y = 3.6, size = 0.95, modes = { "Play" },
+		press = function()
+			act("UseSecondary", true)
+		end,
+		visible = function()
+			return Abilities[player:GetAttribute("Secondary") or ""] ~= nil
+		end,
+	},
+	{
 		label = function()
 			return "HOLD\n" .. (INTERACT_LABELS[state.interactAction or ""] or "USE")
 		end,

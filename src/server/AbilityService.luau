@@ -2,7 +2,8 @@
 -- gadgets in GadgetService (breach charges, thermite, EMP, grenades, heartbeat sensor, shock wire,
 -- jammer, armor panel, barbed wire, impact grenades). Your ability is your operator's gadget
 -- (LoadoutService). Charges are tracked here and mirrored to the "AbilityCharges" player attribute
--- for the HUD. Charges refill whenever you spawn or your ability changes.
+-- for the HUD (and "SecondaryCharges" for the B gadget, "Secondary"). Charges refill whenever you
+-- spawn or that slot's gadget changes.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -60,7 +61,9 @@ local function aliveRoot(model: Model?): BasePart?
 	return nil
 end
 
-type Handler = (player: Player, character: Model, root: BasePart, ability: Abilities.Ability, look: Vector3) -> boolean
+-- `charges`: the player attribute counting this gadget's charges ("AbilityCharges" for the X gadget,
+-- "SecondaryCharges" for the B one)
+type Handler = (player: Player, character: Model, root: BasePart, ability: Abilities.Ability, look: Vector3, charges: string) -> boolean
 
 local handlers: { [string]: Handler } = {
 	-- Reveal enemies within range (through walls) to the user's whole team
@@ -199,10 +202,19 @@ for name, handler in GadgetService.Handlers do
 	handlers[name] = handler
 end
 
-function AbilityService.ResetCharges(player: Player)
-	local abilityName = player:GetAttribute("Ability")
-	local ability = if typeof(abilityName) == "string" then Abilities[abilityName] else nil
-	player:SetAttribute("AbilityCharges", if ability and ability.Charges then ability.Charges else nil)
+-- The gadget attribute of each slot (X, B) and the attribute counting its charges
+local SLOTS = { Ability = "AbilityCharges", Secondary = "SecondaryCharges" }
+
+-- Fills a slot's charges for its gadget (`only`: just that slot; otherwise both)
+function AbilityService.ResetCharges(player: Player, only: string?)
+	for slot, chargesAttribute in SLOTS do
+		if only and slot ~= only then
+			continue
+		end
+		local abilityName = player:GetAttribute(slot)
+		local ability = if typeof(abilityName) == "string" then Abilities[abilityName] else nil
+		player:SetAttribute(chargesAttribute, if ability and ability.Charges then ability.Charges else nil)
+	end
 end
 
 -- Removes all placed covers (called at the start of each round and between matches)
@@ -215,9 +227,11 @@ function AbilityService.Start()
 		player.CharacterAdded:Connect(function()
 			AbilityService.ResetCharges(player)
 		end)
-		player:GetAttributeChangedSignal("Ability"):Connect(function()
-			AbilityService.ResetCharges(player)
-		end)
+		for slot in SLOTS do
+			player:GetAttributeChangedSignal(slot):Connect(function()
+				AbilityService.ResetCharges(player, slot)
+			end)
+		end
 	end
 	for _, player in Players:GetPlayers() do
 		onPlayerAdded(player)
@@ -227,17 +241,20 @@ function AbilityService.Start()
 		lastUse[player] = nil
 	end)
 
-	UseAbility.OnServerEvent:Connect(function(player, look)
+	-- UseAbility(look, slot): slot "Secondary" is the B gadget, anything else the X one
+	UseAbility.OnServerEvent:Connect(function(player, look, slot)
 		if typeof(look) ~= "Vector3" then
 			return
 		end
-		local abilityName = player:GetAttribute("Ability")
+		local slotName = if slot == "Secondary" then "Secondary" else "Ability"
+		local chargesAttribute = SLOTS[slotName]
+		local abilityName = player:GetAttribute(slotName)
 		local ability = abilityName and Abilities[abilityName]
 		local handler = abilityName and handlers[abilityName]
 		if not ability or not handler then
 			return
 		end
-		local charges = player:GetAttribute("AbilityCharges") or 0
+		local charges = player:GetAttribute(chargesAttribute) or 0
 		if charges <= 0 and not ability.Detonates then -- setting off a placed breach charge is free
 			return
 		end
@@ -252,9 +269,9 @@ function AbilityService.Start()
 			return -- dead, frozen in the pre-round, busy deploying cover, or downed (DBNOService)
 		end
 
-		if handler(player, character, root, ability, look) then
+		if handler(player, character, root, ability, look, chargesAttribute) then
 			lastUse[player] = now
-			player:SetAttribute("AbilityCharges", charges - 1)
+			player:SetAttribute(chargesAttribute, charges - 1)
 		end
 	end)
 end

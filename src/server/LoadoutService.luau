@@ -8,7 +8,8 @@
 -- locked in, so you can't swap through several operators' gadgets; you can still change guns.
 -- Guns come from the operator, cut down to what the match's mode allows (Operators.WeaponsFor).
 -- Clients are told through LoadoutOffer(offer) (sent again whenever a teammate picks) and pick
--- with DraftPick(operatorId, weapon).
+-- with DraftPick(operatorId, weapon, secondary). The secondary gadget (B) is one of the operator's
+-- Secondaries; a used one can't be swapped.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -32,7 +33,7 @@ export type Offer = {
 	Random: boolean,
 	Deadline: number,
 	Operators: { { Id: string, Weapons: { string }, TakenBy: string? } },
-	Pick: { Operator: string, Weapon: string }?,
+	Pick: { Operator: string, Weapon: string, Secondary: string? }?,
 	Locked: boolean, -- gadget already used: only the gun can change
 }
 
@@ -63,21 +64,39 @@ local function takenBy(player: Player, operatorId: string): Player?
 	return nil
 end
 
--- Used a charge of your gadget this round? Then you stay that operator.
-local function gadgetUsed(player: Player): boolean
-	local abilityName = player:GetAttribute("Ability")
+-- Used a charge of the gadget in `slot` ("Ability" = X, "Secondary" = B) this round?
+local function slotUsed(player: Player, slot: string): boolean
+	local abilityName = player:GetAttribute(slot)
 	local ability = if typeof(abilityName) == "string" then Abilities[abilityName] else nil
-	local charges = player:GetAttribute("AbilityCharges")
+	local charges = player:GetAttribute(if slot == "Secondary" then "SecondaryCharges" else "AbilityCharges")
 	return ability ~= nil and ability.Charges ~= nil and typeof(charges) == "number" and charges < ability.Charges
 end
 
-local function apply(player: Player, operator: Operators.Operator, weapon: string)
+-- Used a charge of either gadget this round? Then you stay that operator.
+local function gadgetUsed(player: Player): boolean
+	return slotUsed(player, "Ability") or slotUsed(player, "Secondary")
+end
+
+local function apply(player: Player, operator: Operators.Operator, weapon: string, secondary: string)
 	WeaponService.SetWeapon(player, weapon)
 	player:SetAttribute("Operator", operator.Id)
 	if player:GetAttribute("Ability") ~= operator.Gadget then
 		player:SetAttribute("Ability", operator.Gadget)
-		AbilityService.ResetCharges(player) -- now, not when the attribute signal gets round to it (gadgetUsed reads them)
+		AbilityService.ResetCharges(player, "Ability") -- now, not when the attribute signal gets round to it (gadgetUsed reads them)
 	end
+	if player:GetAttribute("Secondary") ~= secondary then
+		player:SetAttribute("Secondary", secondary)
+		AbilityService.ResetCharges(player, "Secondary")
+	end
+end
+
+-- The secondary `operator` gets: `wanted` if it's one of theirs, else the one in hand, else their first
+local function secondaryFor(player: Player, operator: Operators.Operator, wanted: any): string
+	if typeof(wanted) == "string" and table.find(operator.Secondaries, wanted) then
+		return wanted
+	end
+	local holding = player:GetAttribute("Secondary")
+	return if table.find(operator.Secondaries, holding) then holding else operator.Secondaries[1]
 end
 
 local function sendOffer(player: Player)
@@ -96,7 +115,7 @@ local function sendOffer(player: Player)
 		Random = roundMode == "Random",
 		Deadline = roundDeadline,
 		Operators = list,
-		Pick = if entry.picked and typeof(operatorId) == "string" then { Operator = operatorId, Weapon = player:GetAttribute("Weapon") } else nil,
+		Pick = if entry.picked and typeof(operatorId) == "string" then { Operator = operatorId, Weapon = player:GetAttribute("Weapon"), Secondary = player:GetAttribute("Secondary") } else nil,
 		Locked = gadgetUsed(player),
 	}
 	LoadoutOffer:FireClient(player, offer)
@@ -125,7 +144,7 @@ local function assignRandom(player: Player)
 	end
 	local operator = free[math.random(#free)]
 	local guns = Operators.WeaponsFor(operator)
-	apply(player, operator, guns[math.random(#guns)])
+	apply(player, operator, guns[math.random(#guns)], operator.Secondaries[math.random(#operator.Secondaries)])
 	entry.picked = true
 end
 
@@ -139,6 +158,7 @@ function LoadoutService.StartRound(players: { Player }, mode: string, duration: 
 		-- Last round's operator may be on the other side now: nobody is anyone until they pick
 		player:SetAttribute("Operator", nil)
 		player:SetAttribute("Ability", nil)
+		player:SetAttribute("Secondary", nil)
 	end
 	-- Random: handed out in a random order, so nobody always gets first dibs
 	local order = table.clone(players)
@@ -195,9 +215,10 @@ function LoadoutService.Reset(player: Player)
 	WeaponService.SetWeapon(player, if typeof(picked) == "string" and Weapons[picked] then picked else WeaponService.DefaultWeapon)
 	player:SetAttribute("Operator", nil)
 	player:SetAttribute("Ability", nil)
+	player:SetAttribute("Secondary", nil)
 end
 
-local function onPick(player: Player, operatorId: any, weapon: any)
+local function onPick(player: Player, operatorId: any, weapon: any, secondary: any)
 	local entry = entries[player]
 	if not entry or roundMode == "Random" or typeof(operatorId) ~= "string" or Workspace:GetServerTimeNow() > roundDeadline then
 		return
@@ -216,7 +237,11 @@ local function onPick(player: Player, operatorId: any, weapon: any)
 		local holding = player:GetAttribute("Weapon")
 		weapon = if table.find(guns, holding) then holding else guns[1]
 	end
-	apply(player, operator, weapon)
+	-- (a secondary you've already used a charge of stays: no swapping for a full one)
+	if slotUsed(player, "Secondary") and current == operator.Id then
+		secondary = player:GetAttribute("Secondary")
+	end
+	apply(player, operator, weapon, secondaryFor(player, operator, secondary))
 	entry.picked = true
 	sendToTeam(player)
 end

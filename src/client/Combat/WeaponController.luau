@@ -128,17 +128,27 @@ local function updateAmmoHud()
 	end
 end
 
-local function updateLoadoutHud()
-	local abilityName = player:GetAttribute("Ability")
+-- "[X] Shock Wire  ●●○" for a gadget slot, or nil if it's empty
+local function slotText(slot: string, key: string, chargesAttribute: string): string?
+	local abilityName = player:GetAttribute(slot)
 	local ability = abilityName and Abilities[abilityName]
-	local abilityText = nil
-	if ability then
-		abilityText = `[{ability.Key}] {ability.Name}`
-		local charges = player:GetAttribute("AbilityCharges")
-		if charges then
-			-- ● for each charge left, ○ for each used
-			abilityText ..= "  " .. string.rep("●", charges) .. string.rep("○", (ability.Charges or charges) - charges)
-		end
+	if not ability then
+		return nil
+	end
+	local text = `[{key}] {ability.Name}`
+	local charges = player:GetAttribute(chargesAttribute)
+	if charges then
+		-- ● for each charge left, ○ for each used
+		text ..= "  " .. string.rep("●", charges) .. string.rep("○", math.max((ability.Charges or charges) - charges, 0))
+	end
+	return text
+end
+
+local function updateLoadoutHud()
+	local abilityText = slotText("Ability", "X", "AbilityCharges")
+	local secondaryText = slotText("Secondary", "B", "SecondaryCharges")
+	if secondaryText then
+		abilityText = if abilityText then `{abilityText}  ·  {secondaryText}` else secondaryText
 	end
 	Hud.SetLoadout(if unarmed then "Knife" else weapon.Name, abilityText)
 end
@@ -273,7 +283,7 @@ local function fire(character: Model)
 			params.FilterDescendantsInstances = ignore
 			result = Workspace:Raycast(origin, direction * weapon.Range, params)
 			local breakable = result and result.Instance:GetAttribute("Breakable")
-			if not breakable or breakable == "Panel" then
+			if not breakable or breakable == "Panel" or breakable == "Bulletproof" then
 				break -- solid (armor panels are bulletproof)
 			end
 			Effects.Impact(result.Position, result.Normal)
@@ -493,6 +503,8 @@ function WeaponController.Start()
 	end)
 	player:GetAttributeChangedSignal("Ability"):Connect(updateLoadoutHud)
 	player:GetAttributeChangedSignal("AbilityCharges"):Connect(updateLoadoutHud)
+	player:GetAttributeChangedSignal("Secondary"):Connect(updateLoadoutHud)
+	player:GetAttributeChangedSignal("SecondaryCharges"):Connect(updateLoadoutHud)
 
 	Actions.Bind("Fire", function(_, inputState)
 		if unarmed then
