@@ -592,6 +592,10 @@ local function sendPitch()
 end
 
 function BodyAnimator.Start()
+	-- A new body has no LookPitch yet: send ours again even if we're still looking the same way
+	player.CharacterAdded:Connect(function()
+		lastSentPitch = math.huge
+	end)
 	ReloadStarted.OnClientEvent:Connect(function(reloader: Player, weaponName: string, duration: number?)
 		local rig = reloader.Character and rigs[reloader.Character]
 		local weapon = Weapons[weaponName]
