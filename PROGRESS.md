@@ -6,6 +6,45 @@ bugs marked "exploit only" only matter against a modified client.
 
 ---
 
+## Update, later on 2026-10-19: done since this report
+
+All of this is committed (not pushed) and still needs your playtest. Studio can't test the
+teleport, save-lock or MemoryStore parts; check those in the published game.
+
+- **Bugs 1–2 fixed:**
+  - The save lock outlives the autosave, and the last save is retried.
+  - Failed match teleports put the party back at the front of the queue. Custom lobbies stay open until everyone has left.
+- **Bugs 3–5 fixed**, one commit each: late EMP, aim pitch after respawn, lean after revive, double thermite, starting a defuser hold while busy.
+- **Lobby join:** the menus come in one after another, with one popup at a time.
+- **R6 part 2b built:**
+  - Secondary gadgets on **B**: frag, claymore, breach charge, nitro cell, bulletproof camera, proximity alarm.
+  - Grenade warning icons and arming beeps.
+  - Electricity fries gadgets touching it.
+  - Siege footstep ranges: prone is silent, heavy operators are louder.
+  - Each reload moment has its own sound, and enemies' reloads carry ~10 m.
+  - Suppressed shots carry less far.
+  - Loud sounds for reinforcing, smashing and planting.
+- **Exploit holes closed:**
+  - Headshot height check.
+  - Rope and vault validation.
+  - No shooting while droning, on cams, scanning or mid-hold.
+  - Match details come from a MemoryStore ticket, not teleport data.
+- **Cleanup:**
+  - Slide, wall-jump and draft leftovers removed.
+  - Recon Pulse and Ghost Step removed.
+  - Rojo project renamed `breachpoint`.
+  - Shared `Characters` helpers and `MenuStyle.ThinOutline`.
+
+Still open from the list below:
+- Robux IDs.
+- Icon and thumbnails.
+- The 2+ account test in the live game.
+- Placeholder sounds.
+- Elimination mode has no drones (your call).
+- Bigger refactors: map-builder helpers, long menu files, building the map once per round.
+
+---
+
 ## Where the project is
 
 A Siege-style tactical FPS on Roblox. The game loop, four maps, twelve operators, destruction, and
