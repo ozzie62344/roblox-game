@@ -410,6 +410,9 @@ local function empGrenade(player: Player, character: Model, _root: BasePart, abi
 			position += step
 			grenade.CFrame = CFrame.new(position)
 		end
+		if not grenade.Parent then
+			return -- a new round swept it away (it mustn't fry next round's cameras)
+		end
 		grenade:Destroy()
 		emp(player, position, ability.Radius or 14)
 	end)
