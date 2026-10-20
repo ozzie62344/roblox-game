@@ -53,6 +53,10 @@ local HEADSHOT_KILL_DAMAGE = 1000 -- "kills outright" (more than anyone's health
 -- A hat / hair / helmet only counts as the head this close to it (studs past the head's box):
 -- cosmetics don't make your head bigger, but a bullet clipping a helmet still kills
 local ACCESSORY_REACH = 0.4
+-- (anti-cheat) A headshot must land within this many studs of the head's height on the server's
+-- copy of the target. Lag shifts people sideways far more than up and down, so real headshots
+-- pass, but a body hit relabelled "Head" by a modified client doesn't.
+local HEAD_HEIGHT_SLACK = ACCESSORY_REACH + 0.5
 
 local WeaponService = {}
 
@@ -322,6 +326,13 @@ local function checkShot(player: Player, character: Model, weapon: Weapons.Weapo
 	if not zone then
 		return endPosition, nil, true -- only clipped a hat
 	end
+	if zone == "Head" then
+		local targetHead = (targetHumanoid.Parent :: Model):FindFirstChild("Head") :: BasePart?
+		if not targetHead or math.abs(endPosition.Y - targetHead.Position.Y) > targetHead.Size.Y / 2 + HEAD_HEIGHT_SLACK then
+			AntiCheat.Suspect(player, "headshot claimed away from the head") -- (logged; counts as a body hit)
+			zone = "Body"
+		end
+	end
 	local headshot = zone == "Head"
 	if GameRules.Current().HeadshotsOnly and not headshot then
 		return endPosition, nil, true
@@ -392,7 +403,8 @@ local function onFire(player: Player, origin: any, shots: any)
 	local endPositions = {}
 	local inFlesh = {} -- (per end position: it ended in someone)
 	local totals: { [Humanoid]: { damage: number, headshot: boolean } } = {}
-	for _, shot in shots do
+	for i = 1, #shots do -- (only the counted pellets: extra keys in the table are ignored)
+		local shot = shots[i]
 		local endPosition, hit, flesh = checkShot(player, character :: Model, weapon, origin, shot)
 		if endPosition then
 			table.insert(endPositions, endPosition)
