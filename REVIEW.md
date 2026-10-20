@@ -1,0 +1,13 @@
+# What to test in Studio (overnight-fixes)
+
+## 1. Downed players, dev End Round / Stop Match, defender site pick
+
+- [ ] Get downed in a match (2 players, or a dummy): you stay on the floor for everyone, and R
+      (reload) does nothing while down. After a revive you stand up normally and can reload.
+- [ ] Dev panel **End Round** during operator select: the round ends within a second (skips prep).
+- [ ] Dev panel **End Round** during prep: same.
+- [ ] Dev panel **Stop Match** during operator select and during prep: back to free roam within a
+      second, not after the timer.
+- [ ] End Round pressed in free roam, then start a match: the first round plays normally.
+- [ ] As a defender in operator select: pick a site (team moves there), pick another (ignored),
+      a teammate can still change it once, but not within 2 s of the last change.

@@ -88,6 +88,9 @@ function PoseService.Start()
 		if typeof(crouching) ~= "boolean" then
 			return
 		end
+		if player.Character and player.Character:GetAttribute("Downed") then
+			return -- (downed: DBNOService keeps them on the floor; they can't stand themselves up)
+		end
 		if player.Character then
 			player.Character:SetAttribute("Crouching", crouching)
 			player.Character:SetAttribute("Prone", prone == true)

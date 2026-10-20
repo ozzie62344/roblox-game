@@ -57,6 +57,11 @@ local matchRunning = false
 local forceStart = false
 local abortMatch = false
 local endRoundNow = false
+-- The defenders' site pick (PickSite): one pick per defender per round, and a pause between
+-- changes, so nobody can keep the whole team teleporting between sites
+local SITE_PICK_COOLDOWN = 2 -- seconds between site changes, for the whole team
+local sitePicked: { [Player]: boolean } = {}
+local lastSitePick = -math.huge
 -- The teams Matchmaker made (a party always plays together), for the next match: from the
 -- teleport data on a match server, straight from Matchmaker in Studio
 local presetTeams: { [Player]: string } = {}
@@ -327,10 +332,20 @@ local function checkElimination(attack: string, defend: string, attackOut: boole
 	return nil, nil
 end
 
+-- Waits out a phase in short steps, so the dev panel's End Round / Stop Match cut it short
+local function waitPhase(seconds: number)
+	local endsAt = os.clock() + seconds
+	while os.clock() < endsAt and not abortMatch and not endRoundNow do
+		task.wait(0.2)
+	end
+end
+
 -- Returns winner ("Blue" / "Orange" / "Draw") and a reason, or nil if the match was aborted.
 -- `title` is the round's opening banner ("ROUND 4 · MATCH POINT").
 local function runRound(round: number, mode: string, attack: string, title: string): (string?, string?)
 	local defend = otherTeam(attack)
+	endRoundNow = false -- (an End Round from before this round doesn't count)
+	table.clear(sitePicked) -- (everyone gets a fresh site pick)
 	-- Fresh map every round: broken walls, glass and barricades all come back
 	MapService.Load(MatchState:GetAttribute("Map") or MatchConfig.DefaultMap)
 	CameraService.SetOwner(defend)
@@ -378,7 +393,7 @@ local function runRound(round: number, mode: string, attack: string, title: stri
 
 	local ranked = round == 1 and MatchState:GetAttribute("Ranked") == true
 	setPhase("PreRound", freezeTime, if ranked then "RANKED MATCH · ROUND 1" else title)
-	task.wait(freezeTime)
+	waitPhase(freezeTime)
 	if abortMatch then
 		return nil, nil
 	end
@@ -394,7 +409,7 @@ local function runRound(round: number, mode: string, attack: string, title: stri
 		ObjectiveService.GiveDefuser(teams[attack]) -- one attacker carries it (Siege)
 		setPhase("Prep", rule("PrepTime"), "PREPARATION PHASE")
 		DroneService.StartPrep(teams[attack])
-		task.wait(rule("PrepTime"))
+		waitPhase(rule("PrepTime"))
 		if abortMatch then
 			return nil, nil
 		end
@@ -415,7 +430,6 @@ local function runRound(round: number, mode: string, attack: string, title: stri
 	setPhase("Action", rule("RoundTime"), actionBanner)
 	local deadline = os.clock() + rule("RoundTime")
 	local planted = false
-	endRoundNow = false
 
 	while true do
 		task.wait(0.2)
@@ -888,6 +902,11 @@ function RoundService.Start()
 		if typeof(pair) ~= "string" or not table.find(ObjectiveService.GetPairs(), pair) then
 			return
 		end
+		if sitePicked[player] or os.clock() - lastSitePick < SITE_PICK_COOLDOWN or MatchState:GetAttribute("SitePair") == pair then
+			return -- (already picked this round, a teammate just did, or it's already this site)
+		end
+		sitePicked[player] = true
+		lastSitePick = os.clock()
 		MatchState:SetAttribute("SitePair", pair)
 		placeTeam(player.Team.Name, "Defend")
 	end)

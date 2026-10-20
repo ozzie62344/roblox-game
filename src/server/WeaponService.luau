@@ -526,6 +526,9 @@ local function onReload(player: Player)
 	if not data or data.reloadEnd or data.ammo >= data.weapon.MagazineSize + data.weapon.Chamber then
 		return
 	end
+	if player.Character and player.Character:GetAttribute("Downed") then
+		return -- (downed: no gun, DBNOService)
+	end
 	local weapon = data.weapon
 	local empty = data.ammo <= 0
 	local duration = if empty then weapon.EmptyReloadTime else weapon.ReloadTime
