@@ -61,6 +61,9 @@ local RAPPEL_HOP = 8 -- studs: the rope moves you in through windows and up onto
 local RAPPEL_GRACE = 1.5 -- seconds after letting go of the rope that those hops are still fine
 local VAULT_HOP = 6 -- studs: a vault carries you over cover / through a window in one go...
 local VAULT_GRACE = 1 -- ...while the "Vaulting" attribute is up (PoseService) and this long after
+-- A vault goes over cover up to 4.5 studs: a ray this far above the waist clears anything
+-- vaultable, so a wall it hits is a real wall, vault or not (vault spam can't switch noclip off)
+local VAULT_CLEARANCE = Vector3.new(0, 2.2, 0)
 local MAX_RAY_SKIPS = 8 -- see-through things one noclip ray steps past before giving up (= fine)
 
 -- Grace periods (no checks)
@@ -93,7 +96,7 @@ type Track = {
 	rappelSeen: number, -- os.clock() the rope was last up
 	vaultSeen: number, -- os.clock() they were last mid-vault
 	teleportStamp: any, -- the "ServerTeleport" attribute when we last looked
-	pendingNoclip: { from: Vector3, detail: string }?, -- seen last check, acted on this one
+	pendingNoclip: { from: Vector3, detail: string, lowOnly: boolean }?, -- seen last check, acted on this one (lowOnly: only through low cover, which a vault explains)
 }
 
 local tracks: { [Player]: Track } = {}
@@ -253,7 +256,10 @@ local function isRappelling(character: Model, root: BasePart): boolean
 	params.FilterType = Enum.RaycastFilterType.Include
 	params.FilterDescendantsInstances = roots
 	for _, direction in { Vector3.xAxis, -Vector3.xAxis, Vector3.zAxis, -Vector3.zAxis } do
-		if Workspace:Raycast(root.Position, direction * RAPPEL_WALL_REACH, params) then
+		-- (against an outside wall or window, like the rope itself: PoseService)
+		local hit = Workspace:Raycast(root.Position, direction * RAPPEL_WALL_REACH, params)
+		local parent = hit and hit.Instance.Parent
+		if hit and (hit.Instance.Name == "ExteriorWall" or (parent ~= nil and parent.Name == "Glass")) then
 			return true
 		end
 	end
@@ -358,13 +364,17 @@ local function checkPlayer(player: Player, now: number)
 	local vaultTime = now - track.vaultSeen < VAULT_GRACE
 	local pending = track.pendingNoclip
 	track.pendingNoclip = nil
-	if pending and not ropeTime and not vaultTime then
+	-- (a vault only ever excuses going over low cover, never through a full-height wall)
+	if pending and not ropeTime and not (vaultTime and pending.lowOnly) then
 		violation(player, track, "Noclip", pending.from, pending.detail)
 		return
 	end
-	local ropeHop = (ropeTime and step.Magnitude <= RAPPEL_HOP) or (vaultTime and step.Magnitude <= VAULT_HOP)
+	local ropeHop = ropeTime and step.Magnitude <= RAPPEL_HOP
 	if step.Magnitude >= NOCLIP_MIN_STEP and not ropeHop and throughWall(previous.pos, position) then
-		track.pendingNoclip = { from = previous.pos, detail = `through the map, {math.floor(step.Magnitude)} studs` }
+		local lowOnly = step.Magnitude <= VAULT_HOP and not throughWall(previous.pos + VAULT_CLEARANCE, position + VAULT_CLEARANCE)
+		if not (vaultTime and lowOnly) then
+			track.pendingNoclip = { from = previous.pos, detail = `through the map, {math.floor(step.Magnitude)} studs`, lowOnly = lowOnly }
+		end
 	end
 
 	-- Speed over the window (the oldest sample kept is the last one at least a window old)
