@@ -38,6 +38,7 @@ local TeleportService = game:GetService("TeleportService")
 local CustomMatch = require(ReplicatedStorage.Shared.CustomMatch)
 local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local MapService = require(script.Parent.MapService)
+local MatchTicket = require(script.Parent.MatchTicket)
 local Matchmaker = require(script.Parent.Matchmaker)
 local PartyService = require(script.Parent.PartyService)
 local RoundService = require(script.Parent.RoundService)
@@ -524,9 +525,12 @@ local function start(player: Player)
 	end
 	local ok, err = pcall(function()
 		local options = Instance.new("TeleportOptions")
-		options.ReservedServerAccessCode = TeleportService:ReserveServer(game.PlaceId)
+		local accessCode, privateServerId = TeleportService:ReserveServer(game.PlaceId)
+		options.ReservedServerAccessCode = accessCode
 		-- Custom + Settings: RoundService plays it the host's way, with no rewards. Players: who's
 		-- coming (spectators too). Teams: who plays where. Parties: so they come back together.
+		-- (the match server takes all but Parties from the ticket, which players can't change)
+		MatchTicket.Write(privateServerId, { Custom = true, Players = ids, Teams = teams, Settings = table.clone(lobby.settings) })
 		options:SetTeleportData({
 			Custom = true,
 			Players = ids,

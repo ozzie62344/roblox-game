@@ -25,6 +25,7 @@ local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local Progression = require(ReplicatedStorage.Shared.Progression)
 local Ranked = require(ReplicatedStorage.Shared.Ranked)
 local PartyService = require(script.Parent.PartyService)
+local MatchTicket = require(script.Parent.MatchTicket)
 local PlayerData = require(script.Parent.PlayerData)
 local RoundService = require(script.Parent.RoundService)
 
@@ -184,9 +185,13 @@ local function launch(mode: string, sides: { { Unit } }, ranked: boolean)
 	end
 	local options = Instance.new("TeleportOptions")
 	local ok, err = pcall(function()
-		options.ReservedServerAccessCode = TeleportService:ReserveServer(game.PlaceId)
+		local accessCode, privateServerId = TeleportService:ReserveServer(game.PlaceId)
+		options.ReservedServerAccessCode = accessCode
 		-- Teams: who plays where (RoundService). Parties: so they come back together (PartyService).
-		-- Ranked: the match is rated (RankedService).
+		-- Ranked: the match is rated (RankedService). The match server takes these from the ticket,
+		-- which players can't change (MatchTicket); without one it plays unrated.
+		local ticket = { Mode = mode, Players = ids, Teams = teams, Ranked = ranked }
+		MatchTicket.Write(privateServerId, ticket)
 		options:SetTeleportData({ Mode = mode, Players = ids, Teams = teams, Parties = PartyService.ForTeleport(present), Ranked = ranked })
 		for _, player in present do
 			travelling[player] = { options = options, mode = mode, ranked = ranked, unit = unitOfPlayer[player], retried = false }

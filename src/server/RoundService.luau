@@ -34,6 +34,7 @@ local CameraService = require(script.Parent.CameraService)
 local DroneService = require(script.Parent.DroneService)
 local LoadoutService = require(script.Parent.LoadoutService)
 local MapService = require(script.Parent.MapService)
+local MatchTicket = require(script.Parent.MatchTicket)
 local MatchStats = require(script.Parent.MatchStats)
 local ObjectiveService = require(script.Parent.ObjectiveService)
 local PartyService = require(script.Parent.PartyService)
@@ -735,8 +736,20 @@ local function onPlayerAdded(player: Player)
 		onCharacterAdded(player, character)
 	end)
 
-	-- Match server: Matchmaker's teleport data says the mode, who's coming and on which team
-	local data = if IS_MATCH_SERVER then player:GetJoinData().TeleportData else nil
+	-- Match server: the lobby's ticket says the mode, who's coming and on which team (MatchTicket:
+	-- players can't change it). No ticket (MemoryStore down): the player's teleport data, which a
+	-- modified client could have changed, so then it's never ranked.
+	local data = nil
+	if IS_MATCH_SERVER then
+		data = MatchTicket.Read(game.PrivateServerId)
+		if not data then
+			local untrusted = player:GetJoinData().TeleportData
+			if typeof(untrusted) == "table" then
+				data = table.clone(untrusted)
+				data.Ranked = nil
+			end
+		end
+	end
 	if typeof(data) == "table" and typeof(data.Players) == "table" and not MatchState:GetAttribute("Expected") then
 		if data.Custom == true then
 			-- A custom match (CustomMatchService): the host's settings, never ranked, and it can be
