@@ -19,6 +19,7 @@ local TeleportService = game:GetService("TeleportService")
 local LoadingScreen = require(ReplicatedFirst:WaitForChild("LoadingScreen"))
 local CustomMatch = require(ReplicatedStorage.Shared.CustomMatch)
 local state = require(script.Parent.Parent.PlayerState)
+local LobbyIntro = require(script.Parent.LobbyIntro)
 local MenuStyle = require(script.Parent.MenuStyle)
 local Tutorial = require(script.Parent.Tutorial)
 
@@ -102,12 +103,7 @@ local function isHost(): boolean
 	return view ~= nil and view.Host == player
 end
 
-local function inLobbyMenu(): boolean
-	return MatchState:GetAttribute("ServerKind") == "Lobby"
-		and player:GetAttribute("Location") == "Lobby"
-		and not state.inPractice
-		and MatchState:GetAttribute("Phase") == "Waiting"
-end
+local inLobbyMenu = LobbyIntro.InLobby
 
 -- Another lobby menu has the screen
 local function otherMenuOpen(): boolean
@@ -684,6 +680,7 @@ local function build()
 	buttonHolder.BackgroundTransparency = 1
 	buttonHolder.Visible = false
 	buttonHolder.Parent = gui
+	LobbyIntro.Animate(buttonHolder)
 	MenuStyle.FitToScreen(buttonHolder, Vector2.new(900, 520))
 	lobbyButton = MenuStyle.Button(buttonHolder, "Custom", CUSTOM_COLOR, UDim2.fromScale(1, 1), UDim2.new())
 	lobbyButton.Activated:Connect(CustomMatchMenu.Open)
@@ -700,7 +697,7 @@ local function update()
 	if screenOpen and not lobby then
 		CustomMatchMenu.Close() -- a match is starting
 	end
-	buttonHolder.Visible = lobby and not screenOpen and not otherMenuOpen() and not player:GetAttribute("Queued")
+	buttonHolder.Visible = LobbyIntro.Shown("Custom") and not screenOpen and not otherMenuOpen() and not player:GetAttribute("Queued")
 	-- Under the TUTORIAL button while it's showing (a gap that shrinks with the screen fit), in its
 	-- place once it's gone (finished the tutorial, or played a few matches)
 	local scale = buttonHolder:FindFirstChildOfClass("UIScale")

@@ -22,6 +22,7 @@ local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local Progression = require(ReplicatedStorage.Shared.Progression)
 local Ranked = require(ReplicatedStorage.Shared.Ranked)
 local state = require(script.Parent.Parent.PlayerState)
+local LobbyIntro = require(script.Parent.LobbyIntro)
 local MenuStyle = require(script.Parent.MenuStyle)
 local PartyMenu = require(script.Parent.PartyMenu)
 local RankBadge = require(script.Parent.RankBadge)
@@ -293,6 +294,7 @@ local function build()
 	playHolder.BackgroundTransparency = 1
 	playHolder.Parent = gui
 	MenuStyle.FitToScreen(playHolder, Vector2.new(740, 500))
+	LobbyIntro.Animate(playHolder)
 	playButton = MenuStyle.Button(playHolder, "Quick Match", MenuStyle.Green, UDim2.new(0, 330, 1, 0), UDim2.new())
 	playButton.Activated:Connect(function()
 		if waitingFor() then
@@ -469,18 +471,17 @@ end
 
 local function update()
 	local phase = MatchState:GetAttribute("Phase")
-	local inLobby = MatchState:GetAttribute("ServerKind") == "Lobby" and player:GetAttribute("Location") == "Lobby" and phase == "Waiting"
-		and not state.inPractice -- (the practice range plays like a match: lobby menus hide)
+	local inLobby = LobbyIntro.InLobby() -- (the practice range plays like a match: lobby menus hide)
 	if found and (phase ~= "Waiting" or os.clock() - found.at > 30) then
 		found = nil -- (Studio plays the match here instead of teleporting; or the teleport never came)
 	end
-	gui.Enabled = inLobby or found ~= nil
+	gui.Enabled = (inLobby and LobbyIntro.Shown("MainMenu")) or found ~= nil -- (comes in first, LobbyIntro)
 	local leader = waitingFor()
 	if not inLobby or leader then
 		modesOpen = false
 	end
 	state.modesOpen = modesOpen
-	playHolder.Visible = not modesOpen and not found
+	playHolder.Visible = not modesOpen and not found and inLobby and LobbyIntro.Shown("MainMenu")
 	modesScreen.Visible = modesOpen
 
 	-- Party: the others wait for the leader; modes too small for the party grey out

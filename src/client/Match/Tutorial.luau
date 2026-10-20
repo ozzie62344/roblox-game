@@ -23,6 +23,7 @@ local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local state = require(script.Parent.Parent.PlayerState)
+local LobbyIntro = require(script.Parent.LobbyIntro)
 local MenuStyle = require(script.Parent.MenuStyle)
 local Scoreboard = require(script.Parent.Scoreboard)
 
@@ -130,12 +131,7 @@ local function rootPart(): BasePart?
 end
 
 -- The lobby menu is on screen: a lobby server, in the lobby (not the range), between matches
-local function inLobbyMenu(): boolean
-	return MatchState:GetAttribute("ServerKind") == "Lobby"
-		and player:GetAttribute("Location") == "Lobby"
-		and not state.inPractice
-		and MatchState:GetAttribute("Phase") == "Waiting"
-end
+local inLobbyMenu = LobbyIntro.InLobby
 
 local function menuOpen(): boolean
 	return state.shopOpen or state.partyOpen or state.modesOpen or state.settingsOpen or state.modsOpen
@@ -602,6 +598,7 @@ local function makePrompt()
 	MenuStyle.Corner(prompt, UDim.new(0, 16))
 	MenuStyle.Rim(prompt, MenuStyle.Gold, 4)
 	MenuStyle.FitToScreen(prompt, Vector2.new(480, 280))
+	LobbyIntro.Animate(prompt, nil, true)
 
 	MenuStyle.Text(prompt, "NEW HERE?", UDim2.new(1, -40, 0, 54), UDim2.new(0.5, 0, 0, 16), Vector2.new(0.5, 0))
 	MenuStyle.Text(prompt, "Take the 2-minute tutorial", UDim2.new(1, -60, 0, 28), UDim2.new(0.5, 0, 0, 76), Vector2.new(0.5, 0))
@@ -632,6 +629,7 @@ local function makeButton()
 	buttonHolder.BackgroundTransparency = 1
 	buttonHolder.Visible = false
 	buttonHolder.Parent = gui
+	LobbyIntro.Animate(buttonHolder)
 	MenuStyle.FitToScreen(buttonHolder, Vector2.new(900, 520))
 	local button = MenuStyle.Button(buttonHolder, "Tutorial", Color3.fromRGB(70, 140, 150), UDim2.fromScale(1, 1), UDim2.new())
 	button.Activated:Connect(Tutorial.Begin)
@@ -715,15 +713,20 @@ local function update(dt: number)
 
 	-- NEW HERE? once, for a new player, a moment after they reach the lobby
 	local seen = player:GetAttribute("TutorialSeen")
-	if not prompted and not running and seen == false and lobbyMenu and lobbyTime >= PROMPT_DELAY and not menuOpen() then
+	if not prompted and not running and seen == false and lobbyMenu and lobbyTime >= PROMPT_DELAY and not menuOpen() and LobbyIntro.Shown("TutorialPrompt") and LobbyIntro.PopupFree("Tutorial") then
 		prompted = true
 		prompt.Visible = true
 	end
 	if prompt.Visible and (not lobbyMenu or seen ~= false) then
 		prompt.Visible = false -- (a match is starting, or another server said they've seen it)
 	end
+	if prompt.Visible then
+		LobbyIntro.OpenPopup("Tutorial") -- (the daily reward waits until this is answered)
+	else
+		LobbyIntro.ClosePopup("Tutorial")
+	end
 
-	buttonHolder.Visible = lobbyMenu and not running and not prompt.Visible and not menuOpen() and not player:GetAttribute("Queued")
+	buttonHolder.Visible = LobbyIntro.Shown("Tutorial") and not running and not prompt.Visible and not menuOpen() and not player:GetAttribute("Queued")
 		and not retired()
 
 	if not running then

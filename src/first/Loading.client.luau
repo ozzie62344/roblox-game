@@ -33,4 +33,5 @@ while os.clock() - started < MAX_TIME and not (ready() and os.clock() - started 
 end
 LoadingScreen.SetProgress(gui, 1)
 task.wait(0.25)
+player:SetAttribute("LoadingDone", true) -- (local only: the lobby's menus start coming in, LobbyIntro)
 LoadingScreen.FadeOut(gui)

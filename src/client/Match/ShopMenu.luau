@@ -33,6 +33,7 @@ local GunModels = require(script.Parent.Parent.Combat.GunModels)
 local Stickers = require(script.Parent.Parent.Combat.Stickers)
 local state = require(script.Parent.Parent.PlayerState)
 local ChatTags = require(script.Parent.ChatTags)
+local LobbyIntro = require(script.Parent.LobbyIntro)
 local MenuStyle = require(script.Parent.MenuStyle)
 
 local MatchState = ReplicatedStorage:WaitForChild("MatchState")
@@ -958,6 +959,7 @@ local function build()
 	lobbyWidget.BackgroundTransparency = 1
 	lobbyWidget.Visible = false
 	lobbyWidget.Parent = gui
+	LobbyIntro.Animate(lobbyWidget)
 	MenuStyle.FitToScreen(lobbyWidget, Vector2.new(900, 520))
 	lobbyCredits = creditsPill(lobbyWidget, Vector2.new(200, 50), UDim2.new(), Vector2.zero)
 	local shopButton = MenuStyle.Button(lobbyWidget, "Shop", MenuStyle.Gold, UDim2.fromOffset(200, 80), UDim2.fromOffset(0, 58))
@@ -1195,12 +1197,7 @@ local function bought(id: string)
 	end)
 end
 
-local function inLobbyMenu(): boolean
-	return MatchState:GetAttribute("ServerKind") == "Lobby"
-		and player:GetAttribute("Location") == "Lobby"
-		and not state.inPractice
-		and MatchState:GetAttribute("Phase") == "Waiting"
-end
+local inLobbyMenu = LobbyIntro.InLobby
 
 function ShopMenu.Open()
 	if state.shopOpen then
@@ -1261,7 +1258,7 @@ function ShopMenu.Start()
 		if state.shopOpen and not lobby then
 			ShopMenu.Close() -- a match is starting
 		end
-		lobbyWidget.Visible = lobby and not state.shopOpen and not state.modesOpen
+		lobbyWidget.Visible = LobbyIntro.Shown("Shop") and not state.shopOpen and not state.modesOpen
 		if state.shopOpen then
 			turnPreview(dt)
 		end

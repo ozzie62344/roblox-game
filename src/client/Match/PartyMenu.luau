@@ -16,6 +16,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local state = require(script.Parent.Parent.PlayerState)
+local LobbyIntro = require(script.Parent.LobbyIntro)
 local MenuStyle = require(script.Parent.MenuStyle)
 
 local MatchState = ReplicatedStorage:WaitForChild("MatchState")
@@ -109,12 +110,7 @@ function PartyMenu.Members(): { Player }
 	return partyOf(player)
 end
 
-local function inLobbyMenu(): boolean
-	return MatchState:GetAttribute("ServerKind") == "Lobby"
-		and player:GetAttribute("Location") == "Lobby"
-		and not state.inPractice
-		and MatchState:GetAttribute("Phase") == "Waiting"
-end
+local inLobbyMenu = LobbyIntro.InLobby
 
 -- Smaller text needs a thinner outline than MenuStyle's chunky one
 local function thinOutline(label: TextLabel, thickness: number)
@@ -468,6 +464,7 @@ local function build()
 	lobbyWidget.BackgroundTransparency = 1
 	lobbyWidget.Visible = false
 	lobbyWidget.Parent = gui
+	LobbyIntro.Animate(lobbyWidget)
 	MenuStyle.FitToScreen(lobbyWidget, Vector2.new(900, 520))
 	local pill = Instance.new("Frame")
 	pill.Size = UDim2.fromOffset(200, 50)
@@ -522,7 +519,7 @@ local function update()
 	if state.partyOpen and not lobby then
 		PartyMenu.Close() -- a match is starting
 	end
-	lobbyWidget.Visible = lobby and not state.partyOpen and not state.shopOpen and not state.modesOpen
+	lobbyWidget.Visible = LobbyIntro.Shown("Party") and not state.partyOpen and not state.shopOpen and not state.modesOpen
 	refresh()
 
 	-- Invites: drop the ones that ran out or whose sender left; show the oldest

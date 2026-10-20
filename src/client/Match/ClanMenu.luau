@@ -24,6 +24,7 @@ local Progression = require(ReplicatedStorage.Shared.Progression)
 local Ranked = require(ReplicatedStorage.Shared.Ranked)
 local state = require(script.Parent.Parent.PlayerState)
 local ChatTags = require(script.Parent.ChatTags)
+local LobbyIntro = require(script.Parent.LobbyIntro)
 local MenuStyle = require(script.Parent.MenuStyle)
 
 local MatchState = ReplicatedStorage:WaitForChild("MatchState")
@@ -439,12 +440,7 @@ local function isStaff(): boolean
 	return role == "Owner" or role == "Officer"
 end
 
-local function inLobbyMenu(): boolean
-	return MatchState:GetAttribute("ServerKind") == "Lobby"
-		and player:GetAttribute("Location") == "Lobby"
-		and not state.inPractice
-		and MatchState:GetAttribute("Phase") == "Waiting"
-end
+local inLobbyMenu = LobbyIntro.InLobby
 
 -- "LV 10+", "GOLD+" (nil: no rank needed)
 local function requirementTexts(minLevel: number, minRank: number): (string, string?)
@@ -1281,6 +1277,7 @@ local function build()
 	widget.BackgroundTransparency = 1
 	widget.Visible = false
 	widget.Parent = gui
+	LobbyIntro.Animate(widget)
 	MenuStyle.FitToScreen(widget, Vector2.new(900, 520))
 	local pill = Instance.new("Frame")
 	pill.Size = UDim2.fromOffset(130, 50)
@@ -1322,7 +1319,7 @@ local function update()
 	if screenOpen and not lobby then
 		ClanMenu.Close() -- a match is starting
 	end
-	widget.Visible = lobby and not screenOpen and not state.shopOpen and not state.modesOpen and not state.partyOpen
+	widget.Visible = LobbyIntro.Shown("Clan") and not screenOpen and not state.shopOpen and not state.modesOpen and not state.partyOpen
 	if screenOpen then
 		local key = renderKey()
 		if key ~= shownKey then

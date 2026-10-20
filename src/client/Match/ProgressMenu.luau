@@ -31,6 +31,7 @@ local Sounds = require(ReplicatedStorage.Shared.Sounds)
 local Effects = require(script.Parent.Parent.Combat.Effects)
 local MusicController = require(script.Parent.Parent.Audio.MusicController)
 local state = require(script.Parent.Parent.PlayerState)
+local LobbyIntro = require(script.Parent.LobbyIntro)
 local MenuStyle = require(script.Parent.MenuStyle)
 
 local MatchState = ReplicatedStorage:WaitForChild("MatchState")
@@ -169,12 +170,7 @@ local function untilTomorrow(): string
 	return if hours > 0 then `{hours}H {minutes}M` else `{math.max(minutes, 1)}M`
 end
 
-local function inLobbyMenu(): boolean
-	return MatchState:GetAttribute("ServerKind") == "Lobby"
-		and player:GetAttribute("Location") == "Lobby"
-		and not state.inPractice
-		and MatchState:GetAttribute("Phase") == "Waiting"
-end
+local inLobbyMenu = LobbyIntro.InLobby
 
 -- Items and credits unlocked going from `fromLevel` up to `toLevel` ("RED DOT · 350 CREDITS")
 local function unlockText(fromLevel: number, toLevel: number): string
@@ -817,6 +813,7 @@ local function buildWidget()
 	widget.BackgroundTransparency = 1
 	widget.Visible = false
 	widget.Parent = gui
+	LobbyIntro.Animate(widget)
 	MenuStyle.FitToScreen(widget, Vector2.new(760, 480))
 	local info = Instance.new("Frame")
 	info.AnchorPoint = Vector2.new(0, 0.5)
@@ -915,6 +912,7 @@ local function buildPopup()
 	MenuStyle.Rim(panel, GOLD, 3)
 	panel.Parent = popupBack
 	MenuStyle.FitToScreen(panel, Vector2.new(820, 380))
+	LobbyIntro.Animate(popupBack, panel, true)
 	MenuStyle.Text(panel, "DAILY REWARD", UDim2.new(1, -40, 0, 52), UDim2.new(0.5, 0, 0, 12), Vector2.new(0.5, 0))
 	popupStreak = MenuStyle.Text(panel, "", UDim2.new(1, -40, 0, 22), UDim2.new(0.5, 0, 0, 66), Vector2.new(0.5, 0))
 	popupStreak.TextColor3 = GOLD_TEXT
@@ -1047,15 +1045,21 @@ local function update(dt: number)
 		ProgressMenu.Close() -- a match is starting
 	end
 	local otherMenu = state.shopOpen or state.modesOpen or state.partyOpen
-	widget.Visible = lobby and not screenOpen and not otherMenu
+	widget.Visible = LobbyIntro.Shown("Progress") and not screenOpen and not otherMenu
 	-- Daily reward waiting: pops up by itself (once a day if you say LATER)
-	if lobby and dailyReady() and not screenOpen and not otherMenu and popupDismissedDay ~= today() then
-		if not popupBack.Visible then
+	-- (after the lobby has come in, and never over another popup: LobbyIntro)
+	if LobbyIntro.Shown("DailyPopup") and dailyReady() and not screenOpen and not otherMenu and popupDismissedDay ~= today() then
+		if not popupBack.Visible and LobbyIntro.PopupFree("Daily") then
 			popupBack.Visible = true
 			refresh()
 		end
 	elseif popupBack.Visible and (not lobby or not dailyReady() or otherMenu) then
 		popupBack.Visible = false
+	end
+	if popupBack.Visible then
+		LobbyIntro.OpenPopup("Daily")
+	else
+		LobbyIntro.ClosePopup("Daily")
 	end
 	if summaryOpen then
 		-- After the match results screen (MatchResults): the bar fills once that's out of the way

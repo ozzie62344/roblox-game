@@ -21,6 +21,7 @@ local PlayerSettings = require(ReplicatedStorage.Shared.PlayerSettings)
 local state = require(script.Parent.Parent.PlayerState)
 local ClientSettings = require(script.Parent.Parent.ClientSettings)
 local Actions = require(script.Parent.Parent.Input.Actions)
+local LobbyIntro = require(script.Parent.LobbyIntro)
 local MenuStyle = require(script.Parent.MenuStyle)
 local ModsMenu = require(script.Parent.ModsMenu)
 
@@ -577,6 +578,7 @@ local function buildHud()
 	lobbyHolder.BackgroundTransparency = 1
 	lobbyHolder.Visible = false
 	lobbyHolder.Parent = hud
+	LobbyIntro.Animate(lobbyHolder)
 	MenuStyle.FitToScreen(lobbyHolder, Vector2.new(900, 520))
 	local lobbyButton = MenuStyle.Button(lobbyHolder, "Settings", Color3.fromRGB(100, 110, 130), UDim2.fromScale(1, 1), UDim2.new())
 	lobbyButton.Activated:Connect(SettingsMenu.Open)
@@ -594,12 +596,7 @@ local function buildHud()
 	statsLabel.Parent = hud
 end
 
-local function inLobbyMenu(): boolean
-	return MatchState:GetAttribute("ServerKind") == "Lobby"
-		and player:GetAttribute("Location") == "Lobby"
-		and not state.inPractice
-		and MatchState:GetAttribute("Phase") == "Waiting"
-end
+local inLobbyMenu = LobbyIntro.InLobby
 
 function SettingsMenu.Start()
 	ClientSettings.Start()
@@ -645,7 +642,7 @@ function SettingsMenu.Start()
 	local frames, since = 0, os.clock()
 	RunService.RenderStepped:Connect(function()
 		local lobby = inLobbyMenu()
-		lobbyHolder.Visible = lobby and not (state.settingsOpen or state.shopOpen or state.modesOpen or state.partyOpen)
+		lobbyHolder.Visible = LobbyIntro.Shown("Settings") and not (state.settingsOpen or state.shopOpen or state.modesOpen or state.partyOpen)
 		gear.Visible = not lobby and not state.touchControls and not state.settingsOpen
 		statsLabel.AnchorPoint = if state.touchControls then Vector2.zero else Vector2.new(0, 1)
 		statsLabel.Position = if state.touchControls then UDim2.fromOffset(64, 44) else UDim2.new(0, 40, 1, -6)
