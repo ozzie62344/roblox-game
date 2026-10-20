@@ -490,6 +490,9 @@ function ObjectiveService.Start()
 		if action ~= "Begin" or kind == "Barricade" or kind == "Reinforce" or kind == "Unbarricade" or kind == "Revive" or interactors[player] then
 			return
 		end
+		if player:GetAttribute("Interaction") ~= nil then
+			return -- already busy reinforcing, barricading or reviving (one hold at a time)
+		end
 		local kind = if player.Team == attackTeam then "Plant" else "Disable"
 		if not canInteract(player, kind) then
 			return
