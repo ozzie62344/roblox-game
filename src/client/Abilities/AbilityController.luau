@@ -1,7 +1,6 @@
 -- X uses your active ability: your operator's gadget; B your secondary gadget (frag, claymore,
--- nitro cell...) (Recon Pulse, Ghost Step, Deployable Cover
--- and the Siege gadgets; the heartbeat sensor and barbed wire draw in GadgetEffects).
--- Also draws ability effects the server sends: reveals, pulse waves (scan / EMP), "scanned"
+-- nitro cell...): Deployable Cover and the Siege gadgets; the heartbeat sensor and barbed wire draw in GadgetEffects).
+-- Also draws ability effects the server sends: reveals (proximity alarm), pulse waves (EMP), "scanned"
 -- warnings and gadget status messages ("JAMMED", "CHARGE SET"...).
 
 local Debris = game:GetService("Debris")
@@ -204,9 +203,6 @@ function AbilityController.Start()
 			local position = ...
 			local sound = Sounds.ClaymoreTrip
 			Sound3D.Play(sound.Id, position, { volume = sound.Volume, range = sound.Range, pitch = sound.Pitch })
-		elseif kind == "GhostStep" then
-			local duration = ...
-			Hud.ShowStatus("GHOST STEP — SILENT", duration, Color3.fromRGB(150, 200, 255))
 		end
 	end)
 end

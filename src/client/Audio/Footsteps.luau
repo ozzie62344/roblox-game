@@ -125,14 +125,6 @@ local function update(dt: number)
 		local grounded = ground ~= nil
 		local feet = root.Position - Vector3.new(0, humanoid.HipHeight + root.Size.Y / 2, 0)
 
-		-- Ghost Step: no sounds at all
-		if character:GetAttribute("Silent") then
-			tracker.grounded = grounded
-			tracker.lastVerticalSpeed = velocity.Y
-			tracker.distance = 0
-			continue
-		end
-
 		-- Landing from a fall (there's no jumping; vaults have their own sounds)
 		if not tracker.grounded and grounded and tracker.lastVerticalSpeed < -Sounds.Land.MinFallSpeed then
 			Sound3D.Play(Sounds.Land.Id, feet, { volume = Sounds.Land.Volume, range = Sounds.Land.Range })
@@ -254,12 +246,12 @@ function Footsteps.VaultLand(feet: Vector3, own: boolean)
 	})
 end
 
--- Someone else's vault (their "Vaulting" attribute), unless Ghost Step has them silent
+-- Someone else's vault (their "Vaulting" attribute)
 local function watchVaults(character: Model)
 	character:GetAttributeChangedSignal("Vaulting"):Connect(function()
 		local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 		local humanoid = character:FindFirstChildOfClass("Humanoid")
-		if not root or not humanoid or character:GetAttribute("Silent") or Players:GetPlayerFromCharacter(character) == Players.LocalPlayer then
+		if not root or not humanoid or Players:GetPlayerFromCharacter(character) == Players.LocalPlayer then
 			return
 		end
 		local feet = root.Position - Vector3.new(0, humanoid.HipHeight + root.Size.Y / 2, 0)

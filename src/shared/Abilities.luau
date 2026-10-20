@@ -21,25 +21,6 @@ export type Ability = {
 }
 
 local Abilities: { [string]: Ability } = {
-	ReconPulse = {
-		Name = "Recon Pulse",
-		Key = "X",
-		Kind = "Active",
-		Side = "Attack", -- finding the defenders
-		Charges = 2,
-		Duration = 3,
-		Radius = 60,
-		Description = "Reveal nearby enemies through walls to your team. They know they've been scanned.",
-	},
-	GhostStep = {
-		Name = "Ghost Step",
-		Key = "X",
-		Kind = "Active",
-		Side = "Defend", -- roaming without being heard
-		Charges = 2,
-		Duration = 8,
-		Description = "Your footsteps, vaults and landings are silent for 8 seconds.",
-	},
 	DeployableCover = {
 		Name = "Deployable Cover",
 		Key = "X",

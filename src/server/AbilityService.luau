@@ -1,4 +1,4 @@
--- Active abilities (used with X): Recon Pulse, Ghost Step, Deployable Cover here, and the Siege
+-- Active abilities (X, and B for secondaries): Deployable Cover here, and the Siege
 -- gadgets in GadgetService (breach charges, thermite, EMP, grenades, heartbeat sensor, shock wire,
 -- jammer, armor panel, barbed wire, impact grenades). Your ability is your operator's gadget
 -- (LoadoutService). Charges are tracked here and mirrored to the "AbilityCharges" player attribute
@@ -34,24 +34,6 @@ local function getDeployables(): Folder
 	return folder :: Folder
 end
 
--- Everyone is an enemy in free roam; in a match, the other team is
-local function isEnemy(player: Player, other: Player): boolean
-	if other == player then
-		return false
-	end
-	if player.Neutral or other.Neutral then
-		return true
-	end
-	return other.Team ~= player.Team
-end
-
-local function teamOf(player: Player): { Player }
-	if player.Neutral or not player.Team then
-		return { player }
-	end
-	return player.Team:GetPlayers()
-end
-
 local function aliveRoot(model: Model?): BasePart?
 	local humanoid = model and model:FindFirstChildOfClass("Humanoid")
 	local root = model and model:FindFirstChild("HumanoidRootPart") :: BasePart?
@@ -66,54 +48,6 @@ end
 type Handler = (player: Player, character: Model, root: BasePart, ability: Abilities.Ability, look: Vector3, charges: string) -> boolean
 
 local handlers: { [string]: Handler } = {
-	-- Reveal enemies within range (through walls) to the user's whole team
-	ReconPulse = function(player, character, root, ability)
-		local radius = ability.Radius or 60
-		local duration = ability.Duration or 3
-		local revealed: { Model } = {}
-
-		for _, other in Players:GetPlayers() do
-			local otherRoot = aliveRoot(other.Character)
-			if otherRoot and isEnemy(player, other) and (otherRoot.Position - root.Position).Magnitude <= radius then
-				table.insert(revealed, other.Character :: Model)
-				AbilityEffect:FireClient(other, "Scanned")
-			end
-		end
-		local dummies = Workspace:FindFirstChild("Dummies")
-		if dummies then
-			for _, dummy in dummies:GetChildren() do
-				local dummyRoot = aliveRoot(dummy :: Model)
-				if dummyRoot and (dummyRoot.Position - root.Position).Magnitude <= radius then
-					table.insert(revealed, dummy :: Model)
-				end
-			end
-		end
-
-		for _, teammate in teamOf(player) do
-			AbilityEffect:FireClient(teammate, "Reveal", revealed, duration)
-		end
-		-- Everyone sees the pulse wave go out (a cue that someone just scanned)
-		AbilityEffect:FireAllClients("Pulse", root.Position, radius)
-		GadgetService.Gesture(character, "ReconPulse")
-		return true
-	end,
-
-	-- Silent footsteps for a while (Footsteps.luau checks the "Silent" attribute)
-	GhostStep = function(player, character, _root, ability)
-		local duration = ability.Duration or 8
-		local token = (character:GetAttribute("SilentToken") or 0) + 1
-		character:SetAttribute("SilentToken", token)
-		character:SetAttribute("Silent", true)
-		AbilityEffect:FireClient(player, "GhostStep", duration)
-		GadgetService.Gesture(character, "GhostStep")
-		task.delay(duration, function()
-			if character.Parent and character:GetAttribute("SilentToken") == token then
-				character:SetAttribute("Silent", false)
-			end
-		end)
-		return true
-	end,
-
 	-- Waist-high bulletproof shield the player drags up out of the ground in front of them.
 	-- Takes `Duration` seconds, during which they can't move or shoot; dying cancels it.
 	DeployableCover = function(player, character, root, ability, look)

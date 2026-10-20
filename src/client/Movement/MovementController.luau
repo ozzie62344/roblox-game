@@ -408,7 +408,7 @@ local function finishVault()
 		heightDrop = Config.CrouchHeightDrop
 		humanoid.HipHeight = standHipHeight - heightDrop
 	end
-	if plan.landed and not (root.Parent and root.Parent:GetAttribute("Silent")) then -- (Ghost Step: silent)
+	if plan.landed then
 		Footsteps.VaultLand(final - Vector3.new(0, standRootHeight(), 0), true)
 	end
 end
@@ -451,9 +451,7 @@ local function tryVault()
 	end
 	humanoid.PlatformStand = true
 	VaultRemote:FireServer(plan.duration)
-	if not (root.Parent and root.Parent:GetAttribute("Silent")) then -- (Ghost Step: silent)
-		Footsteps.VaultStart(root.Position - Vector3.new(0, standRootHeight(), 0), true)
-	end
+	Footsteps.VaultStart(root.Position - Vector3.new(0, standRootHeight(), 0), true)
 end
 
 -- Moves the root along the vault every physics step (true while vaulting)

@@ -1,6 +1,6 @@
 -- First-person hands for everything that isn't shooting: sticking gadgets on walls and floors,
--- throwing the EMP, the detonator, the recon scanner, the heartbeat sensor held up while it scans,
--- rolling out barbed wire, the ghost step wrist tap, pushing an armor panel into a doorway, planting / disabling the defuser, barricading, reinforcing and pulling up
+-- throwing grenades, the detonator, the heartbeat sensor held up while it scans,
+-- rolling out barbed wire, pushing an armor panel into a doorway, planting / disabling the defuser, barricading, reinforcing and pulling up
 -- deployable cover. Two gloved arms come from your shoulders and reach (two-bone IK) for points
 -- in the world or in front of your eyes, holding small props; the gun is put away meanwhile
 -- (WeaponController hides it while state.gesturing / interacting / deploying).
@@ -46,8 +46,6 @@ HandsAnimator.Gestures = {
 	BulletproofCamera = { move = "place", prop = "battery", time = 0.6 },
 	ProximityAlarm = { move = "place", prop = "battery", time = 0.55 },
 	Detonate = { move = "detonate", prop = "detonator", time = 0.6 },
-	ReconPulse = { move = "scan", prop = "scanner", time = 0.8 },
-	GhostStep = { move = "wrist", prop = "band", time = 0.6 },
 	-- Held up for the whole scan (the server clears the gesture if it's put away early)
 	HeartbeatSensor = { move = "sensor", prop = "sensor", time = Abilities.HeartbeatSensor.Duration or 7 },
 } :: { [string]: { move: string, prop: string?, time: number } }
@@ -192,15 +190,6 @@ function HandsAnimator.Sample(kind: string, ctx: Context): (Vector3?, Vector3?, 
 			props.detonator = { hand = "Right", offset = CFrame.new(0, 0.12, -0.2) * CFrame.Angles(-math.rad(60), 0, 0) }
 		end
 		return nil, restR:Lerp(cam(0.3, -0.35 - 0.06 * squeeze, -1.05 + 0.05 * squeeze), raise), props
-	elseif move == "scan" then
-		-- Scanner up in the left hand, the right taps the screen
-		local raise = ramp(t, 0, 0.25) * (1 - ramp(t, 0.75, 1))
-		local tablet = eye * CFrame.new(-0.12, -0.32 - 0.7 * (1 - raise), -1.05) * CFrame.Angles(math.rad(25), math.rad(8), 0)
-		props.scanner = { at = tablet }
-		local tap = pulse(t, 0.3, 0.5)
-		local grip = (tablet * CFrame.new(0, -0.4, -0.08)).Position -- holding it from below
-		local press = (tablet * CFrame.new(0.34, -0.05, 0.28 - 0.2 * tap)).Position -- a finger on the screen's edge
-		return grip, restR:Lerp(press, raise * 0.9), props
 	elseif move == "sensor" then
 		-- Heartbeat sensor up in both hands, swept slowly side to side; down again at the end
 		local total = if gesture then gesture.time else 1
@@ -211,13 +200,6 @@ function HandsAnimator.Sample(kind: string, ctx: Context): (Vector3?, Vector3?, 
 		local gripL = (device * CFrame.new(-0.3, -0.12, 0.06)).Position
 		local gripR = (device * CFrame.new(0.3, -0.12, 0.06)).Position
 		return restL:Lerp(gripL, raise), restR:Lerp(gripR, raise), props
-	elseif move == "wrist" then
-		-- Left wrist up, the right hand taps the band on it
-		local raise = ramp(t, 0, 0.25) * (1 - ramp(t, 0.7, 1))
-		local wrist = cam(0.02, -0.42, -1.0)
-		local tap = pulse(t, 0.3, 0.5)
-		props.band = { hand = "Left", offset = CFrame.new(0, 0, 0.18) }
-		return restL:Lerp(wrist, raise), restR:Lerp(wrist + side * 0.32 + up * (0.16 - 0.1 * tap), raise), props
 	elseif kind == "Plant" then
 		-- Carry the defuser down, set it on the floor, type the code in
 		local ground = ctx.ground or cam(0, -4, -1.5)
@@ -420,9 +402,6 @@ local PROP_BUILDERS: { [string]: (Model) -> () } = {
 	scanner = function(m)
 		newPart(m, Vector3.new(0.75, 0.5, 0.06), DARK, Enum.Material.Plastic)
 		newPart(m, Vector3.new(0.65, 0.4, 0.01), Color3.fromRGB(255, 90, 90), Enum.Material.Neon).CFrame = CFrame.new(0, 0, 0.035)
-	end,
-	band = function(m)
-		newPart(m, Vector3.new(0.36, 0.36, 0.1), Color3.fromRGB(150, 200, 255), Enum.Material.Neon)
 	end,
 	defuser = function(m) -- the attackers' device (looks like the planted one, ObjectiveService)
 		newPart(m, Vector3.new(1.0, 0.4, 0.7), DARK, Enum.Material.Metal)
