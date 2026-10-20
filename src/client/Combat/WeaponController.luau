@@ -120,6 +120,8 @@ local function randomPitch(): number
 	return 1 + random:NextNumber(-variation, variation)
 end
 
+local reloadSound: (string, Weapons.Weapon) -> (string, number, number)
+
 local function updateAmmoHud()
 	if unarmed then
 		Hud.SetAmmoText("KNIFE")
@@ -153,6 +155,17 @@ local function updateLoadoutHud()
 	Hud.SetLoadout(if unarmed then "Knife" else weapon.Name, abilityText)
 end
 
+-- The sound for one moment of a reload (ReloadAnimations' event name): id, volume, pitch. Events
+-- with no sound of their own use the gun's ReloadSound.
+function reloadSound(eventName: string, gun: Weapons.Weapon): (string, number, number)
+	local event = Sounds.Guns.ReloadEvents[eventName]
+	local jitter = 0.95 + random:NextNumber() * 0.1
+	if not event then
+		return Sounds.Pick(gun.ReloadSound), Sounds.Guns.ReloadVolume, jitter
+	end
+	return Sounds.Pick(event.Set), Sounds.Guns.ReloadVolume * event.Volume, event.Pitch * jitter
+end
+
 -- The gun in your hands, in the skin you have on it (shop)
 local function buildViewmodel()
 	if viewmodel then
@@ -162,9 +175,11 @@ local function buildViewmodel()
 	local mods = Attachments.For(player, weapon.Name)
 	viewmodelMods = Attachments.Key(mods)
 	viewmodel = Viewmodel.new(weapon, viewmodelSkin, mods)
-	-- Reload sounds play at the matching moments of the animation (mag out, mag in, bolt...)
-	viewmodel.OnAnimationEvent = function(_eventName: string)
-		Effects.Sound(Sounds.Pick(weapon.ReloadSound), nil, Sounds.Guns.ReloadVolume, 0.95 + random:NextNumber() * 0.15)
+	-- Reload sounds play at the matching moments of the animation, each its own (mag out, mag in,
+	-- bolt...: Sounds.Guns.ReloadEvents)
+	viewmodel.OnAnimationEvent = function(eventName: string)
+		local id, volume, pitch = reloadSound(eventName, weapon)
+		Effects.Sound(id, nil, volume, pitch)
 	end
 end
 
@@ -567,7 +582,7 @@ function WeaponController.Start()
 				local volume = Sounds.Guns.OtherVolume * shooterWeapon.FireVolume
 				Sound3D.Play(Sounds.Pick(shooterWeapon.FireSound), origin, {
 					volume = volume,
-					range = Sounds.GunshotRange * (if mods.Muzzle == "Suppressor" then 0.4 else 1),
+					range = Sounds.GunshotRange * (if mods.Muzzle == "Suppressor" then Sounds.Guns.SuppressedRangeScale else 1),
 					pitch = shooterWeapon.FirePitch * randomPitch(),
 				})
 				if shooterWeapon.TailSound then
@@ -582,16 +597,25 @@ function WeaponController.Start()
 	)
 
 	-- Other players reloading nearby (a sound cue: they're vulnerable right now)
-	ReloadStarted.OnClientEvent:Connect(function(reloader: Player, weaponName: string)
-		local head = reloader.Character and reloader.Character:FindFirstChild("Head") :: BasePart?
+	-- (a mag-out as they start and a mag-in near the end, from wherever they are by then)
+	ReloadStarted.OnClientEvent:Connect(function(reloader: Player, weaponName: string, duration: number?)
 		local reloaderWeapon = Weapons[weaponName]
-		if reloader == player or not head or not reloaderWeapon then
+		if reloader == player or not reloaderWeapon then
 			return
 		end
-		Sound3D.Play(Sounds.Pick(reloaderWeapon.ReloadSound), head.Position, {
-			volume = Sounds.Guns.ReloadVolume,
-			range = Sounds.Guns.ReloadRange,
-		})
+		local character = reloader.Character
+		local reloadTime = duration or reloaderWeapon.ReloadTime
+		for _, cue in Sounds.Guns.OtherReloadCues do
+			task.delay(cue.At * reloadTime, function()
+				local head = character and character:FindFirstChild("Head") :: BasePart?
+				local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+				if not head or not humanoid or humanoid.Health <= 0 or reloader.Character ~= character then
+					return -- (died or respawned mid-reload)
+				end
+				local id, volume, pitch = reloadSound(cue.Event, reloaderWeapon)
+				Sound3D.Play(id, head.Position, { volume = volume, range = Sounds.Guns.ReloadRange, pitch = pitch })
+			end)
+		end
 	end)
 
 	-- The server says a hit landed: the hit marker (white = body, orange-red = head, amber = it

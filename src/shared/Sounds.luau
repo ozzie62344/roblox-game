@@ -5,13 +5,16 @@
 local Sounds = {
 	Footstep = {
 		Id = "rbxasset://sounds/action_footsteps_plastic.mp3",
-		-- How far away each kind of step can be heard (studs)
-		SprintRange = 110,
-		WalkRange = 60,
-		CrouchRange = 18,
-		SprintVolume = 0.9,
+		-- How far away each kind of step can be heard (studs). Siege's, at 1 stud = 0.28 m (docs/
+		-- R6_REFERENCE.md, Sound): sprint ~23 m and clearly through a floor, walk ~14 m, crouch-walk
+		-- ~7 m (a real stealth tool), prone silent
+		SprintRange = 85,
+		WalkRange = 50,
+		CrouchRange = 25,
+		SprintVolume = 0.95,
 		WalkVolume = 0.55,
-		CrouchVolume = 0.25,
+		CrouchVolume = 0.3,
+		HeavyScale = 1.2, -- 1-speed (heavy-armor) operators' steps: this much louder and further
 		-- Studs travelled between steps
 		SprintStride = 7,
 		WalkStride = 5.5,
@@ -127,6 +130,17 @@ local Sounds = {
 		Volume = 0.45,
 		Pitch = 1.5,
 	},
+	-- The round's big tells, loud enough that both teams learn them (Siege: "a reinforcement going
+	-- up, a barricade being smashed, a defuser being planted"). Set = a Sets name, or Id = a sound.
+	Events = {
+		ReinforceStart = { Set = "MetalStep", Pitch = 0.75, Volume = 1, Range = 110 }, -- the plate grabbed off the back
+		ReinforceSlam = { Set = "MetalStep", Pitch = 0.5, Volume = 1.5, Range = 140 }, -- it locks onto the wall / hatch
+		Smash = { Set = "WoodBreak", Pitch = 0.75, Volume = 1.2, Range = 180 }, -- a barricade or hatch broken, under the break
+		PlantStart = { Id = "rbxasset://sounds/electronicpingshort.wav", Pitch = 0.8, Volume = 0.9, Range = 110 }, -- the defuser's being set
+		Planted = { Set = "MetalStep", Pitch = 0.45, Volume = 1.5, Range = 260 }, -- it's down: the thunk and a long low tone
+		PlantedTone = { Id = "rbxasset://sounds/electronicpingshort.wav", Pitch = 0.5, Volume = 1, Range = 260 },
+	} :: { [string]: { Set: string?, Id: string?, Pitch: number, Volume: number, Range: number } },
+
 	-- Proximity alarm going off: the beep, loud and shrill, three quick ones a second, heard
 	-- through walls by both teams (that's the point: the attacker knows they've been caught too)
 	ProximityAlarm = {
@@ -276,7 +290,31 @@ local Sounds = {
 		OtherVolume = 1, -- other players' shots (positional, muffled through walls)
 		PitchVariation = 0.05, -- each shot's pitch is randomly ±this, so full-auto doesn't sound robotic
 		ReloadVolume = 0.6,
-		ReloadRange = 40, -- you can hear enemies reloading nearby
+		ReloadRange = 36, -- enemies reloading carry ~10 m (Siege): close enough to push them
+		SuppressedRangeScale = 0.3, -- a suppressed shot carries this share of GunshotRange (no echo either)
+		-- Each moment of a reload sounds like itself (ReloadAnimations' events): which Sets sound,
+		-- pitched and scaled. Your own play with the animation; other players' as a mag-out early
+		-- and a mag-in late (OtherReloadCues, share of their reload time)
+		ReloadEvents = {
+			MagOut = { Set = "GunFoley", Pitch = 1.15, Volume = 1 },
+			MagIn = { Set = "GunFoley", Pitch = 0.9, Volume = 1.15 },
+			Slap = { Set = "GunFoley", Pitch = 0.8, Volume = 1.2 },
+			BoltBack = { Set = "MetalStep", Pitch = 1.35, Volume = 0.7 },
+			BoltForward = { Set = "MetalStep", Pitch = 1.2, Volume = 0.8 },
+			SlideBack = { Set = "MetalStep", Pitch = 1.45, Volume = 0.65 },
+			SlideForward = { Set = "MetalStep", Pitch = 1.3, Volume = 0.75 },
+			PumpBack = { Set = "ShotgunFoley", Pitch = 0.95, Volume = 1 },
+			PumpForward = { Set = "ShotgunFoley", Pitch = 1.1, Volume = 1 },
+			ShellIn = { Set = "ShotgunFoley", Pitch = 1.3, Volume = 0.8 },
+			CoverOpen = { Set = "MetalStep", Pitch = 1, Volume = 0.7 },
+			CoverClose = { Set = "MetalStep", Pitch = 0.9, Volume = 0.85 },
+			BeltIn = { Set = "GunFoley", Pitch = 1, Volume = 1 },
+			CylinderOpen = { Set = "MetalStep", Pitch = 1.5, Volume = 0.6 },
+			CylinderClose = { Set = "MetalStep", Pitch = 1.4, Volume = 0.7 },
+			SpeedloaderIn = { Set = "GunFoley", Pitch = 1.25, Volume = 0.9 },
+			Eject = { Set = "GunFoley", Pitch = 1.45, Volume = 0.7 },
+		} :: { [string]: { Set: string, Pitch: number, Volume: number } },
+		OtherReloadCues = { { At = 0.15, Event = "MagOut" }, { At = 0.7, Event = "MagIn" } },
 	},
 
 	-- Sounds behind walls get muffled (quieter + duller) so you can tell they're not in the open.
@@ -285,6 +323,12 @@ local Sounds = {
 	MuffleVolumeScale = 0.6, -- per wall
 	MaxWalls = 3,
 }
+
+-- The sound id for one of Events (a random one of its set, or its own)
+function Sounds.EventId(name: string): string
+	local event = Sounds.Events[name]
+	return if not event then "" elseif event.Id then event.Id else Sounds.Pick(event.Set)
+end
 
 -- A random sound id from a set (see Sets above), or "" if there's no such set
 function Sounds.Pick(setName: string?): string

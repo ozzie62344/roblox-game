@@ -218,6 +218,9 @@ local function onDestruction(kind: string, point: Vector3, size: number, color: 
 		end
 		dust(point, color, if kind == "Smash" then 20 elseif metal then 4 else math.round(6 + size * 4))
 		play(breakSound, point, if kind == "Smash" then config.SmashVolume else config.ChunkVolume)
+		if kind == "Smash" then
+			Sound3D.PlayEvent("Smash", point) -- (a barricade or hatch going: heard well past the usual range)
+		end
 	end
 end
 

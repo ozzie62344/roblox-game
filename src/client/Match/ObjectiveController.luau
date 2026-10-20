@@ -475,6 +475,28 @@ function ObjectiveController.Start()
 	end, Enum.KeyCode.G, Enum.KeyCode.ButtonY)
 
 	RunService.RenderStepped:Connect(update)
+
+	-- The plant, heard by everyone: a beep as someone starts setting the defuser, and a heavy thunk
+	-- with a long low tone once it's down
+	local function watchPlanter(other: Player)
+		other:GetAttributeChangedSignal("Interaction"):Connect(function()
+			local head = other.Character and other.Character:FindFirstChild("Head") :: BasePart?
+			if other:GetAttribute("Interaction") == "Plant" and head then
+				Sound3D.PlayEvent("PlantStart", head.Position)
+			end
+		end)
+	end
+	for _, other in Players:GetPlayers() do
+		watchPlanter(other)
+	end
+	Players.PlayerAdded:Connect(watchPlanter)
+	MatchState:GetAttributeChangedSignal("DefuserPosition"):Connect(function()
+		local position = MatchState:GetAttribute("DefuserPosition")
+		if typeof(position) == "Vector3" then
+			Sound3D.PlayEvent("Planted", position)
+			Sound3D.PlayEvent("PlantedTone", position)
+		end
+	end)
 end
 
 return ObjectiveController

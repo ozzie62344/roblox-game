@@ -1,5 +1,6 @@
 -- Footsteps, vaults and landings for every character, including your own (yours quieter).
--- Sprinting is loud and carries far, walking is medium, crouching is nearly silent. The floor
+-- Sprinting is loud and carries far (through a floor), walking is medium, crouching is nearly
+-- silent, crawling prone is silent; heavy-armor operators are louder. The floor
 -- changes the step (Sounds.Footstep.Surfaces): metal catwalks clank and carry, floorboards thud,
 -- carpet and grass are soft. This is how you hear people coming.
 -- Vaults: yours are played by MovementController the moment you go (VaultStart / VaultLand);
@@ -11,6 +12,7 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage.Shared.MovementConfig)
+local Operators = require(ReplicatedStorage.Shared.Operators)
 local Sounds = require(ReplicatedStorage.Shared.Sounds)
 local Sound3D = require(script.Parent.Sound3D)
 
@@ -139,9 +141,9 @@ local function update(dt: number)
 		tracker.grounded = grounded
 		tracker.lastVerticalSpeed = velocity.Y
 
-		-- Steps (not mid-vault: that's its own sound)
+		-- Steps (not mid-vault: that's its own sound; never prone: crawling is silent, like Siege)
 		local crouching = character:GetAttribute("Crouching") == true
-		if not grounded or speed < MIN_STEP_SPEED or character:GetAttribute("Vaulting") == true then
+		if not grounded or speed < MIN_STEP_SPEED or character:GetAttribute("Vaulting") == true or character:GetAttribute("Prone") == true then
 			continue
 		end
 
@@ -152,6 +154,12 @@ local function update(dt: number)
 			stride, range, volume = config.SprintStride, config.SprintRange, config.SprintVolume
 		else
 			stride, range, volume = config.WalkStride, config.WalkRange, config.WalkVolume
+		end
+		-- Heavy-armor operators (speed 1) are louder, like Siege's 1-speeds
+		local operator = Operators.ById[player:GetAttribute("Operator") or ""]
+		if operator and operator.Speed == 1 then
+			range *= config.HeavyScale
+			volume *= config.HeavyScale
 		end
 
 		tracker.distance += speed * dt

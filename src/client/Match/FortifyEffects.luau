@@ -22,7 +22,7 @@ local LOOKS = {
 }
 local FOLDERS = { "ReinforceSlots", "BarricadeSlots" }
 
-local ghosts: { [BasePart]: { part: Part, endsAt: number } } = {}
+local ghosts: { [BasePart]: { part: Part, endsAt: number, kind: string } } = {}
 
 -- Sizes and places the piece `t` (0..1) of the way up the wall / down the doorway
 local function pose(ghost: Part, slot: BasePart, t: number)
@@ -56,6 +56,9 @@ local function newGhost(slot: BasePart): Part
 	ghost.Material = look.material
 	ghost.Parent = Effects.GetFolder()
 	Sound3D.Play(Sounds.CoverStart.Id, slot.Position, { volume = Sounds.CoverStart.Volume, range = Sounds.CoverStart.Range, pitch = Sounds.CoverStart.Pitch })
+	if slot:GetAttribute("BuildKind") == "Reinforce" then
+		Sound3D.PlayEvent("ReinforceStart", slot.Position) -- (loud: the other team learns this one)
+	end
 	return ghost
 end
 
@@ -70,7 +73,7 @@ local function update()
 			if slot:IsA("BasePart") and typeof(endsAt) == "number" and LOOKS[slot:GetAttribute("BuildKind")] then
 				local entry = ghosts[slot]
 				if not entry then
-					entry = { part = newGhost(slot), endsAt = endsAt }
+					entry = { part = newGhost(slot), endsAt = endsAt, kind = slot:GetAttribute("BuildKind") }
 					ghosts[slot] = entry
 				end
 				local duration = slot:GetAttribute("BuildTime") or 1
@@ -88,6 +91,9 @@ local function update()
 			if finished then
 				local deploy = Sounds.CoverDeploy
 				Sound3D.Play(deploy.Id, entry.part.Position, { volume = deploy.Volume, range = deploy.Range, pitch = deploy.Pitch })
+				if entry.kind == "Reinforce" then
+					Sound3D.PlayEvent("ReinforceSlam", entry.part.Position)
+				end
 				entry.part:Destroy()
 			else
 				TweenService:Create(entry.part, TweenInfo.new(0.25), { Transparency = 1 }):Play()

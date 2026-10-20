@@ -138,4 +138,12 @@ function Sound3D.Play(soundId: string, position: Vector3, options: Options?)
 	Debris:AddItem(attachment, 4)
 end
 
+-- One of the round's big tells (Sounds.Events) at `position`
+function Sound3D.PlayEvent(name: string, position: Vector3)
+	local event = Sounds.Events[name]
+	if event then
+		Sound3D.Play(Sounds.EventId(name), position, { volume = event.Volume, range = event.Range, pitch = event.Pitch })
+	end
+end
+
 return Sound3D
