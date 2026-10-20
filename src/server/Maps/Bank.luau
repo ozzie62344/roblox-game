@@ -204,21 +204,10 @@ local LIGHT_SPOTS = {
 }
 
 -- Openings (positions are world x / z along the wall)
-local function door(at: number): MapBuilder.Opening
-	return { from = at, to = at + 5, top = 8, kind = "Door" }
-end
-
-local function doubleDoor(at: number): MapBuilder.Opening
-	return { from = at, to = at + 8, top = 8.5, kind = "Door" }
-end
-
-local function window(from: number, to: number, bottom: number?, top: number?): MapBuilder.Opening
-	return { from = from, to = to, bottom = bottom or 3, top = top or 7, kind = "Window" }
-end
-
-local function arch(from: number, to: number, top: number?): MapBuilder.Opening
-	return { from = from, to = to, top = top or 9, kind = "Arch" }
-end
+local door = MapBuilder.Door
+local doubleDoor = MapBuilder.DoubleDoor
+local window = MapBuilder.Window
+local arch = MapBuilder.Arch
 
 -- A teller's window in the counter: chest-high, so the tellers can be boarded in
 local function teller(at: number): MapBuilder.Opening
@@ -252,17 +241,10 @@ local function wallZ(map: MapBuilder.Builder, style: MapBuilder.Style, x: number
 end
 
 -- Looks only: no collisions, bullets go through
-local function cosmetic(part: BasePart, parent: Instance)
-	part.CanCollide = false
-	part.CanQuery = false
-	part.CanTouch = false
-	part.Parent = parent
-end
+local cosmetic = MapBuilder.Cosmetic
 
 -- Block between two corners given as numbers (any order)
-local function block(map: MapBuilder.Builder, name: string, x1: number, y1: number, z1: number, x2: number, y2: number, z2: number, color: Color3, material: Enum.Material?): Part
-	return map:Box(name, Vector3.new(math.min(x1, x2), math.min(y1, y2), math.min(z1, z2)), Vector3.new(math.max(x1, x2), math.max(y1, y2), math.max(z1, z2)), color, material)
-end
+local block = MapBuilder.Block
 
 -- Upright cylinder (columns, boilers, poles) standing on `y1`, up to `y2`
 local function cylinder(map: MapBuilder.Builder, name: string, x: number, z: number, y1: number, y2: number, diameter: number, color: Color3, material: Enum.Material): Part

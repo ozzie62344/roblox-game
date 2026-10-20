@@ -199,39 +199,17 @@ local ROOMS = {
 }
 
 -- Openings (positions are world x / z along the wall)
-local function door(at: number): MapBuilder.Opening
-	return { from = at, to = at + 5, top = 8, kind = "Door" }
-end
-
-local function doubleDoor(at: number): MapBuilder.Opening
-	return { from = at, to = at + 8, top = 8.5, kind = "Door" }
-end
-
-local function window(from: number, to: number, bottom: number?, top: number?): MapBuilder.Opening
-	return { from = from, to = to, bottom = bottom or 3, top = top or 7, kind = "Window" }
-end
-
-local function arch(from: number, to: number, top: number?): MapBuilder.Opening
-	return { from = from, to = to, top = top or 9, kind = "Arch" }
-end
+local door = MapBuilder.Door
+local doubleDoor = MapBuilder.DoubleDoor
+local window = MapBuilder.Window
+local arch = MapBuilder.Arch
 
 -- Wall along x at `z`, or along z at `x`
-local function wallX(map: MapBuilder.Builder, style: MapBuilder.Style, z: number, x1: number, x2: number, base: number, height: number, openings: { MapBuilder.Opening }?, inside: number?)
-	map:RoomWall(style, x1, z, x2, z, base, height, openings, inside)
-end
-
-local function wallZ(map: MapBuilder.Builder, style: MapBuilder.Style, x: number, z1: number, z2: number, base: number, height: number, openings: { MapBuilder.Opening }?, inside: number?)
-	map:RoomWall(style, x, z1, x, z2, base, height, openings, inside)
-end
+local wallX = MapBuilder.WallX
+local wallZ = MapBuilder.WallZ
 
 -- Looks only: no collisions, bullets go through
-local function cosmetic(part: BasePart, parent: Instance): BasePart
-	part.CanCollide = false
-	part.CanQuery = false
-	part.CanTouch = false
-	part.Parent = parent
-	return part
-end
+local cosmetic = MapBuilder.Cosmetic
 
 local function wedge(map: MapBuilder.Builder, name: string, size: Vector3, cframe: CFrame, color: Color3, material: Enum.Material): WedgePart
 	local part = Instance.new("WedgePart")
@@ -246,9 +224,7 @@ local function wedge(map: MapBuilder.Builder, name: string, size: Vector3, cfram
 end
 
 -- Block between two corners given as numbers (any order)
-local function block(map: MapBuilder.Builder, name: string, x1: number, y1: number, z1: number, x2: number, y2: number, z2: number, color: Color3, material: Enum.Material?): Part
-	return map:Box(name, Vector3.new(math.min(x1, x2), math.min(y1, y2), math.min(z1, z2)), Vector3.new(math.max(x1, x2), math.max(y1, y2), math.max(z1, z2)), color, material)
-end
+local block = MapBuilder.Block
 
 -- Upright cylinder standing on `base` (tanks, drums, posts)
 local function drum(map: MapBuilder.Builder, name: string, x: number, z: number, base: number, height: number, diameter: number, color: Color3, material: Enum.Material): Part

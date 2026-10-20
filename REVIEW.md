@@ -30,3 +30,9 @@
 - [ ] In a match: defenders can watch cameras (Z) in prep and action, attackers can drone in
       prep, a defender stepping outside during prep is snapped back, and later revealed.
 - [ ] Placed gadgets (charges, jammers, cover) and drones all clear at the start of each round.
+
+## 4b. Map helpers shared
+
+- [ ] Load each map from the dev panel (House, Warehouse, Bank, Flight 9): walls, doors,
+      windows and arches are where they were, outside doors / windows start barricaded, and
+      decoration (trim, signs) is see-through to bullets as before.

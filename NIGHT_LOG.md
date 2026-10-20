@@ -55,3 +55,16 @@ type-checked with luau-lsp (Roblox definitions + a Rojo sourcemap). What to test
   is different on purpose (no rappelling during prep) and was left alone.
 - `aliveRoot`, `isEnemy`, `inLobbyMenu` and `thinOutline` were already merged earlier today
   (shared/Characters, LobbyIntro, MenuStyle).
+
+### 4b. Map-building helpers shared across the four maps
+- Compared each helper's body across House, Warehouse, Bank and Flight9 (hashed). Identical:
+  `door`, `doubleDoor`, `window`, `arch` (all four), `block` (three), `wallX`/`wallZ` (three).
+  `cosmetic` differed only in that Flight9's returns the part.
+- Decision: one copy of each in MapBuilder (`Door`, `DoubleDoor`, `Window`, `Arch`, `WallX`,
+  `WallZ`, `Block`, `Cosmetic`; `Cosmetic` returns the part, which the other maps ignore), and
+  each map's local becomes a one-line alias (`local door = MapBuilder.Door`) so no call site
+  changes. 29 copies removed.
+- Bank's `wallX`/`wallZ` were left alone on purpose: they also record every wall in a list the
+  Bank uses later for its detail pass, so they're not duplicates.
+- Type check: the same 5 warnings as before the change (checked against the previous commit in a
+  scratch copy), none new.

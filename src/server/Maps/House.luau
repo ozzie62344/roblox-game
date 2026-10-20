@@ -137,38 +137,17 @@ local ROOMS = {
 }
 
 -- Openings (positions are world x / z along the wall)
-local function door(at: number): MapBuilder.Opening
-	return { from = at, to = at + 5, top = 8, kind = "Door" }
-end
-
-local function doubleDoor(at: number): MapBuilder.Opening
-	return { from = at, to = at + 8, top = 8.5, kind = "Door" }
-end
-
-local function window(from: number, to: number, bottom: number?, top: number?): MapBuilder.Opening
-	return { from = from, to = to, bottom = bottom or 3, top = top or 7, kind = "Window" }
-end
-
-local function arch(from: number, to: number, top: number?): MapBuilder.Opening
-	return { from = from, to = to, top = top or 9, kind = "Arch" }
-end
+local door = MapBuilder.Door
+local doubleDoor = MapBuilder.DoubleDoor
+local window = MapBuilder.Window
+local arch = MapBuilder.Arch
 
 -- Wall along x at `z`, or along z at `x`
-local function wallX(map: MapBuilder.Builder, style: MapBuilder.Style, z: number, x1: number, x2: number, base: number, height: number, openings: { MapBuilder.Opening }?, inside: number?)
-	map:RoomWall(style, x1, z, x2, z, base, height, openings, inside)
-end
-
-local function wallZ(map: MapBuilder.Builder, style: MapBuilder.Style, x: number, z1: number, z2: number, base: number, height: number, openings: { MapBuilder.Opening }?, inside: number?)
-	map:RoomWall(style, x, z1, x, z2, base, height, openings, inside)
-end
+local wallX = MapBuilder.WallX
+local wallZ = MapBuilder.WallZ
 
 -- Looks only: no collisions, bullets go through
-local function cosmetic(part: BasePart, parent: Instance)
-	part.CanCollide = false
-	part.CanQuery = false
-	part.CanTouch = false
-	part.Parent = parent
-end
+local cosmetic = MapBuilder.Cosmetic
 
 local function wedge(map: MapBuilder.Builder, name: string, size: Vector3, cframe: CFrame, color: Color3, material: Enum.Material)
 	local part = Instance.new("WedgePart")

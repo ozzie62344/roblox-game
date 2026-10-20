@@ -93,6 +93,41 @@ function MapBuilder.Box(self: Builder, name: string, min: Vector3, max: Vector3,
 	return self:Part(name, max - min, CFrame.new((min + max) / 2), color, material)
 end
 
+-- ─── Shorthands the map files share ─────────────────────────────────────────────
+
+-- Openings along a wall (from / to: studs along it from its start)
+function MapBuilder.Door(at: number): Opening
+	return { from = at, to = at + 5, top = 8, kind = "Door" }
+end
+function MapBuilder.DoubleDoor(at: number): Opening
+	return { from = at, to = at + 8, top = 8.5, kind = "Door" }
+end
+function MapBuilder.Window(from: number, to: number, bottom: number?, top: number?): Opening
+	return { from = from, to = to, bottom = bottom or 3, top = top or 7, kind = "Window" }
+end
+function MapBuilder.Arch(from: number, to: number, top: number?): Opening
+	return { from = from, to = to, top = top or 9, kind = "Arch" }
+end
+
+-- A room wall along x at `z`, or along z at `x`
+function MapBuilder.WallX(self: Builder, style: Style, z: number, x1: number, x2: number, base: number, height: number, openings: { Opening }?, inside: number?)
+	self:RoomWall(style, x1, z, x2, z, base, height, openings, inside)
+end
+function MapBuilder.WallZ(self: Builder, style: Style, x: number, z1: number, z2: number, base: number, height: number, openings: { Opening }?, inside: number?)
+	self:RoomWall(style, x, z1, x, z2, base, height, openings, inside)
+end
+
+-- A box between two corners given in any order
+function MapBuilder.Block(self: Builder, name: string, x1: number, y1: number, z1: number, x2: number, y2: number, z2: number, color: Color3, material: Enum.Material?): Part
+	return self:Box(name, Vector3.new(math.min(x1, x2), math.min(y1, y2), math.min(z1, z2)), Vector3.new(math.max(x1, x2), math.max(y1, y2), math.max(z1, z2)), color, material)
+end
+
+-- Looks only (no collisions, bullets go through), into `parent`
+function MapBuilder.Cosmetic(part: BasePart, parent: Instance): BasePart
+	cosmetic(part).Parent = parent
+	return part
+end
+
 -- Horizontal slab covering x1..x2, z1..z2, with its top at `y`
 function MapBuilder.Floor(self: Builder, name: string, x1: number, z1: number, x2: number, z2: number, y: number, thickness: number, color: Color3, material: Enum.Material?): Part
 	return self:Box(name, Vector3.new(x1, y - thickness, z1), Vector3.new(x2, y, z2), color, material)
