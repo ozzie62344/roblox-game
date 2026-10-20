@@ -40,7 +40,6 @@ Still open from the list below:
 - Icon and thumbnails.
 - The 2+ account test in the live game.
 - Placeholder sounds.
-- Elimination mode has no drones (your call).
 - Bigger refactors: map-builder helpers, long menu files, building the map once per round.
 
 ---
@@ -113,7 +112,6 @@ Timeline:
 | Game icon + thumbnails | dev board | Candidates exist; they still need the BREACHPOINT title and cropping to 1920×1080 / 512×512 |
 | Placeholder sounds | `src/shared/Sounds.luau` (lines 98, 106, 115, 224, 232, 241) | Cover deploy, defuser beep, knife, hit markers and shop clicks still use Roblox's built-in sounds |
 | Reload sound events | `src/client/Combat/WeaponController.luau:156` | The event name (MagOut, MagIn, SlideBack) is thrown away, so each plays a random foley sound |
-| Elimination mode has no drones | `src/server/RoundService.luau:389-400` | Only bomb mode calls `DroneService.StartPrep`. Intended or not? |
 | Old abilities still wired | Recon Pulse, Ghost Step (`Abilities.luau:24-42`, `AbilityService.luau:67-112`, Footsteps, MovementController) | No operator has them; only the dev panel can give them out. Remove them or make them gadgets |
 | Untested outside the published game | Teleports, custom-match codes, data locks, clan sync, Robux receipts | Studio can't run these; they need a test with 2+ accounts in the live game |
 

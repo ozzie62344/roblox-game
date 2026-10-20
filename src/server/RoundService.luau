@@ -386,7 +386,8 @@ local function runRound(round: number, mode: string, attack: string, title: stri
 	LoadoutService.AssignUnpicked()
 
 	-- Attack / Defend: defenders get time to set up while attackers scout with drones from spawn
-	-- (every attacker starts the setup driving one, DroneService)
+	-- (every attacker starts the setup driving one, DroneService). Elimination has no prep and no
+	-- drones on purpose: it's a straight fight
 	if mode == "AttackDefend" then
 		unfreezeTeam(defend)
 		ObjectiveService.PlaceBombs() -- the defenders' pick is final now
