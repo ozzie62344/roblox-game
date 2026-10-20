@@ -736,7 +736,7 @@ function MovementController.Start()
 	end, Enum.KeyCode.LeftShift, Enum.KeyCode.ButtonL3)
 
 	-- C / Ctrl: tap to toggle crouch (crouching ends a sprint). Two quick taps: lie down (prone);
-	-- tap again to come back up to a crouch.
+	-- tap again to come back up to a crouch. In the lobby, crouching mid-sprint slides.
 	Actions.Bind("Crouch", function(_, inputState)
 		if inputState ~= Enum.UserInputState.Begin or state.deploying or state.interacting or state.vaulting or state.downed then
 			return Enum.ContextActionResult.Sink
@@ -755,6 +755,12 @@ function MovementController.Start()
 		elseif state.crouching then
 			tryStandUp()
 		elseif isGrounded() then
+			-- Lobby only: crouching out of a sprint is a slide, a burst of speed that bleeds off into a
+			-- crouch-walk (the momentum friction in step). Matches stay Siege: no sliding.
+			if state.inLobby and state.sprinting and velocity.Magnitude > 1 then
+				velocity = velocity.Unit * Config.LobbySlideSpeed
+				velocityOverridden = true
+			end
 			state.crouching = true
 		end
 		return Enum.ContextActionResult.Sink

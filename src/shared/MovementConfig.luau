@@ -14,6 +14,7 @@ return {
 	GroundAccel = 70, -- how fast you reach your target speed (weighty: ~0.2 s from standing to a walk)
 	GroundDecel = 80, -- how fast you stop when you let go of the keys (a short glide, no instant stops)
 	MomentumFriction = 25, -- how fast extra speed (pushing off a rope, a fast vault) bleeds off on the ground
+	LobbySlideSpeed = 30, -- crouching mid-sprint in the lobby (only there) slides off at this speed
 	SprintThreshold = 16, -- others count as sprinting above this speed (loud footsteps, gun-down pose):
 	-- between the fastest walk (3-speed: 14.3) and the slowest sprint (1-speed: 18)
 
