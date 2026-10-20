@@ -111,3 +111,74 @@ type-checked with luau-lsp (Roblox definitions + a Rojo sourcemap). What to test
   makes adds a new one. Decision: empty the cache once it holds 200 entries (simplest bounded
   choice; anything still in use is decoded again on its next lookup, which is cheap). An LRU
   would keep hot entries but adds code for no visible gain at this size.
+
+## 5. Research: every weak table (`__mode`), no code changed
+
+Background: a weak table (`setmetatable({}, { __mode = "k" })`) lets Roblox drop an entry when
+nothing else in Lua holds its key. Roblox can drop entries keyed by game objects (Instances) even
+while the object still exists in the game; this project has hit that once already (the drone hum
+made a new sound every frame). There are 9 weak tables:
+
+| # | Where | Keyed by | What depends on it | If an entry is dropped | Change needed |
+|---|---|---|---|---|---|
+| 1 | `client/Abilities/GadgetWarnings.luau:39` `lastBeep` | placed device Model | frag tick, breach-charge beep timing | nothing else holds the device in Lua, so this is the likeliest to drop: the beep plays every frame | Plain table; each update, remove entries whose device has left the Deployables folder |
+| 2 | `server/FortifyService.luau:56` `reinforcements` | wall section / hatch BasePart | `RemoveReinforcement` (thermite burning through) finds the steel to remove | the steel plate stays up after a hard breach (wall still blocked) | Plain table; `table.clear` in `Prepare` (map reload); entries are already removed when the steel goes |
+| 3 | `server/FortifyService.luau:57` `barricades` | doorway / window slot BasePart | "take down barricade" (Unbarricade), exterior boarding in `Prepare`, the `Destroying` clean-up | defender's Unbarricade does nothing; `Prepare` could board a slot twice | Same as 2 |
+| 4 | `server/GadgetService.luau:59` `breachCharges` | Player | second press detonates a placed breach charge | the second press places a new charge (uses a charge) instead of detonating | Plain table + clear the player's entry on PlayerRemoving. Low risk today: AbilityService's strong `lastUse[player]` keeps the Player alive in Lua after any gadget use |
+| 5 | `server/GadgetService.luau:60` `scanning` | Player | heartbeat sensor on/off and its loop token | the scan loop stops early, or a second press starts a new scan instead of putting it away | Same as 4 |
+| 6 | `server/GadgetService.luau:888` `nitroCells` | Player | second press detonates the thrown nitro cell | same as 4 | Same as 4 |
+| 7 | `server/MatchStats.luau:54` `damageTo` | Humanoid | assists (who hurt a victim before someone else killed them) | an assist isn't credited | Plain table; entries are already cleared on death and at match start; also clear on the character's `Destroying` so bodies that never die don't linger |
+| 8 | `server/RoundService.luau:104` `bodies` | Player | cached avatar (HumanoidDescription) for spawning, and the MVP screen's body | an extra web call on the next spawn (can fail), or the MVP shown without a body | Plain table + clear on PlayerRemoving |
+| 9 | `client/Pose/BodyAnimator.luau:98` `warned` | character Model | warn once about a rig the animator can't pose | the same warning prints again (log spam only) | Plain table + clear when the character is removed (the animator already drops its rigs then) |
+
+Priority: 2, 3 and 1 (gameplay-visible, and the keys have nothing else holding them), then 4–6,
+then 7, 8, 9.
+
+## 6. Research: save lock and failed teleports, no code changed
+
+Both are **already fixed** earlier today (before this branch's overnight work):
+- **Save lock** (`server/PlayerData.luau`, commit 3bb3608): autosave every 60 s and always writes
+  (line 70), so every autosave renews the lock; lock expiry 150 s (line 71) with an `assert` that
+  it outlasts two autosaves (line 73); the final save on leaving is retried 3 times
+  (`releaseSave`, line 413); an autosave still in flight after the player left writes nothing
+  (`session.leaving`, lines 302 and 310).
+- **Failed match teleports** (`server/Matchmaker.luau`, commit 6033b67): `TeleportInitFailed` is
+  handled (`onTeleportFailed` line 214, connected line 345): one retry into the same match server,
+  then `requeue` (line 130) puts the party back at the front of the queue with "MATCH COULDN'T
+  START · BACK IN THE QUEUE". An immediate `ReserveServer`/`TeleportAsync` error does the same.
+  CustomMatchService also handles it (line 657) and keeps the lobby open until everyone has left.
+- Neither can be verified in Studio: locks are off there and teleports run in-server. Both need
+  the published-game test already in REVIEW.md's earlier notes (match → lobby keeps XP/credits).
+
+## 7. Research: Gatling spin-up and barbed-wire slowdown, no code changed
+
+**Where they're enforced today (client only):**
+- Gatling spin-up: `client/Combat/WeaponController.luau:436-450`. The barrels' `spin` value rises
+  while the trigger is held, and shots are only sent once `spin >= 1` (`spunUp`, line 450). The
+  server (`server/WeaponService.luau`, `onFire`) checks the fire rate against the Gatling's full
+  RPM from the first shot and has no idea about spin, so a modified client can fire at full rate
+  instantly.
+- Barbed wire slowdown: `client/Abilities/GadgetEffects.luau:122-142` (`slowInWire`) caps your own
+  velocity at `WIRE_SPEED` each physics step. The server only uses the wire for the rattle sound
+  (`GadgetService.watchWires`), and AntiCheat's speed limit is the 3-speed sprint
+  (`server/AntiCheat.luau:39`, `:343`) everywhere, so a modified client walks through at full speed.
+
+**What the server would need to check instead:**
+- Gatling: the server can't see the trigger, and the client sends no shots while spinning up, so
+  it needs to be told when spinning starts.
+  - Add a small remote: the client sends "spin start" when the Gatling's trigger is pressed and
+    "spin stop" when it's released.
+  - The server records `spinStartedAt[player]` and, in `onFire` for weapons with `SpinUp`,
+    refuses shots until `now - spinStartedAt >= SpinUp - slack`. Slack of about 0.15 s covers
+    network jitter.
+  - It clears the record on spin stop, on swapping weapons and on death.
+  - Optionally, apply the `SpinSlow` move penalty in AntiCheat's speed limit while spinning.
+  - A cheater could send "spin start" early, but that only matches what a real player gets by
+    holding the trigger, so it isn't an advantage.
+- Barbed wire: `watchWires` already finds every player inside a coil's zone (for the rattle).
+  - Make it also mark them (for example a server-side set, or a `InWire` attribute set and
+    cleared as they enter and leave).
+  - AntiCheat's speed check uses `WIRE_SPEED × slack` instead of the sprint limit while a player
+    is marked, so a modified client that skips the slowdown gets put back like any speed cheat.
+  - Add a short grace (about 0.3 s) after they enter, so a legit player still slowing down from a
+    sprint isn't flagged on the first step.
