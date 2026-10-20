@@ -99,3 +99,17 @@ every module that imports them; a loader means no game code changes at all.
 One test of mine was wrong on the first run: I assumed level 10 on the reward track is a credits
 pile, but it's a skin. I fixed the test (it now finds the first credits level divisible by 5);
 the game code was right.
+
+## 5. CLAUDE.md
+
+- Written only from the code: `default.project.json` (folder mapping, StreamingEnabled off,
+  remotes), both `init` scripts (service / controller start order), `RoundService` (server kinds,
+  `mainLoop`, `runRound` phases, halftime and overtime swaps), `MapService.Load`, and the file
+  headers of each service.
+- Checked before committing: the three small override scripts really are empty on purpose (each
+  says so in its header), the self-checks it names exist (`Ranked`, `Operators`, `PlayerData`),
+  and the overtime rule. My first draft said "overtime from round 6"; the code says sides switch
+  every round after 3-3, so I corrected it.
+- Conventions listed are only ones visible in the code: file-header comments, state through
+  attributes, server-side checks, config in `src/shared`, naming, no weak tables (as of tonight),
+  `shortcut:` comments, and the commit identity used in history.

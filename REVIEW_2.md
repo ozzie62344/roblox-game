@@ -33,3 +33,8 @@
       `lune run tests/Ranked.test.luau`, `tests/Progression.test.luau`, `tests/Clans.test.luau`,
       `tests/CustomMatch.test.luau`, `tests/PickTeams.test.luau`.
 - [ ] Nothing to check in Studio: no game code changed for this item.
+
+## 5. CLAUDE.md
+
+- [ ] Read it once and correct anything that doesn't match how you think of the game; it's what
+      Claude Code will read first in every new session.
