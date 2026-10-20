@@ -66,8 +66,12 @@ function Attachments.Owns(player: Player, id: string): boolean
 	return typeof(owned) == "string" and table.find(string.split(owned, ","), id) ~= nil
 end
 
--- Decoded "Attachments" attributes, cached per string (other players' guns ask every frame)
+-- Decoded "Attachments" attributes, cached per string (other players' guns ask every frame).
+-- Every change a player makes adds a string, so on a long-running server the cache is emptied
+-- once it holds MAX_DECODED of them (they're cheap to decode again).
+local MAX_DECODED = 200
 local decoded: { [string]: { [string]: Chosen } } = {}
+local decodedCount = 0
 
 -- What a player has on a gun (slot → id), only what fits
 function Attachments.For(player: Player, weaponName: string): Chosen
@@ -79,7 +83,12 @@ function Attachments.For(player: Player, weaponName: string): Chosen
 	if not all then
 		local ok, value = pcall(HttpService.JSONDecode, HttpService, json)
 		all = if ok and typeof(value) == "table" then value else {}
+		if decodedCount >= MAX_DECODED then
+			table.clear(decoded)
+			decodedCount = 0
+		end
 		decoded[json] = all
+		decodedCount += 1
 	end
 	local chosen: Chosen = {}
 	local onGun = all[weaponName]

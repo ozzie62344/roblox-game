@@ -105,3 +105,9 @@ type-checked with luau-lsp (Roblox definitions + a Rojo sourcemap). What to test
 - `git rm -r --cached graphify-out` (64 files) and `graphify-out/` added to `.gitignore`. The
   `--cached` flag only stops tracking them: your local copy is still there for graphify. It was a
   generated code map from Oct 8 that no longer matched the code.
+
+### 4g. Attachments cache capped
+- `Attachments.For` caches each decoded "Attachments" text forever, and every change a player
+  makes adds a new one. Decision: empty the cache once it holds 200 entries (simplest bounded
+  choice; anything still in use is decoded again on its next lookup, which is cheap). An LRU
+  would keep hot entries but adds code for no visible gain at this size.

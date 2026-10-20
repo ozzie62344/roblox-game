@@ -51,3 +51,8 @@
 ## 4f. graphify-out
 
 - [ ] `graphify-out/` still exists on disk, and `git status` doesn't list it.
+
+## 4g. Attachments cache
+
+- [ ] Your own and other players' guns still show their attachments (scope, suppressor, laser),
+      including right after changing them in MODS.
