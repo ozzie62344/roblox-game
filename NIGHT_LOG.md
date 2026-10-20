@@ -100,3 +100,8 @@ type-checked with luau-lsp (Roblox definitions + a Rojo sourcemap). What to test
   purchase banner, which I was told not to edit. Leaving one unused branch is cheaper than
   breaking that rule. Easy follow-up: drop the `position` parameter and the `if position` branch,
   and remove `, nil` from the 18 calls.
+
+### 4f. graphify-out removed from git
+- `git rm -r --cached graphify-out` (64 files) and `graphify-out/` added to `.gitignore`. The
+  `--cached` flag only stops tracking them: your local copy is still there for graphify. It was a
+  generated code map from Oct 8 that no longer matched the code.

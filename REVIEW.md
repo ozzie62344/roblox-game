@@ -47,3 +47,7 @@
 - [ ] Spawning into a match and the defender perimeter push-back don't trigger anti-cheat
       "put back" messages (they use the ServerTeleport attribute, unchanged).
 - [ ] Getting downed and revived works as before.
+
+## 4f. graphify-out
+
+- [ ] `graphify-out/` still exists on disk, and `git status` doesn't list it.

@@ -13,3 +13,6 @@ globalTypes.d.luau
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Generated code map (graphify): regenerate locally when needed
+graphify-out/
