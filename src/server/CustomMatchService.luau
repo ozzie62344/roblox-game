@@ -537,10 +537,11 @@ local function start(player: Player)
 		TeleportService:TeleportAsync(game.PlaceId, present, options)
 	end)
 	if ok then
+		-- The lobby stays (still "starting", so nobody joins) until they've all left this server:
+		-- if someone's teleport fails, they're still in it and the host can start again
 		for _, member in present do
 			travelling[member] = true
 		end
-		close(lobby) -- (they're on their way)
 	else
 		warn("Custom match teleport failed:", err)
 		lobby.starting = false
@@ -652,7 +653,16 @@ function CustomMatchService.Start()
 	TeleportService.TeleportInitFailed:Connect(function(player)
 		if travelling[player] then
 			travelling[player] = nil
-			notice(player, "The teleport failed · try again")
+			local lobby = lobbyOf[player]
+			if lobby and lobby.starting then
+				-- Off to the match but didn't make it: back in the lobby, which can start again
+				-- (whoever's left; the ones who made it are gone)
+				lobby.starting = false
+				noticeAll(lobby, `{player.DisplayName}'s teleport failed · the host can start again`)
+				publish(lobby)
+			else
+				notice(player, "The teleport failed · try again")
+			end
 		end
 	end)
 

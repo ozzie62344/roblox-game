@@ -39,6 +39,12 @@ type Unit = { Player }
 
 local queues: { [string]: { Unit } } = {}
 local lastRequest: { [Player]: number } = {}
+-- Players on their way to a match server, until they leave this one (that's the teleport working).
+-- A failed teleport is tried once more, then they go back to the front of the queue.
+type Travel = { options: TeleportOptions, mode: string, ranked: boolean, unit: Unit, retried: boolean }
+local travelling: { [Player]: Travel } = {}
+
+local FAILED_REQUEUED = "MATCH COULDN'T START · BACK IN THE QUEUE"
 
 local function teamSize(mode: string): number
 	return tonumber(string.match(mode, "^(%d+)v")) :: number
@@ -115,13 +121,40 @@ local function leave(player: Player)
 	player:SetAttribute("QueuedRanked", nil)
 end
 
--- `sides`: the players on each team, in MatchConfig.TeamOrder
-local function launch(mode: string, sides: { { Player } }, ranked: boolean)
-	local group, teamOf = {}, {}
-	for i, side in sides do
-		for _, player in side do
-			table.insert(group, player)
-			teamOf[player] = MatchConfig.TeamOrder[i]
+local check: () -> ()
+
+-- Puts what's left of `unit` (the ones still in this server) back at the front of `mode`'s queue
+-- and tells them why. A match that couldn't start isn't their fault: no waiting at the back.
+local function requeue(unit: Unit, mode: string, ranked: boolean)
+	local here = {}
+	for _, player in unit do
+		travelling[player] = nil
+		if player.Parent then
+			table.insert(here, player)
+		end
+	end
+	if #here == 0 or unitOf(here[1]) then
+		return -- (all gone, or already queued again)
+	end
+	table.insert(queues[queueKey(mode, ranked)], 1, here)
+	for _, player in here do
+		player:SetAttribute("Queued", mode)
+		player:SetAttribute("QueuedRanked", if ranked then true else nil)
+		Queue:FireClient(player, "Failed", FAILED_REQUEUED)
+	end
+	check()
+end
+
+-- `sides`: the units (parties / solo players) on each team, in MatchConfig.TeamOrder
+local function launch(mode: string, sides: { { Unit } }, ranked: boolean)
+	local group, teamOf, unitOfPlayer = {}, {}, {}
+	for i, units in sides do
+		for _, unit in units do
+			for _, player in unit do
+				table.insert(group, player)
+				teamOf[player] = MatchConfig.TeamOrder[i]
+				unitOfPlayer[player] = unit
+			end
 		end
 	end
 	local everyone = {}
@@ -149,20 +182,45 @@ local function launch(mode: string, sides: { { Player } }, ranked: boolean)
 			table.insert(teams[teamOf[player]], player.UserId)
 		end
 	end
+	local options = Instance.new("TeleportOptions")
 	local ok, err = pcall(function()
-		local options = Instance.new("TeleportOptions")
 		options.ReservedServerAccessCode = TeleportService:ReserveServer(game.PlaceId)
 		-- Teams: who plays where (RoundService). Parties: so they come back together (PartyService).
 		-- Ranked: the match is rated (RankedService).
 		options:SetTeleportData({ Mode = mode, Players = ids, Teams = teams, Parties = PartyService.ForTeleport(present), Ranked = ranked })
+		for _, player in present do
+			travelling[player] = { options = options, mode = mode, ranked = ranked, unit = unitOfPlayer[player], retried = false }
+		end
 		TeleportService:TeleportAsync(game.PlaceId, present, options)
 	end)
 	if not ok then
 		warn("Match teleport failed:", err)
-		for _, player in present do
-			Queue:FireClient(player, "Failed")
+		for _, units in sides do
+			for _, unit in units do
+				requeue(unit, mode, ranked)
+			end
 		end
 	end
+end
+
+-- A teleport that didn't go through (TeleportInitFailed): one more try into the same match server
+-- (it waits for late arrivals), then back to the front of the queue
+local function onTeleportFailed(player: Player, result: Enum.TeleportResult, message: string)
+	local travel = travelling[player]
+	if not travel then
+		return
+	end
+	warn(`Match teleport failed for {player.Name} ({result.Name}): {message}`)
+	if not travel.retried then
+		travel.retried = true
+		task.wait(1)
+		local ok = player.Parent ~= nil and pcall(TeleportService.TeleportAsync, TeleportService, game.PlaceId, { player }, travel.options)
+		if ok then
+			return -- (if this one fails too, TeleportInitFailed comes back here)
+		end
+	end
+	-- The whole party goes back together (requeue skips the ones who made it: they've left)
+	requeue(travel.unit, travel.mode, travel.ranked)
 end
 
 -- Two full teams of `size` from the front of `list` without splitting a party: the units on each
@@ -197,20 +255,17 @@ local function pickTeams(list: { Unit }, size: number): { { Unit } }?
 end
 
 -- Smallest mode first: whichever queue can make a match first goes (casual, then ranked)
-local function check()
+function check()
 	for _, ranked in { false, true } do
 		for _, mode in MatchConfig.QueueModes do
 			local sides = pickTeams(queues[queueKey(mode, ranked)], teamSize(mode))
 			if sides then
-				local players = {}
-				for i, units in sides do
-					players[i] = {}
+				for _, units in sides do
 					for _, unit in units do
 						leaveUnit(unit)
-						table.move(unit, 1, #unit, #players[i] + 1, players[i])
 					end
 				end
-				task.spawn(launch, mode, players, ranked)
+				task.spawn(launch, mode, sides, ranked)
 			end
 		end
 	end
@@ -309,8 +364,10 @@ function Matchmaker.Start()
 			leaveUnit(unit, "PARTY CHANGED · SEARCH STOPPED", player)
 		end
 		lastRequest[player] = nil
+		travelling[player] = nil -- (gone: the teleport worked, or they quit)
 		publish()
 	end)
+	TeleportService.TeleportInitFailed:Connect(onTeleportFailed)
 end
 
 return Matchmaker

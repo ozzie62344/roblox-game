@@ -41,6 +41,7 @@ local modesOpen = false
 local rankedMode = false -- the MODES screen is for the ranked queues
 local found: { mode: string, ids: { number }, at: number, ranked: boolean }? = nil -- the match we're being sent to
 local notice = ""
+local keepNoticeUntil = 0 -- a "back in the queue" notice stays up a while, though you're searching
 
 local gui: ScreenGui
 local playHolder: Frame
@@ -484,7 +485,7 @@ local function update()
 
 	-- Party: the others wait for the leader; modes too small for the party grey out
 	local searching = player:GetAttribute("Queued")
-	if searching then
+	if searching and os.clock() > keepNoticeUntil then
 		notice = "" -- (searching again)
 	end
 	local partyKey = `{if leader then leader.DisplayName else ""}:{PartyMenu.Size()}`
@@ -561,7 +562,11 @@ function MainMenu.Start()
 			end
 		elseif event == "Failed" then
 			found = nil
-			notice = if waitingFor() then "COULDN'T START THE MATCH · YOUR LEADER CAN TRY AGAIN" else "COULDN'T START THE MATCH · PRESS PLAY TO TRY AGAIN"
+			-- (the server says why: usually that you're back in the queue)
+			keepNoticeUntil = if typeof(a) == "string" then os.clock() + 6 else 0
+			notice = if typeof(a) == "string" then a
+				elseif waitingFor() then "COULDN'T START THE MATCH · YOUR LEADER CAN TRY AGAIN"
+				else "COULDN'T START THE MATCH · PRESS PLAY TO TRY AGAIN"
 		elseif event == "Stopped" and typeof(a) == "string" then
 			notice = a
 		end
