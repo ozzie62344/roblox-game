@@ -346,8 +346,11 @@ local function runRound(round: number, mode: string, attack: string, title: stri
 	local defend = otherTeam(attack)
 	endRoundNow = false -- (an End Round from before this round doesn't count)
 	table.clear(sitePicked) -- (everyone gets a fresh site pick)
-	-- Fresh map every round: broken walls, glass and barricades all come back
-	MapService.Load(MatchState:GetAttribute("Map") or MatchConfig.DefaultMap)
+	-- Fresh map every round: broken walls, glass and barricades all come back. Round 1's was just
+	-- built by the map vote / custom setup (mainLoop runs one right before every match).
+	if round > 1 then
+		MapService.Load(MatchState:GetAttribute("Map") or MatchConfig.DefaultMap)
+	end
 	CameraService.SetOwner(defend)
 	AbilityService.ClearDeployables()
 	ObjectiveService.EndRound()

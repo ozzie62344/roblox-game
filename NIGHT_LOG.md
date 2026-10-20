@@ -32,3 +32,14 @@ type-checked with luau-lsp (Roblox definitions + a Rojo sourcemap). What to test
   `lune run tests/PickTeams.test.luau`. 8 checks: 1v1, not enough players, a party of 3 never
   fits 2v2, 4v4 from 2+2+1+1+1+1 with parties kept whole, 4v4 from 3+3+1+1, 3v3 from 3+2+3,
   and nobody placed twice. All pass (Lune was run locally).
+
+## 3. Build the first map once per match
+
+- `mainLoop` always runs the map vote (or a custom match's setup) right before `runMatch`, and
+  both already call `MapService.Load`. Round 1 then loaded the same map again. Decision: skip the
+  load in round 1 only (`if round > 1`). Every later round still gets a fresh map.
+- Considered and rejected: tracking a "fresh map" flag. Every match goes through one of those two
+  loads first, so the flag would never change the outcome.
+- Small risk noted: in the second or so between the vote and round 1, someone free roaming on the
+  map in Studio (dev panel) could break a wall, and round 1 would keep it broken. On a real match
+  server everyone waits in the lobby during the vote.

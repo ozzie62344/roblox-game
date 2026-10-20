@@ -17,3 +17,10 @@
 - [ ] Run `lune run tests/PickTeams.test.luau` from the repo root: it should print "all passed".
 - [ ] In Studio, queue a match as before: matchmaking still starts (Matchmaker now loads the team
       picker from `PickTeams`).
+
+## 3. First map built once
+
+- [ ] Start a match: round 1's map is complete (outside doors and windows boarded up, cameras on
+      the walls, the right lighting) and appears without a second hitch after the vote.
+- [ ] Break some walls in round 1: round 2 starts with them repaired.
+- [ ] A custom match (no vote) starts with the host's map intact too.
