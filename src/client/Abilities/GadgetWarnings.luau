@@ -36,7 +36,9 @@ local RED = Color3.fromRGB(255, 70, 55)
 
 local gui: ScreenGui
 local tags: { Frame } = {}
-local lastBeep: { [Instance]: number } = setmetatable({}, { __mode = "k" }) :: any
+-- (a plain table, pruned every frame: a weak one keyed by the device can lose its entry while the
+-- device still exists, and then it beeps every frame)
+local lastBeep: { [Instance]: number } = {}
 
 local function buildTag(): Frame
 	local tag = Instance.new("Frame")
@@ -87,6 +89,11 @@ local function update()
 	local alive = humanoid ~= nil and humanoid.Health > 0
 	local warnings: { { label: string, offset: Vector3, distance: number } } = {}
 	local now = os.clock()
+	for device in lastBeep do
+		if device.Parent ~= folder then
+			lastBeep[device] = nil -- (went off, shot, or swept away by a new round)
+		end
+	end
 	for _, device in if folder then folder:GetChildren() else {} do
 		local position = positionOf(device)
 		if not position then

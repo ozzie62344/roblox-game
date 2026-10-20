@@ -53,8 +53,10 @@ local KINDS = {
 }
 
 local working: { [Player]: { kind: Kind, slot: BasePart, endsAt: number, side: number } } = {}
-local reinforcements: { [BasePart]: Model } = setmetatable({}, { __mode = "k" }) :: any -- section → its steel
-local barricades: { [BasePart]: Model } = setmetatable({}, { __mode = "k" }) :: any -- doorway → its boards
+-- (plain tables, not weak ones: Roblox can drop a weak entry keyed by a part that still exists.
+-- Each entry is removed when its steel / boards are destroyed, which a new round's map reload does.)
+local reinforcements: { [BasePart]: Model } = {} -- section → its steel
+local barricades: { [BasePart]: Model } = {} -- doorway → its boards
 
 local function part(name: string, size: Vector3, cframe: CFrame, color: Color3, material: Enum.Material, parent: Instance): Part
 	local p = Instance.new("Part")
@@ -205,6 +207,11 @@ local function buildReinforcement(slot: BasePart, side: number)
 	slot:SetAttribute("Built", true)
 	CollectionService:AddTag(slot, REINFORCED_TAG)
 	reinforcements[slot] = model
+	model.Destroying:Connect(function() -- (burned through, or the map reloaded)
+		if reinforcements[slot] == model then
+			reinforcements[slot] = nil
+		end
+	end)
 end
 
 local function finish(player: Player, kind: Kind, slot: BasePart, side: number)
