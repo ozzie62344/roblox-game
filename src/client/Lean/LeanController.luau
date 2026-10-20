@@ -43,9 +43,13 @@ local function maxOffsetToward(direction: number): number
 end
 
 local function update(dt: number)
+	-- Going down (or spectating) cancels a toggled lean: you don't snap back into it once revived
+	if state.spectating or state.downed then
+		leftOn, rightOn = false, false
+	end
 	local target = (if rightOn then 1 else 0) - (if leftOn then 1 else 0)
-	-- Can't lean mid-vault, while spectating or downed (aiming down sights is fine)
-	if state.vaulting or state.spectating or state.downed then
+	-- Can't lean mid-vault (aiming down sights is fine)
+	if state.vaulting then
 		target = 0
 	end
 
