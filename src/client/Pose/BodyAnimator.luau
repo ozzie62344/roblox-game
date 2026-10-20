@@ -591,6 +591,12 @@ local function sendPitch()
 	end
 end
 
+-- The gun model in `character`'s hands as everyone else sees it (LaserSights), if it has one
+function BodyAnimator.HeldGun(character: Model): Model?
+	local rig = rigs[character]
+	return if rig and rig.gun then rig.gun.model else nil
+end
+
 function BodyAnimator.Start()
 	-- A new body has no LookPitch yet: send ours again even if we're still looking the same way
 	player.CharacterAdded:Connect(function()

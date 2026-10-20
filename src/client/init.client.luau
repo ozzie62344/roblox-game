@@ -20,6 +20,7 @@ require(Combat.WeaponController).Start()
 require(Combat.Melee).Start()
 require(Combat.DamageIndicator).Start()
 require(Combat.DestructionEffects).Start()
+require(Combat.LaserSights).Start() -- (the Laser attachment's beam, everyone's)
 require(script:WaitForChild("Abilities").AbilityController).Start() -- after MovementController: gets X first
 require(script.Abilities.HandsAnimator).Start()
 require(script.Abilities.DroneController).Start()
