@@ -84,3 +84,9 @@ type-checked with luau-lsp (Roblox definitions + a Rojo sourcemap). What to test
   object with `:CanSend(invitee, key)`, `:Send(invitee, key, value)`, `:Take(invitee, key)` →
   (value, expired), `:Snooze(invitee, key)` and `:Forget(player)`, keyed by whatever each service
   uses today (inviter or lobby code). Do it with a two-account test session ready.
+
+### 4d. Tutorial reward set in one place
+- It was 250 in both `Tutorial.luau` (shown) and `TutorialService.luau` (paid). Now it's
+  `MatchConfig.Credits.Tutorial`, next to the other credit amounts, and both read it.
+  `TutorialService.Reward` had no other users, so it was removed. Nothing loops over
+  `MatchConfig.Credits`, so the new entry can't show up anywhere unexpected.

@@ -8,7 +8,7 @@
 --   New players (the "TutorialSeen" attribute is false: PlayerData) are asked once when they
 --   first reach the lobby: NEW HERE? START / SKIP. The lobby's TUTORIAL button (right, under the
 --   PARTY) runs it again any time.
---   Finishing it tells the server (TutorialService), which gives TutorialService.Reward credits
+--   Finishing it tells the server (TutorialService), which gives MatchConfig.Credits.Tutorial credits
 --   the first time only.
 -- A step that needs the practice range is left out on a server without one (vaulting too: its
 -- low walls and crates are there). Phones crouch in the range (the CROUCH button only shows when
@@ -22,6 +22,7 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
+local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local state = require(script.Parent.Parent.PlayerState)
 local LobbyIntro = require(script.Parent.LobbyIntro)
 local MenuStyle = require(script.Parent.MenuStyle)
@@ -36,7 +37,7 @@ local player = Players.LocalPlayer
 
 local Tutorial = {}
 
-local REWARD = 250 -- (TutorialService.Reward on the server: shown here, paid there)
+local REWARD = MatchConfig.Credits.Tutorial -- (shown here, paid by TutorialService)
 local GOLD_HEX = "#FFBE3C" -- MenuStyle.Gold
 local ACCENT = Color3.fromRGB(255, 170, 60) -- the range's signs and HUD
 local PROMPT_DELAY = 3 -- seconds in the lobby before NEW HERE? (after the loading screen)

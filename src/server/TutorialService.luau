@@ -1,7 +1,7 @@
 -- The first-time tutorial (client Match/Tutorial): remembers who has been offered it and who has
 -- finished it (PlayerData TutorialSeen / TutorialDone), and pays out its credits once.
 --   Tutorial:FireServer("Seen")   offered it (started or skipped): the lobby doesn't ask again
---   Tutorial:FireServer("Done")   finished it: TutorialDone, and REWARD credits the first time only
+--   Tutorial:FireServer("Done")   finished it: TutorialDone, and MatchConfig.Credits.Tutorial credits the first time only
 -- The client decides when each step is done (it's only a walkthrough), so the server just makes
 -- the reward hard to farm: once per account (TutorialDone is saved), lobby servers only, not in
 -- the first MIN_TIME seconds after joining, and only after a visit to the practice range when this
@@ -11,14 +11,13 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
+local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local PlayerData = require(script.Parent.PlayerData)
 local ShopService = require(script.Parent.ShopService)
 
 local MatchState = ReplicatedStorage:WaitForChild("MatchState")
 
 local TutorialService = {}
-
-TutorialService.Reward = 250 -- credits for finishing it the first time (the client shows the same figure)
 
 local MIN_TIME = 45 -- seconds in the server before "Done" can pay (the walkthrough takes ~2 minutes)
 local RANGE_ATTRIBUTE = "InPracticeRange" -- set by PracticeRange while you're in the range
@@ -42,7 +41,7 @@ local function finish(player: Player)
 		return
 	end
 	-- (credits first: the save queued just below then writes both)
-	ShopService.Award(player, TutorialService.Reward, "TUTORIAL")
+	ShopService.Award(player, MatchConfig.Credits.Tutorial, "TUTORIAL")
 	PlayerData.Update(player, function(stored)
 		stored.TutorialDone = true
 		stored.TutorialSeen = true

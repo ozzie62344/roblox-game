@@ -36,3 +36,8 @@
 - [ ] Load each map from the dev panel (House, Warehouse, Bank, Flight 9): walls, doors,
       windows and arches are where they were, outside doors / windows start barricaded, and
       decoration (trim, signs) is see-through to bullets as before.
+
+## 4d. Tutorial reward
+
+- [ ] NEW HERE? prompt and the tutorial's last step both say +250 credits, and finishing the
+      tutorial for the first time pays 250.

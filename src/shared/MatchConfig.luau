@@ -59,6 +59,7 @@ return {
 		RoundWin = 40, -- everyone on the team that won the round
 		MatchWin = 150,
 		MatchPlayed = 75, -- everyone who was there when the match finished
+		Tutorial = 250, -- finishing the tutorial, the first time only (TutorialService pays it, the tutorial shows it)
 	},
 
 	-- XP: earned for the same things (not in free roam), raises your level and unlocks the reward
