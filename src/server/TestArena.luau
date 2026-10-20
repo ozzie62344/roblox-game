@@ -38,12 +38,12 @@ function TestArena.Build()
 		block(arena, "Floor", Vector3.new(400, 2, 400), CFrame.new(0, -1, 0), Color3.fromRGB(60, 62, 68))
 	end
 
-	-- Long lane for testing slide distance (orange marks every 20 studs)
+	-- Long range lane (orange marks every 20 studs)
 	for i = 0, 8 do
 		block(arena, "LaneMarker", Vector3.new(12, 0.2, 1), CFrame.new(-40, 0.1, -20 - i * 20), orange)
 	end
 
-	-- Ramps to slide down
+	-- A ramp up onto a platform
 	block(arena, "RampPlatform", Vector3.new(20, 12, 20), CFrame.new(30, 6, -60), grey)
 	block(
 		arena,
@@ -53,17 +53,17 @@ function TestArena.Build()
 		blue
 	)
 
-	-- Boxes of increasing height for jump / air-dash tests
+	-- Boxes of increasing height (vault / climb: only the lowest ones can be)
 	for i = 1, 5 do
 		local height = i * 3
 		block(arena, "JumpBox", Vector3.new(8, height, 8), CFrame.new(-10 + i * 12, height / 2, 30), grey)
 	end
 
-	-- Gap you can only clear with an air dash or slide-jump
+	-- Two platforms with a gap between them (drops, landings)
 	block(arena, "GapStart", Vector3.new(16, 10, 16), CFrame.new(70, 5, 20), grey)
 	block(arena, "GapEnd", Vector3.new(16, 10, 16), CFrame.new(70, 5, -22), orange)
 
-	-- Tall walls (for wall-jumping later)
+	-- Tall walls (rappel and lean practice)
 	block(arena, "Wall", Vector3.new(2, 30, 40), CFrame.new(-80, 15, 20), blue)
 	block(arena, "Wall", Vector3.new(2, 30, 40), CFrame.new(-100, 15, 20), blue)
 
@@ -75,7 +75,7 @@ function TestArena.Build()
 	Dummies.Spawn(CFrame.new(-8, 3, 104), true)
 	Dummies.Spawn(CFrame.new(16, 3, 114), true)
 
-	-- Range dummies down the slide lane (falloff testing)
+	-- Range dummies down the lane (falloff testing)
 	for _, distance in { 40, 90, 160 } do
 		Dummies.Spawn(CFrame.new(-40, 3, -distance) * CFrame.Angles(0, math.pi, 0), true)
 	end

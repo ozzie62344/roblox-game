@@ -7,7 +7,6 @@ return {
 	velocity = Vector3.zero,
 	grounded = true,
 	sprinting = false,
-	sliding = false, -- (there's no sliding any more: always false; kept for older readers)
 	crouching = false,
 	prone = false, -- lying down / crawling (double-tap crouch)
 	vaulting = false, -- mid vault / climb (MovementController): the body is moved along a short arc

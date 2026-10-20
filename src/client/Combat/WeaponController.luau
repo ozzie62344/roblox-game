@@ -98,7 +98,7 @@ local function computeSpread(): number
 	spread += bloom * (1 - state.aimAlpha * (1 - ADS_BLOOM))
 	local moveAlpha = math.clamp(state.speed / Config.SprintSpeed, 0, 1)
 	spread += weapon.MoveSpreadBonus * moveAlpha * (1 - state.aimAlpha * 0.7)
-	if not state.grounded or state.sliding then
+	if not state.grounded then
 		spread += weapon.AirSpreadBonus
 	elseif state.prone then
 		spread *= weapon.CrouchSpreadScale * 0.7 -- lying down steadies your aim the most

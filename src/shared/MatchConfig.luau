@@ -16,10 +16,9 @@ return {
 	PreRoundTime = 10, -- frozen pre-round with Random loadouts (still time to pick site / spawn)
 	DraftTime = 20, -- operator selection in Draft mode (anyone who doesn't pick gets a random one)
 
-	-- "Draft" = pick 1 of 3 loadouts each round, "Random" = you get a random one.
-	-- (Lobby voting will choose this later.)
+	-- "Draft" = everyone picks their operator each round, "Random" = you're given a random one
+	-- (custom matches can choose; the dev panel can switch it)
 	DefaultLoadoutMode = "Draft",
-	DraftOptions = 3,
 
 	-- Map loaded when the server starts ("House", "Warehouse" or "TestArena"); the dev panel can switch it
 	DefaultMap = "House",

@@ -225,10 +225,6 @@ function Lobby.Build(): Model
 	local rampLength = 16
 	map:Part("Ramp", Vector3.new(8, 0.6, rampLength), CFrame.new(at(30, 2.4, 10)) * CFrame.Angles(math.rad(17), 0, 0), Color3.fromRGB(120, 125, 130), Enum.Material.DiamondPlate)
 	map:Box("RampTop", at(26, 0, -6), at(34, 4.8, 2.6), Color3.fromRGB(120, 125, 130), Enum.Material.DiamondPlate)
-	-- (painted, not neon: a long glowing strip bloomed across half the room)
-	map:Box("SlideLane", at(-40, 0.02, 4), at(-4, 0.06, 10), Color3.fromRGB(205, 130, 50), Enum.Material.SmoothPlastic).CanCollide = false
-	map:Box("WallJumpWall", at(-42, 0, 14), at(-41, WALL, 30), PLASTER, Enum.Material.Concrete)
-	map:Box("WallJumpWall", at(-27, 0, 14), at(-26, WALL, 30), PLASTER, Enum.Material.Concrete)
 
 	-- Where players appear (RoundService moves them here)
 	local spawn = map:Box("LobbySpawn", at(-4, 0, 20), at(4, 0.08, 28), ACCENT, Enum.Material.Neon)

@@ -53,7 +53,7 @@ export type Weapon = {
 	HipBloom: number, -- extra hip spread degrees each shot adds (mostly gone aimed in)
 	HipBloomMax: number, -- bloom can't grow past this
 	MoveSpreadBonus: number, -- extra degrees at full sprint speed
-	AirSpreadBonus: number, -- extra degrees while airborne or sliding
+	AirSpreadBonus: number, -- extra degrees while airborne
 	CrouchSpreadScale: number, -- spread multiplier while crouched (lower = more accurate)
 	AdsFovScale: number, -- FOV multiplier while aiming with the gun's own sights (optics change it)
 	AdsTime: number, -- seconds to aim in

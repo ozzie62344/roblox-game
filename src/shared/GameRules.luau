@@ -1,5 +1,5 @@
 -- Game modes on top of the objective (MatchConfig GameMode: bomb or elimination): which guns are
--- in the loadout draft, plus a few rule changes. Voted on with the map before every match
+-- operators can take, plus a few rule changes. Voted on with the map before every match
 -- (RoundService.voteMap, client MapVote); the winner is MatchState's "Rules" attribute until the
 -- match ends (free roam is always Classic).
 -- Knives Only takes the guns away: your "weapon" is the knife (Weapon attribute = GameRules.NoGun),

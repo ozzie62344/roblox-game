@@ -203,7 +203,7 @@ function Hud.SetScoped(scoped: boolean)
 	scope.Visible = scoped
 end
 
--- e.g. "SMG" and "[F] Dash" → "SMG  ·  [F] Dash", led by your operator's name when you have one
+-- e.g. "SMG" and "[X] Shock Wire" → "SMG  ·  [X] Shock Wire", led by your operator's name when you have one
 -- ("VOLTA  ·  SMG  ·  [X] Shock Wire  ●●")
 function Hud.SetLoadout(weaponName: string, abilityText: string?)
 	local text = if abilityText then `{string.upper(weaponName)}  ·  {abilityText}` else string.upper(weaponName)

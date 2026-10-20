@@ -401,7 +401,7 @@ local function build()
 	end)
 	heading(panel, "Loadouts each round:", 21)
 	choiceGrid(panel, 22, {
-		{ value = "Draft", label = "Draft (pick 1 of 3)" },
+		{ value = "Draft", label = "Draft (pick your operator)" },
 		{ value = "Random", label = "Random" },
 	}, function()
 		return MatchState:GetAttribute("LoadoutMode") or "Draft"

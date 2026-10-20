@@ -83,7 +83,7 @@ function PoseService.Start()
 		end
 	end)
 
-	-- Lowered (crouching / sliding / lying down) and whether it's lying down (prone)
+	-- Lowered (crouching / lying down) and whether it's lying down (prone)
 	SetCrouch.OnServerEvent:Connect(function(player, crouching, prone)
 		if typeof(crouching) ~= "boolean" then
 			return
