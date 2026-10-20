@@ -45,3 +45,14 @@ Traced each before changing; every one now has a clean-up point:
 - BodyAnimator `warned` (character → "R6 avatar" warning shown): pruned in the same per-frame
   loop that already forgets rigs of characters that are gone.
 - After this, `grep __mode` finds nothing in the project.
+
+## 2. Small gameplay bugs: all five already fixed, no code changed
+
+Checked git log and the current code. Each fix landed on Oct 19 and is still in place:
+| Bug | Commit | Where the fix is now |
+|---|---|---|
+| EMP going off after the next round starts | a8c1bc9 | `server/GadgetService.luau:421` (returns if the grenade was swept away) |
+| Aim pitch not resent after respawn | 65a6db9 | `client/Pose/BodyAnimator.luau:608` (`lastSentPitch` reset on CharacterAdded) |
+| Toggled lean returning after a revive | ab5bb35 | `client/Lean/LeanController.luau:46` (going down clears the toggle) |
+| Second thermite on a burning wall | 99714e3 | `server/GadgetService.luau:300, 335-337` (`Burning` attribute) |
+| Reinforcing while also disabling the defuser | d87b5cf | `server/ObjectiveService.luau:494` (refuses while `Interaction` is set) |

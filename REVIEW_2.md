@@ -13,3 +13,11 @@
 - [ ] Heartbeat sensor: X starts the scan, X again puts it away early.
 - [ ] Assists: hurt an enemy, let a teammate finish them: you get the assist on the scoreboard.
 - [ ] End of a match: the MVP screen shows the MVP's body.
+
+## 2. Small gameplay bugs (already fixed earlier; re-check if you haven't yet)
+
+- [ ] An EMP thrown just before a round ends doesn't fry the next round's cameras.
+- [ ] After dying and respawning, other players see you aim up/down straight away.
+- [ ] With lean set to toggle: lean, get downed, get revived: you're not leaning.
+- [ ] Thermite on a wall that's already burning: "A CHARGE IS ALREADY BURNING THERE", no charge used.
+- [ ] A defender holding G to reinforce can't also start disabling the defuser.
