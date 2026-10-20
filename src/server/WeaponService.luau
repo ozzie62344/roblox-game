@@ -429,6 +429,7 @@ local function onFire(player: Player, origin: any, shots: any)
 		end
 	end
 
+	MatchStats.Shot(player, next(totals) ~= nil) -- (accuracy, for ranked: a pull that hit an enemy)
 	if #endPositions > 0 then
 		ShotFired:FireAllClients(player, origin, endPositions, weapon.Name, inFlesh)
 	end

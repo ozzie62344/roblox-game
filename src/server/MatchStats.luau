@@ -1,5 +1,5 @@
--- Who did what this match: kills, deaths, assists, headshots, objective plays (plant / disable)
--- and rounds won, and from those a score. The best score is the match MVP. At the end of a match
+-- Who did what this match: kills, deaths, assists, headshots, objective plays (plant / disable),
+-- shots fired and hit, and rounds won, and from those a score. The best score is the match MVP. At the end of a match
 -- everyone gets the results (MatchResults remote → client MatchResults: the MVP and both teams'
 -- scoreboard), plus a standing copy of the MVP's body for the screen to show.
 -- RoundService begins / finishes it and reports deaths and round wins; WeaponService reports
@@ -34,7 +34,7 @@ local BODY_NAME = "MvpBody"
 MatchStats.ResultsDelay = 2
 MatchStats.ResultsTime = 10
 
-type Line = {
+export type Line = {
 	userId: number,
 	name: string,
 	team: string,
@@ -44,6 +44,8 @@ type Line = {
 	headshots: number,
 	objectives: number,
 	rounds: number,
+	shots: number, -- trigger pulls with a gun (WeaponService), for accuracy
+	hits: number, -- ...that hit an enemy
 }
 
 local active = false
@@ -78,7 +80,7 @@ local function lineFor(player: Player?): Line?
 	if not line then
 		line = {
 			userId = player.UserId, name = player.DisplayName, team = player.Team.Name,
-			kills = 0, deaths = 0, assists = 0, headshots = 0, objectives = 0, rounds = 0,
+			kills = 0, deaths = 0, assists = 0, headshots = 0, objectives = 0, rounds = 0, shots = 0, hits = 0,
 		}
 		lines[player.UserId] = line
 		publish(line)
@@ -92,13 +94,9 @@ local function score(line: Line): number
 		+ line.objectives * SCORE.Objective + line.rounds * SCORE.RoundWin
 end
 
--- Everyone's match score so far, by UserId (RankedService: the performance nudge)
-function MatchStats.Scores(): { [number]: number }
-	local scores = {}
-	for userId, line in lines do
-		scores[userId] = score(line)
-	end
-	return scores
+-- Everyone's numbers so far, by UserId (RankedService: how each played against the average)
+function MatchStats.Lines(): { [number]: Line }
+	return table.clone(lines)
 end
 
 -- A new match: everyone on a team starts at zero
@@ -155,6 +153,15 @@ function MatchStats.Death(victim: Player, humanoid: Humanoid, killer: Player?, h
 			line.assists += 1
 			publish(line)
 		end
+	end
+end
+
+-- WeaponService: one trigger pull (all of a shotgun's pellets together), and whether it hit an enemy
+function MatchStats.Shot(player: Player, hit: boolean)
+	local line = lineFor(player)
+	if line then
+		line.shots += 1
+		line.hits += if hit then 1 else 0
 	end
 end
 

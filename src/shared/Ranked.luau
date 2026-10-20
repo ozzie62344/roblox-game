@@ -4,11 +4,15 @@
 --
 -- Who can play: level MinLevel or higher (a party only if every member is). Ranked has its own
 -- queues (Matchmaker), so ranked players only ever play ranked players.
--- Rating: everyone has an MMR (starting at StartMmr). After a ranked match it moves Elo-style:
--- your team's average MMR against the other team's gives the chance you were expected to win,
--- and you gain or lose K × (result − expected), plus a small nudge (at most ±PerformanceNudge)
--- for how your match score compares with the match's average. Winners always gain at least 1,
--- losers always lose at least 1. Leaving a ranked match early counts as a loss.
+-- Rating: everyone has an MMR (starting at StartMmr). After a ranked match it moves in two parts:
+--   Result: Elo-style. Your team's average MMR against the other team's gives the chance you
+--     were expected to win; you gain or lose K × (result − expected), where the result counts the
+--     win (WinWeight) and how many of the rounds your team took (the rest): a 4-0 win is worth
+--     more than a 4-3 one, and a 3-4 loss costs less than a 0-4.
+--   Performance: how you played against the match average (Performance): kills, deaths,
+--     assists, headshots, plants / disables and accuracy, at most ±PerformanceCap.
+-- Winners always gain at least 1, losers always lose at least 1. Leaving a ranked match early
+-- counts as a loss with no rounds and no performance.
 -- Placements: the first Placements matches swing PlacementMultiplier times as much, and no rank
 -- shows until they're done ("PLACEMENTS 3/5").
 -- Ranks from MMR: Copper → Bronze → Silver → Gold → Platinum → Diamond, each split in three
@@ -24,8 +28,11 @@ Ranked.StartMmr = 1000
 Ranked.Placements = 5
 Ranked.K = 32
 Ranked.PlacementMultiplier = 1.5
-Ranked.PerformanceNudge = 5 -- most MMR your own score can add or take
-Ranked.PerformancePoints = 100 -- match score above (below) the average worth +1 (−1): a kill is 100
+Ranked.WinWeight = 0.6 -- share of the result that's the win itself; the rest is your share of the rounds
+Ranked.PerformanceCap = 12 -- most MMR how you played can add or take
+-- MMR for each stat above (below) the match average: per kill, death, assist, headshot,
+-- plant / disable, and per percentage point of accuracy
+Ranked.PerformanceWeights = { Kill = 1.5, Death = -1, Assist = 0.5, Headshot = 0.5, Objective = 1.5, Accuracy = 0.15 }
 
 export type Tier = { Name: string, Min: number, Color: Color3 }
 
@@ -99,17 +106,53 @@ function Ranked.Expected(mine: number, theirs: number): number
 	return 1 / (1 + 10 ^ ((theirs - mine) / 400))
 end
 
--- The MMR change for one player: their team's average vs the other's, whether they won, their
--- match score vs the match average, and how many ranked matches they'd played before this one
-function Ranked.Change(teamMmr: number, otherMmr: number, won: boolean, score: number, averageScore: number, matchesBefore: number): number
+export type Stats = { kills: number, deaths: number, assists: number, headshots: number, objectives: number, shots: number, hits: number }
+
+-- Accuracy in percent (trigger pulls that hit an enemy), or nil with nothing fired
+local function accuracy(stats: Stats): number?
+	return if stats.shots > 0 then 100 * stats.hits / stats.shots else nil
+end
+
+-- How well `stats` played against the match `average` (the same fields, averaged over everyone
+-- who played): MMR, at most ±PerformanceCap. Accuracy only counts if both fired.
+function Ranked.Performance(stats: Stats, average: Stats): number
+	local w = Ranked.PerformanceWeights
+	local points = (stats.kills - average.kills) * w.Kill + (stats.deaths - average.deaths) * w.Death
+		+ (stats.assists - average.assists) * w.Assist + (stats.headshots - average.headshots) * w.Headshot
+		+ (stats.objectives - average.objectives) * w.Objective
+	local mine, theirs = accuracy(stats), accuracy(average)
+	if mine and theirs then
+		points += (mine - theirs) * w.Accuracy
+	end
+	return math.clamp(points, -Ranked.PerformanceCap, Ranked.PerformanceCap)
+end
+
+-- The MMR change for one player: their team's average vs the other's, whether they won, the share
+-- of the match's rounds their team took (0-1), their Performance, and how many ranked matches
+-- they'd played before this one
+function Ranked.Change(teamMmr: number, otherMmr: number, won: boolean, roundShare: number, performance: number, matchesBefore: number): number
 	local expected = Ranked.Expected(teamMmr, otherMmr)
-	local nudge = math.clamp((score - averageScore) / Ranked.PerformancePoints, -Ranked.PerformanceNudge, Ranked.PerformanceNudge)
-	local change = Ranked.K * ((if won then 1 else 0) - expected) + nudge
+	local result = Ranked.WinWeight * (if won then 1 else 0) + (1 - Ranked.WinWeight) * math.clamp(roundShare, 0, 1)
+	local change = Ranked.K * (result - expected) + performance
 	if not Ranked.IsPlaced(matchesBefore) then
 		change *= Ranked.PlacementMultiplier
 	end
 	change = math.floor(change + 0.5)
 	return if won then math.max(change, 1) else math.min(change, -1)
+end
+
+-- (self-check, on load: the rules keep doing what the header says)
+do
+	local even: Stats = { kills = 5, deaths = 5, assists = 2, headshots = 2, objectives = 0, shots = 100, hits = 30 }
+	local star: Stats = { kills = 12, deaths = 2, assists = 3, headshots = 6, objectives = 1, shots = 100, hits = 45 }
+	local placed = Ranked.Placements
+	assert(Ranked.Performance(even, even) == 0, "Ranked: average play should be worth 0")
+	assert(Ranked.Performance(star, even) == Ranked.PerformanceCap, "Ranked: a great match should hit the cap")
+	assert(Ranked.Performance(even, star) < 0, "Ranked: below average should cost MMR")
+	assert(Ranked.Change(1000, 1000, true, 1, 0, placed) > Ranked.Change(1000, 1000, true, 4 / 7, 0, placed), "Ranked: a 4-0 should beat a 4-3")
+	assert(Ranked.Change(1000, 1000, false, 3 / 7, 0, placed) > Ranked.Change(1000, 1000, false, 0, 0, placed), "Ranked: a 3-4 loss should cost less than 0-4")
+	assert(Ranked.Change(1000, 1000, true, 4 / 7, -Ranked.PerformanceCap, placed) >= 1, "Ranked: a win always gains")
+	assert(Ranked.Change(1000, 1000, false, 3 / 7, Ranked.PerformanceCap, placed) <= -1, "Ranked: a loss always costs")
 end
 
 return Ranked

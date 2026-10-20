@@ -518,7 +518,7 @@ local function runMatch()
 
 	if matchWinner and not abortMatch then
 		-- Ranked: new MMR for everyone, first thing (before the results screen, which shows it)
-		RankedService.Finish(matchWinner)
+		RankedService.Finish(matchWinner, scores)
 		for _, teamName in MatchConfig.TeamOrder do
 			for _, player in teams[teamName]:GetPlayers() do
 				ShopService.Award(player, MatchConfig.Credits.MatchPlayed, "MATCH COMPLETE")

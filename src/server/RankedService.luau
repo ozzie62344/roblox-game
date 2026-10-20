@@ -1,7 +1,8 @@
 -- Ranked ratings (rules and numbers: shared/Ranked). A match server knows its match is ranked
 -- from the teleport data (MatchState "Ranked": RoundService); in Studio a full ranked queue sets it.
 --   RankedService.Begin()        the match starts: everyone on a team is in it, at today's MMR
---   RankedService.Finish(winner) the match is won: everyone still here gets their new MMR
+--   RankedService.Finish(winner, rounds)  the match is won: everyone still here gets their new MMR
+--                                      (from the result, the rounds and how they played)
 --   RankedService.Cancel()       the match was stopped (dev panel): nothing changes
 -- Leaving a ranked match early (before Finish) is a loss, recorded right as you go
 -- (PlayerData.OnLeaving runs before your data's last save). Players sent back to the lobby after
@@ -66,9 +67,10 @@ local function otherAverage(team: string, teamAverages: { [string]: number }): n
 	return teamAverages[team] or Ranked.StartMmr
 end
 
--- Applies one player's result. `score` / `averageScore`: their match score and the match's
--- average (a leaver gets no nudge either way). Returns what to tell them.
-local function settle(player: Player, entry: Entry, won: boolean, score: number, averageScore: number): { [string]: any }?
+-- Applies one player's result: whether they won, the share of the rounds their team took and how
+-- they played (Ranked.Performance; a leaver gets 0 rounds and no performance). Returns what to
+-- tell them.
+local function settle(player: Player, entry: Entry, won: boolean, roundShare: number, performance: number): { [string]: any }?
 	local data = PlayerData.Get(player)
 	if entry.settled or not data then
 		return nil
@@ -76,7 +78,7 @@ local function settle(player: Player, entry: Entry, won: boolean, score: number,
 	entry.settled = true
 	local teamAverages = averages()
 	local before, matches = data.Mmr, data.RankedMatches
-	local change = Ranked.Change(teamAverages[entry.team] or before, otherAverage(entry.team, teamAverages), won, score, averageScore, matches)
+	local change = Ranked.Change(teamAverages[entry.team] or before, otherAverage(entry.team, teamAverages), won, roundShare, performance, matches)
 	local after = math.max(0, before + change)
 	PlayerData.Update(player, function(d)
 		d.Mmr = after
@@ -98,7 +100,8 @@ function RankedService.Begin()
 	end
 end
 
-function RankedService.Finish(winner: string)
+-- `rounds`: rounds won per team name
+function RankedService.Finish(winner: string, rounds: { [string]: number })
 	if not active then
 		return
 	end
@@ -106,17 +109,31 @@ function RankedService.Finish(winner: string)
 	for _, player in Players:GetPlayers() do
 		track(player)
 	end
-	local scores = MatchStats.Scores()
-	local total, counted = 0, 0
-	for _, score in scores do
-		total += score
+	-- The match average of every stat (everyone who played, leavers included), to measure each
+	-- player against
+	local lines = MatchStats.Lines()
+	local average: Ranked.Stats = { kills = 0, deaths = 0, assists = 0, headshots = 0, objectives = 0, shots = 0, hits = 0 }
+	local counted = 0
+	for _, line in lines do
 		counted += 1
+		for key in average do
+			average[key] += (line :: any)[key]
+		end
 	end
-	local averageScore = if counted > 0 then total / counted else 0
+	for key in average do
+		average[key] /= math.max(counted, 1)
+	end
+	local totalRounds = 0
+	for _, won in rounds do
+		totalRounds += won
+	end
 	for _, player in Players:GetPlayers() do
 		local entry = entries[player.UserId]
 		if entry then
-			local result = settle(player, entry, entry.team == winner, scores[player.UserId] or averageScore, averageScore)
+			local line = lines[player.UserId]
+			local performance = if line then Ranked.Performance(line, average) else 0
+			local roundShare = if totalRounds > 0 then (rounds[entry.team] or 0) / totalRounds else 0.5
+			local result = settle(player, entry, entry.team == winner, roundShare, performance)
 			if result then
 				RankedRemote:FireClient(player, "Result", result)
 			end
@@ -138,7 +155,7 @@ function RankedService.Start()
 		track(player)
 		local entry = entries[player.UserId]
 		if entry then
-			settle(player, entry, false, 0, 0)
+			settle(player, entry, false, 0, 0) -- (a loss with no rounds and no performance)
 		end
 	end)
 	game:BindToClose(function()
