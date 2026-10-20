@@ -68,3 +68,19 @@ type-checked with luau-lsp (Roblox definitions + a Rojo sourcemap). What to test
   Bank uses later for its detail pass, so they're not duplicates.
 - Type check: the same 5 warnings as before the change (checked against the previous commit in a
   scratch copy), none new.
+
+### 4c. Shared invite logic: SKIPPED (risky, can't be tested here)
+- The three services share only a small core: store an invite with an expiry, refuse a repeat
+  while one is pending, and (Party, CustomMatch) a 30 s snooze after a NO. Around it they differ:
+  - PartyService: keyed invitee → inviter, value = expiry time, snooze per inviter.
+  - CustomMatchService: keyed invitee → lobby code, value = { from, ends }, snooze per lobby.
+  - ClanService: keyed invitee → inviter, value = { clan id, ends }, no snooze at all.
+  - Each has its own clean-up when a player leaves (dropping invites they sent or received).
+- Invites are referenced about 30 times across those files. A shared module would touch every
+  one, and invites can only be tested with two accounts in the published game, so a mistake
+  would silently break party, clan and custom-lobby invites. Saving ~30 lines isn't worth that
+  overnight.
+- If you want it later, the shape that fits all three: a small `Invites.new(lifetime, snooze?)`
+  object with `:CanSend(invitee, key)`, `:Send(invitee, key, value)`, `:Take(invitee, key)` →
+  (value, expired), `:Snooze(invitee, key)` and `:Forget(player)`, keyed by whatever each service
+  uses today (inviter or lobby code). Do it with a two-account test session ready.
