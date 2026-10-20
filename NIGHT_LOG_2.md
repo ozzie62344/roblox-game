@@ -65,3 +65,37 @@ Checked git log and the current code. Each fix landed on Oct 19 and is still in 
   scan starts and cleared on put-away, on finishing, and on death).
 - It's checked in shot validation (`onFire`, line 370) and for the knife (line 485). That's the
   only place it lives: anti-cheat movement checks don't use it, as asked.
+
+## 4. Lune tests for pure logic
+
+**Decision: load the modules unchanged instead of moving functions out.** The candidates (ranked
+MMR, XP curve / reward track, clan rules, custom-match settings) already live in their own
+`src/shared` files. The only things stopping Lune from running them were Roblox value types
+(Color3, BrickColor, Enum) and `require(script.Parent.X)`. Moving functions out would mean editing
+every module that imports them; a loader means no game code changes at all.
+- `tests/roblox.luau` runs a `src` module in Lune with Lune's Roblox value types,
+  `script.Parent.X` requires resolved to sibling files, and an empty stand-in for
+  `game:GetService` (enough to load Attachments; nothing calls a service).
+- `tests/check.luau` holds tiny assertion helpers.
+- Run any test from the repo root with `lune run tests/<Name>.test.luau`. All 5 files pass.
+
+| Test | Covers | Checks |
+|---|---|---|
+| `Ranked.test.luau` | Elo expectation, round share, performance and its cap, win/loss floors, placements, rank names | 23 |
+| `Progression.test.luau` | XP per level and its cap, level from total XP, reward track (every level real, every track skin on it, item price, credit piles), daily streak | 26 |
+| `Clans.test.luau` | name / tag / text cleaning, clan types, badge fallback, role order, level and rank requirements | 22 |
+| `CustomMatch.test.luau` | defaults, every default is an option, Sanitize keeps valid values and drops bad ones / unknown keys / unknown maps, sizes, code alphabet | 14 |
+| `PickTeams.test.luau` (last night) | party team picking | 8 |
+
+**Skipped:**
+- **Clan role permissions** (who can kick / promote / demote / transfer). The rules live inside
+  `ClanService.manage`'s DataStore update callback, mixed with record edits and the activity log.
+  Moving them out means restructuring, not moving a function unchanged, so it's out of scope.
+  What is tested: `Clans.Roles` ordering, which the kick rule compares.
+- **`CustomMatch.Apply` / `Clear` / `IsCustom`**: they write a Roblox instance's attributes.
+- **Challenges** (`Progression.RollChallenges`): seeded `Random`; Lune's `Random` may not match
+  Roblox's sequence, so a test could pass here and mean nothing in game.
+
+One test of mine was wrong on the first run: I assumed level 10 on the reward track is a credits
+pile, but it's a skin. I fixed the test (it now finds the first credits level divisible by 5);
+the game code was right.

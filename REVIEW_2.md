@@ -26,3 +26,10 @@
 
 - [ ] With the heartbeat sensor out, while driving a drone, and while on cameras: clicking fires
       nothing (and no hit lands on a target in front of your body).
+
+## 4. Lune tests
+
+- [ ] From the repo root, run each and see "all passed":
+      `lune run tests/Ranked.test.luau`, `tests/Progression.test.luau`, `tests/Clans.test.luau`,
+      `tests/CustomMatch.test.luau`, `tests/PickTeams.test.luau`.
+- [ ] Nothing to check in Studio: no game code changed for this item.
