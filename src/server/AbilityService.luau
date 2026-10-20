@@ -268,6 +268,9 @@ function AbilityService.Start()
 		if not character or not root or root.Anchored or character:GetAttribute("Deploying") or character:GetAttribute("Downed") then
 			return -- dead, frozen in the pre-round, busy deploying cover, or downed (DBNOService)
 		end
+		if player:GetAttribute("Droning") or player:GetAttribute("OnCams") then
+			return -- (driving a drone or watching cameras: your body isn't yours to use)
+		end
 
 		if handler(player, character, root, ability, look, chargesAttribute) then
 			lastUse[player] = now

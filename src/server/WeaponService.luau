@@ -341,6 +341,14 @@ local function checkShot(player: Player, character: Model, weapon: Weapons.Weapo
 	return endPosition, { humanoid = targetHumanoid, damage = damage, headshot = headshot }, true
 end
 
+-- (anti-cheat) Hands busy with something else, so no gun or knife: driving a drone, watching
+-- cameras, the heartbeat sensor out, or planting / disabling / fortifying / reviving. The client
+-- puts the gun away for all of these; this is for clients that don't.
+local function handsBusy(player: Player, character: Model): boolean
+	return player:GetAttribute("Droning") ~= nil or player:GetAttribute("OnCams") ~= nil
+		or player:GetAttribute("Interaction") ~= nil or character:GetAttribute("Scanning") ~= nil
+end
+
 -- shots = { { direction, hitPart, endPosition }, ... }  (one entry per pellet)
 local function onFire(player: Player, origin: any, shots: any)
 	if typeof(origin) ~= "Vector3" or typeof(shots) ~= "table" then
@@ -358,6 +366,9 @@ local function onFire(player: Player, origin: any, shots: any)
 	local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not root or root.Anchored or character:GetAttribute("Deploying") or character:GetAttribute("Downed") then
 		return -- frozen, hands busy deploying cover, or downed (DBNOService)
+	end
+	if handsBusy(player, character :: Model) then
+		return
 	end
 	local weapon = data.weapon
 	if #shots < 1 or #shots > weapon.Pellets then
@@ -468,6 +479,9 @@ local function onMelee(player: Player, targetPart: any, hitPoint: any)
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not character or not humanoid or humanoid.Health <= 0 or not root or root.Anchored or character:GetAttribute("Deploying") then
+		return
+	end
+	if handsBusy(player, character) then
 		return
 	end
 	if character:GetAttribute("Downed") then

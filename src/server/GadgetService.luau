@@ -521,6 +521,7 @@ local function heartbeatSensor(player: Player, character: Model, _root: BasePart
 	if scanning[player] then
 		scanning[player] = nil
 		character:SetAttribute("Gesture", nil) -- hands back on the gun
+		character:SetAttribute("Scanning", nil)
 		AbilityEffect:FireClient(player, "HeartbeatEnd")
 		return false
 	end
@@ -531,6 +532,7 @@ local function heartbeatSensor(player: Player, character: Model, _root: BasePart
 	scanCount += 1
 	local token = scanCount
 	scanning[player] = token
+	character:SetAttribute("Scanning", true) -- (gun away: WeaponService won't let them shoot meanwhile)
 	local duration = ability.Duration or 7
 	local radius = ability.Radius or 32
 	GadgetService.Gesture(character, "HeartbeatSensor")
@@ -566,6 +568,7 @@ local function heartbeatSensor(player: Player, character: Model, _root: BasePart
 		end
 		if scanning[player] == token then
 			scanning[player] = nil
+			character:SetAttribute("Scanning", nil)
 			AbilityEffect:FireClient(player, "HeartbeatEnd")
 		end
 	end)
