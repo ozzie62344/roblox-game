@@ -70,6 +70,9 @@ type Vault = {
 	landed: boolean, -- ends on solid ground (otherwise you drop off the far side)
 }
 local vault: Vault? = nil
+-- Space pressed a moment before you reach the cover still counts: we keep trying until then
+local VAULT_BUFFER = 0.6 -- seconds (about 8 studs at a walk: third person makes the distance hard to judge)
+local vaultWantedUntil = 0
 
 -- Humanoid states where we hand control back to Roblox's default movement
 local PASSIVE_STATES = {
@@ -494,6 +497,12 @@ local function step(dt: number)
 	if stepVault(dt) then
 		return
 	end
+	if os.clock() < vaultWantedUntil then
+		tryVault() -- (pressed a little early: vault as soon as the cover is in reach)
+		if vault then
+			vaultWantedUntil = 0
+		end
+	end
 
 	local passive = PASSIVE_STATES[humanoid:GetState()] == true
 	linearVelocity.Enabled = not passive
@@ -716,6 +725,7 @@ function MovementController.VaultPressed()
 		getUp(false)
 	else
 		tryVault()
+		vaultWantedUntil = if vault then 0 else os.clock() + VAULT_BUFFER
 	end
 end
 
