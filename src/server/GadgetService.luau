@@ -298,6 +298,10 @@ local function hardBreach(player: Player, character: Model, _root: BasePart, abi
 		status(player, "AIM AT A WALL OR HATCH YOU CAN BREACH")
 		return false
 	end
+	if section:GetAttribute("Burning") then
+		status(player, "A CHARGE IS ALREADY BURNING THERE")
+		return false
+	end
 	local body = part("Thermite", Vector3.new(2.6, 3.6, 0.4), cf * CFrame.new(0, 0, -0.2), Color3.fromRGB(170, 72, 40), Enum.Material.Metal)
 	local model = device("HardBreach", player, body, false)
 	for _, y in { 1.1, -1.1 } do
@@ -329,6 +333,11 @@ local function hardBreach(player: Player, character: Model, _root: BasePart, abi
 	model.Parent = deployables()
 	burn:Play()
 	GadgetService.Gesture(character, "HardBreach", cf)
+	-- One charge per section at a time (cleared however this one ends: done, shot off, fried)
+	section:SetAttribute("Burning", true)
+	model.Destroying:Connect(function()
+		section:SetAttribute("Burning", nil)
+	end)
 
 	local normal = cf.LookVector
 	local burnTime = ability.Duration or 3
