@@ -22,3 +22,13 @@ type-checked with luau-lsp (Roblox definitions + a Rojo sourcemap). What to test
   picking the site that's already chosen does nothing. Locking the team to the first pick would
   let one player overrule everyone; per-player stops the spam while teammates can still change
   it. The attackers' spawn pick wasn't asked for and is unchanged.
+
+## 2. Test for the party team-picking code
+
+- `pickTeams` was a local function inside Matchmaker, which can't load outside Roblox. Decision:
+  move it unchanged (same body, made generic over the unit type) into `src/server/PickTeams.luau`
+  so it can be tested, and have Matchmaker require it. No behaviour change.
+- Test: `tests/PickTeams.test.luau` (outside `src/`, so Rojo doesn't sync it), run with
+  `lune run tests/PickTeams.test.luau`. 8 checks: 1v1, not enough players, a party of 3 never
+  fits 2v2, 4v4 from 2+2+1+1+1+1 with parties kept whole, 4v4 from 3+3+1+1, 3v3 from 3+2+3,
+  and nobody placed twice. All pass (Lune was run locally).

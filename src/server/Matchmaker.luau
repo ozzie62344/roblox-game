@@ -26,6 +26,7 @@ local Progression = require(ReplicatedStorage.Shared.Progression)
 local Ranked = require(ReplicatedStorage.Shared.Ranked)
 local PartyService = require(script.Parent.PartyService)
 local MatchTicket = require(script.Parent.MatchTicket)
+local PickTeams = require(script.Parent.PickTeams) -- (two full teams without splitting a party)
 local PlayerData = require(script.Parent.PlayerData)
 local RoundService = require(script.Parent.RoundService)
 
@@ -228,42 +229,11 @@ local function onTeleportFailed(player: Player, result: Enum.TeleportResult, mes
 	requeue(travel.unit, travel.mode, travel.ranked)
 end
 
--- Two full teams of `size` from the front of `list` without splitting a party: the units on each
--- team, or nil if this queue can't make a match yet. Goes down the queue remembering one way to
--- reach every pair of team counts so far (at most (size + 1)² of them), so a party further back
--- can still fill a gap that the ones in front of it couldn't.
-local function pickTeams(list: { Unit }, size: number): { { Unit } }?
-	local stride = size + 1 -- key = (filled on team 1) × stride + (filled on team 2)
-	local full = size * stride + size
-	local ways: { [number]: { { Unit } } } = { [0] = { {}, {} } }
-	for _, unit in list do
-		local found = {}
-		for key, sides in ways do
-			local filled = { key // stride, key % stride }
-			for side = 1, 2 do
-				local newKey = key + #unit * (if side == 1 then stride else 1)
-				if filled[side] + #unit <= size and not ways[newKey] and not found[newKey] then
-					local copy = { table.clone(sides[1]), table.clone(sides[2]) }
-					table.insert(copy[side], unit)
-					found[newKey] = copy
-				end
-			end
-		end
-		for key, sides in found do
-			ways[key] = sides
-		end
-		if ways[full] then
-			return ways[full]
-		end
-	end
-	return nil
-end
-
 -- Smallest mode first: whichever queue can make a match first goes (casual, then ranked)
 function check()
 	for _, ranked in { false, true } do
 		for _, mode in MatchConfig.QueueModes do
-			local sides = pickTeams(queues[queueKey(mode, ranked)], teamSize(mode))
+			local sides = PickTeams(queues[queueKey(mode, ranked)], teamSize(mode))
 			if sides then
 				for _, units in sides do
 					for _, unit in units do

@@ -11,3 +11,9 @@
 - [ ] End Round pressed in free roam, then start a match: the first round plays normally.
 - [ ] As a defender in operator select: pick a site (team moves there), pick another (ignored),
       a teammate can still change it once, but not within 2 s of the last change.
+
+## 2. Party team-picking test
+
+- [ ] Run `lune run tests/PickTeams.test.luau` from the repo root: it should print "all passed".
+- [ ] In Studio, queue a match as before: matchmaking still starts (Matchmaker now loads the team
+      picker from `PickTeams`).
