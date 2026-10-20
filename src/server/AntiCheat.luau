@@ -14,9 +14,8 @@
 -- game's owner, never in Studio: there it's only logged.
 --
 -- Server teleports (spawns, the defenders' perimeter push-back...) must tell us, or they'd look
--- like cheats: call AntiCheat.Teleported(player) after moving the character, or (from scripts
--- that don't require this module) set the player's "ServerTeleport" attribute to a new value,
--- e.g. player:SetAttribute("ServerTeleport", os.clock()).
+-- like cheats: set the player's "ServerTeleport" attribute to a new value after moving the
+-- character, e.g. player:SetAttribute("ServerTeleport", os.clock()).
 --
 -- Combat checks live in WeaponService (fire rate, ammo, range, line of sight); it reports what it
 -- refuses here (Suspect) and every kill (NoteKill, an aimbot heuristic). Those are only logged.
@@ -434,15 +433,6 @@ local function lookAt(player: Player, time: number): Vector3?
 		end
 	end
 	return nil
-end
-
--- A server teleport just moved `player`'s character: don't count it (or anything for `seconds`)
-function AntiCheat.Teleported(player: Player, seconds: number?)
-	allowUntil[player] = math.max(allowUntil[player] or 0, os.clock() + (seconds or TELEPORT_GRACE))
-	local track = tracks[player]
-	if track then
-		rebaseline(track, os.clock())
-	end
 end
 
 -- WeaponService refused something (fire rate, empty mag, a hit through a wall...). Honest lag can

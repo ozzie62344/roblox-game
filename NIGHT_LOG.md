@@ -90,3 +90,13 @@ type-checked with luau-lsp (Roblox definitions + a Rojo sourcemap). What to test
   `MatchConfig.Credits.Tutorial`, next to the other credit amounts, and both read it.
   `TutorialService.Reward` had no other users, so it was removed. Nothing loops over
   `MatchConfig.Credits`, so the new entry can't show up anywhere unexpected.
+
+### 4e. Unused code deleted
+- Deleted `AntiCheat.Teleported` (every teleport uses the `ServerTeleport` attribute instead; the
+  header comment now only describes that) and `DBNOService.IsDowned` (no callers). Re-grepped the
+  whole tree, including string references, before deleting.
+- **Not deleted:** `Effects.Sound`'s positional branch. Nothing passes a position, but removing
+  it means dropping the parameter from all 18 callers, and some of those are in ShopMenu's Robux
+  purchase banner, which I was told not to edit. Leaving one unused branch is cheaper than
+  breaking that rule. Easy follow-up: drop the `position` parameter and the `if position` branch,
+  and remove `, nil` from the 18 calls.

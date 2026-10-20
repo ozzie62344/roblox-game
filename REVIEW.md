@@ -41,3 +41,9 @@
 
 - [ ] NEW HERE? prompt and the tutorial's last step both say +250 credits, and finishing the
       tutorial for the first time pays 250.
+
+## 4e. Unused code removed
+
+- [ ] Spawning into a match and the defender perimeter push-back don't trigger anti-cheat
+      "put back" messages (they use the ServerTeleport attribute, unchanged).
+- [ ] Getting downed and revived works as before.

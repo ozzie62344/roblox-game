@@ -147,11 +147,6 @@ function DBNOService.TryDown(humanoid: Humanoid, damage: number, headshot: boole
 	return true
 end
 
-function DBNOService.IsDowned(player: Player): boolean
-	local character = player.Character
-	return character ~= nil and character:GetAttribute("Downed") == true
-end
-
 -- Interact "Begin" "Revive" with the downed teammate's root part
 local function startRevive(reviver: Player, part: any)
 	if revives[reviver] or reviver:GetAttribute("Interaction") or not isLive() then
