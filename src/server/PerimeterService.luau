@@ -9,6 +9,8 @@ local RunService = game:GetService("RunService")
 local Teams = game:GetService("Teams")
 local Workspace = game:GetService("Workspace")
 
+local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
+
 local AbilityEffect = ReplicatedStorage.Remotes.AbilityEffect :: RemoteEvent
 local MatchState = ReplicatedStorage.MatchState
 
@@ -17,7 +19,7 @@ local PerimeterService = {}
 local CHECK_EVERY = 0.2
 local REVEAL_EVERY = 2 -- seconds between reveals while a defender stays outside
 local SKY_CHECK = 80 -- studs up (the lobby floats far higher)
-local LIVE_PHASES = { Prep = true, Action = true, Planted = true }
+local LIVE_PHASES = MatchConfig.LivePhases
 
 local lastInside: { [Player]: CFrame } = {}
 local nextReveal: { [Player]: number } = {}

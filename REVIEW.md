@@ -24,3 +24,9 @@
       the walls, the right lighting) and appears without a second hitch after the vote.
 - [ ] Break some walls in round 1: round 2 starts with them repaired.
 - [ ] A custom match (no vote) starts with the host's map intact too.
+
+## 4a. Shared helpers
+
+- [ ] In a match: defenders can watch cameras (Z) in prep and action, attackers can drone in
+      prep, a defender stepping outside during prep is snapped back, and later revealed.
+- [ ] Placed gadgets (charges, jammers, cover) and drones all clear at the start of each round.

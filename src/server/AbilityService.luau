@@ -25,15 +25,7 @@ local AbilityService = {}
 
 local lastUse: { [Player]: number } = {}
 
-local function getDeployables(): Folder
-	local folder = Workspace:FindFirstChild("Deployables")
-	if not folder then
-		folder = Instance.new("Folder")
-		folder.Name = "Deployables"
-		folder.Parent = Workspace
-	end
-	return folder :: Folder
-end
+local getDeployables = GadgetService.Deployables
 
 local aliveRoot = Characters.AliveRoot
 

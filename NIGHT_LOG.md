@@ -43,3 +43,15 @@ type-checked with luau-lsp (Roblox definitions + a Rojo sourcemap). What to test
 - Small risk noted: in the second or so between the vote and round 1, someone free roaming on the
   map in Studio (dev panel) could break a wall, and round 1 would keep it broken. On a real match
   server everyone waits in the lobby during the vote.
+
+## 4. Cleanup
+
+### 4a. Duplicated helpers into shared places
+- `deployables()` (the folder placed gadgets live in) was copied in AbilityService, DroneService
+  and GadgetService. Decision: keep GadgetService's and export it as `GadgetService.Deployables`;
+  the other two already require GadgetService, so no new module was needed.
+- The live-phase list `{ Prep, Action, Planted }` was copied in CameraService, DroneService,
+  PerimeterService and CamsController. It's now `MatchConfig.LivePhases`. RappelController's list
+  is different on purpose (no rappelling during prep) and was left alone.
+- `aliveRoot`, `isEnemy`, `inLobbyMenu` and `thinOutline` were already merged earlier today
+  (shared/Characters, LobbyIntro, MenuStyle).

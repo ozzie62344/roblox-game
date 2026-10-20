@@ -16,6 +16,7 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local Characters = require(ReplicatedStorage.Shared.Characters)
+local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local GadgetService = require(script.Parent.GadgetService)
 local ObjectiveService = require(script.Parent.ObjectiveService)
 
@@ -31,7 +32,7 @@ local SPOT_RANGE = 70 -- studs from the drone's camera
 local SPOT_TIME = 4 -- seconds a spotted enemy stays highlighted for the team
 local SITE_SEE_RANGE = 45 -- how close a drone / attacker has to be to make out the site
 local SITE_CHECK_EVERY = 0.3
-local LIVE_PHASES = { Prep = true, Action = true, Planted = true }
+local LIVE_PHASES = MatchConfig.LivePhases
 -- The drone's looks (buildDrone)
 local GUNMETAL = Color3.fromRGB(48, 51, 56)
 local MATTE = Color3.fromRGB(27, 28, 31)
@@ -48,15 +49,7 @@ local UPRIGHT = CFrame.Angles(0, 0, math.pi / 2) -- ...or to stand up
 local drones: { [Player]: Model } = {}
 local lastSiteCheck = 0
 
-local function deployables(): Folder
-	local folder = Workspace:FindFirstChild("Deployables")
-	if not folder then
-		folder = Instance.new("Folder")
-		folder.Name = "Deployables"
-		folder.Parent = Workspace
-	end
-	return folder :: Folder
-end
+local deployables = GadgetService.Deployables
 
 local function isAttacker(player: Player): boolean
 	return player.Team ~= nil and player.Team.Name == MatchState:GetAttribute("AttackTeam")

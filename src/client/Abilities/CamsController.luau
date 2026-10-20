@@ -11,6 +11,7 @@ local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage.Shared.MovementConfig)
+local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local state = require(script.Parent.Parent.PlayerState)
 local TouchLook = require(script.Parent.Parent.Input.TouchLook)
 local Static = require(script.Parent.Static)
@@ -30,7 +31,7 @@ local FOV = 80
 local SPOT_RANGE = 90
 local SWITCH_STATIC = 0.25 -- seconds of static when the feed changes
 local LOST_TIME = 0.8 -- "CAMERA DESTROYED" before moving on
-local LIVE_PHASES = { Prep = true, Action = true, Planted = true }
+local LIVE_PHASES = MatchConfig.LivePhases
 
 local watching = false
 local current: Model? = nil

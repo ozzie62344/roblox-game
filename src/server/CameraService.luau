@@ -10,6 +10,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
+local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
+
 local DroneService = require(script.Parent.DroneService)
 
 local CamsRemote = ReplicatedStorage.Remotes.Cams :: RemoteEvent
@@ -18,7 +20,7 @@ local MatchState = ReplicatedStorage.MatchState
 local CameraService = {}
 
 local SPOT_RANGE = 90 -- studs from the lens
-local LIVE_PHASES = { Prep = true, Action = true, Planted = true }
+local LIVE_PHASES = MatchConfig.LivePhases
 local DARK = Color3.fromRGB(38, 40, 44)
 
 -- { name, point on the wall, out of the wall, what it looks at } (measured against the map)

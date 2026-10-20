@@ -14,6 +14,7 @@ return {
 	-- Every round starts with operator selection (Siege): everyone frozen at spawn picking an
 	-- operator (Draft), defenders picking the site, attackers picking their spawn point
 	PreRoundTime = 10, -- frozen pre-round with Random loadouts (still time to pick site / spawn)
+	LivePhases = { Prep = true, Action = true, Planted = true }, -- a round is on (cameras, drones, perimeter)
 	DraftTime = 20, -- operator selection in Draft mode (anyone who doesn't pick gets a random one)
 
 	-- "Draft" = everyone picks their operator each round, "Random" = you're given a random one

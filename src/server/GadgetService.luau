@@ -72,6 +72,7 @@ local function deployables(): Folder
 	end
 	return folder :: Folder
 end
+GadgetService.Deployables = deployables -- (AbilityService, DroneService: one Deployables folder)
 
 local function teamName(player: Player): string
 	return if player.Neutral or not player.Team then "" else player.Team.Name
