@@ -151,7 +151,9 @@ local function pickContext(): (string?, number)
 		return "Prep", 1 -- (the map vote is on everyone's screen)
 	end
 	if location == "Match" or state.spectating then
-		if phase == "PreRound" or phase == "Prep" then
+		-- (the Prep bed stops when the defenders' setup starts: it fades out over CrossfadeTime and
+		-- nothing below picks it again, so it can't come back during prep or the round)
+		if phase == "PreRound" then
 			return "Prep", 1
 		elseif phase == "Planted" then
 			return "Tension", 1

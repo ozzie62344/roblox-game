@@ -8,7 +8,7 @@
 --   Lobby 3         moodier downtempo / trap beat, 1–3 min (keeps the shuffle from feeling samey)
 --   Lobby 4         optional: anything in the same family, 1–3 min (leave "" for a 3-track list)
 --   Prep            tense low "get ready" bed: pulsing synth / ticking percussion, no melody to
---                   speak of, 30–90 s, seamless loop (map vote, loadout pick, defenders' setup)
+--                   speak of, 30–90 s, seamless loop (map vote, operator select)
 --   Tension         very quiet dark drone / heartbeat pad, almost no rhythm, 20–60 s, seamless
 --                   loop (last 30 s of a round, or once the defuser is planted; must not cover
 --                   footsteps)
@@ -31,7 +31,7 @@ local Music = {}
 -- What plays where (MusicController picks one from the match phase and where you are):
 --   Lobby    the lobby (and the main menu / waiting for a match server to fill): shuffled, each
 --            track crossfades into the next, round and round
---   Prep     map vote, the pre-round loadout pick and the defenders' setup
+--   Prep     map vote and operator select; it fades out when the defenders' setup starts
 --   Tension  a live round's last TensionLastSeconds, or the defuser's countdown; otherwise a live
 --            round has no music at all (you need to hear footsteps)
 --   (nothing) round over / match over (the stings cover those), dev free roam on the map
