@@ -21,3 +21,8 @@
 - [ ] With lean set to toggle: lean, get downed, get revived: you're not leaning.
 - [ ] Thermite on a wall that's already burning: "A CHARGE IS ALREADY BURNING THERE", no charge used.
 - [ ] A defender holding G to reinforce can't also start disabling the defuser.
+
+## 3. No shooting while scanning, droning or on cams (already in place)
+
+- [ ] With the heartbeat sensor out, while driving a drone, and while on cameras: clicking fires
+      nothing (and no hit lands on a target in front of your body).

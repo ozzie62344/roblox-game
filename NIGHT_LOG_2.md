@@ -56,3 +56,12 @@ Checked git log and the current code. Each fix landed on Oct 19 and is still in 
 | Toggled lean returning after a revive | ab5bb35 | `client/Lean/LeanController.luau:46` (going down clears the toggle) |
 | Second thermite on a burning wall | 99714e3 | `server/GadgetService.luau:300, 335-337` (`Burning` attribute) |
 | Reinforcing while also disabling the defuser | d87b5cf | `server/ObjectiveService.luau:494` (refuses while `Interaction` is set) |
+
+## 3. No shooting while scanning, droning or on cameras: already in place, no code changed
+
+- Added on Oct 19 in cb407e0. `server/WeaponService.luau` `handsBusy` (line 347) returns true
+  while the player has `Droning` (DroneService) or `OnCams` (CameraService), is mid-hold
+  (`Interaction`), or their character has `Scanning` (GadgetService heartbeat sensor, set when a
+  scan starts and cleared on put-away, on finishing, and on death).
+- It's checked in shot validation (`onFire`, line 370) and for the knife (line 485). That's the
+  only place it lives: anti-cheat movement checks don't use it, as asked.
