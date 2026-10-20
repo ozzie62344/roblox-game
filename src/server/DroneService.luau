@@ -15,6 +15,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
+local Characters = require(ReplicatedStorage.Shared.Characters)
 local GadgetService = require(script.Parent.GadgetService)
 local ObjectiveService = require(script.Parent.ObjectiveService)
 
@@ -61,11 +62,7 @@ local function isAttacker(player: Player): boolean
 	return player.Team ~= nil and player.Team.Name == MatchState:GetAttribute("AttackTeam")
 end
 
-local function aliveRoot(character: Model?): BasePart?
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	return if humanoid and humanoid.Health > 0 then root else nil
-end
+local aliveRoot = Characters.AliveRoot
 
 -- Where the drone's camera is (DroneController puts yours here too)
 function DroneService.Eye(drone: Model): Vector3?

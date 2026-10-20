@@ -29,6 +29,7 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local Abilities = require(ReplicatedStorage.Shared.Abilities)
+local Characters = require(ReplicatedStorage.Shared.Characters)
 local Sounds = require(ReplicatedStorage.Shared.Sounds)
 local DestructionService = require(script.Parent.DestructionService)
 local FortifyService = require(script.Parent.FortifyService)
@@ -85,16 +86,9 @@ local function status(player: Player, text: string)
 	AbilityEffect:FireClient(player, "Status", text)
 end
 
--- Everyone is an enemy in free roam; in a match, the other team is
-local function isEnemy(player: Player, other: Player): boolean
-	return other ~= player and (player.Neutral or other.Neutral or other.Team ~= player.Team)
-end
+local isEnemy = Characters.IsEnemy
 
-local function aliveRoot(model: Model?): BasePart?
-	local humanoid = model and model:FindFirstChildOfClass("Humanoid")
-	local root = model and model:FindFirstChild("HumanoidRootPart") :: BasePart?
-	return if humanoid and humanoid.Health > 0 and root then root else nil
-end
+local aliveRoot = Characters.AliveRoot
 
 -- Hands / body animation that everyone sees (HandsAnimator in first person, BodyAnimator in
 -- third): what was done, where (a frame on the surface, look vector out of it), and when

@@ -114,10 +114,7 @@ local function credits(): number?
 	return if typeof(value) == "number" then value else nil
 end
 
--- Smaller text needs a thinner outline than MenuStyle's chunky one
-local function thinOutline(label: TextLabel, thickness: number)
-	(label:FindFirstChildOfClass("UIStroke") :: UIStroke).Thickness = thickness
-end
+local thinOutline = MenuStyle.ThinOutline
 
 local function setButtonText(button: TextButton, text: string)
 	(button:FindFirstChild("Label") :: TextLabel).Text = text

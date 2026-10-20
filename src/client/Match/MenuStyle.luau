@@ -129,6 +129,11 @@ function MenuStyle.Check(parent: Instance, position: UDim2): Frame
 	return check
 end
 
+-- Smaller text needs a thinner outline than Text's chunky one
+function MenuStyle.ThinOutline(label: TextLabel | TextBox, thickness: number)
+	(label:FindFirstChildOfClass("UIStroke") :: UIStroke).Thickness = thickness
+end
+
 -- Shrinks `frame` (designed at `designSize` pixels) to fit small screens (phones)
 function MenuStyle.FitToScreen(frame: GuiObject, designSize: Vector2)
 	local scale = Instance.new("UIScale")

@@ -11,6 +11,7 @@ local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local Abilities = require(ReplicatedStorage.Shared.Abilities)
+local Characters = require(ReplicatedStorage.Shared.Characters)
 local CoverModel = require(script.Parent.CoverModel)
 local GadgetService = require(script.Parent.GadgetService)
 
@@ -34,14 +35,7 @@ local function getDeployables(): Folder
 	return folder :: Folder
 end
 
-local function aliveRoot(model: Model?): BasePart?
-	local humanoid = model and model:FindFirstChildOfClass("Humanoid")
-	local root = model and model:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if humanoid and humanoid.Health > 0 and root then
-		return root
-	end
-	return nil
-end
+local aliveRoot = Characters.AliveRoot
 
 -- `charges`: the player attribute counting this gadget's charges ("AbilityCharges" for the X gadget,
 -- "SecondaryCharges" for the B one)

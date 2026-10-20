@@ -120,9 +120,7 @@ local shownKey = ""
 
 -- ─── Small parts ───────────────────────────────────────────────────────────────
 
-local function thinOutline(label: TextLabel, thickness: number)
-	(label:FindFirstChildOfClass("UIStroke") :: UIStroke).Thickness = thickness
-end
+local thinOutline = MenuStyle.ThinOutline
 
 local function leftText(parent: Instance, text: string, size: UDim2, position: UDim2, color: Color3?, outline: number?): TextLabel
 	local label = MenuStyle.Text(parent, text, size, position)

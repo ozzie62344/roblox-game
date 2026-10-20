@@ -111,10 +111,7 @@ local function otherMenuOpen(): boolean
 		or state.resultsOpen or state.devPanelOpen
 end
 
--- Smaller text needs a thinner outline than MenuStyle's chunky one
-local function thinOutline(label: TextLabel | TextBox, thickness: number)
-	(label:FindFirstChildOfClass("UIStroke") :: UIStroke).Thickness = thickness
-end
+local thinOutline = MenuStyle.ThinOutline
 
 local function leftText(parent: Instance, text: string, size: UDim2, position: UDim2, anchor: Vector2?): TextLabel
 	local label = MenuStyle.Text(parent, text, size, position, anchor)

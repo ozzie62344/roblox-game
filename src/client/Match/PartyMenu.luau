@@ -112,10 +112,7 @@ end
 
 local inLobbyMenu = LobbyIntro.InLobby
 
--- Smaller text needs a thinner outline than MenuStyle's chunky one
-local function thinOutline(label: TextLabel, thickness: number)
-	(label:FindFirstChildOfClass("UIStroke") :: UIStroke).Thickness = thickness
-end
+local thinOutline = MenuStyle.ThinOutline
 
 -- (blank for Studio's test players)
 local function headshot(userId: number): string
