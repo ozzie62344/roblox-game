@@ -106,7 +106,7 @@ local Abilities: { [string]: Ability } = {
 		Kind = "Active",
 		Side = "Defend",
 		Charges = 2,
-		Description = "Electrify a reinforced wall: any charge put on it gets fried. Beaten by an EMP.",
+		Description = "Electrify a reinforced wall: any charge put on it gets fried, and so does any electronic gadget touching it (drones, cameras, claymores, either team's). Beaten by an EMP.",
 	},
 	SignalJammer = {
 		Name = "Signal Jammer",

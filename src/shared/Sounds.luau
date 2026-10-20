@@ -119,6 +119,14 @@ local Sounds = {
 		Volume = 0.5,
 	},
 
+	-- An armed breach charge beeping, a frag ticking (GadgetWarnings): the short beep, quiet but
+	-- carrying through a wall or two
+	ArmedBeep = {
+		Id = "rbxasset://sounds/electronicpingshort.wav",
+		Range = 45,
+		Volume = 0.45,
+		Pitch = 1.5,
+	},
 	-- Proximity alarm going off: the beep, loud and shrill, three quick ones a second, heard
 	-- through walls by both teams (that's the point: the attacker knows they've been caught too)
 	ProximityAlarm = {

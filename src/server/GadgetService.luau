@@ -10,7 +10,8 @@
 --           Flashbang      thrown, bounces; blinds and deafens whoever sees it go off
 --           Heartbeat      gun away for a few seconds: enemies in range pulse through walls on your
 --           Sensor         screen only (X again stops early); they're told they've been picked up
---   Defend  Shock Wire     battery on a reinforced section: charges put on it get fried
+--   Defend  Shock Wire     battery on a reinforced section: charges put on it get fried, and so does
+--                          any electronic gadget touching the steel (either team's)
 --           Signal Jammer  breach charges within its radius can't be set off, drones get static
 --           Armor Panel    bulletproof barricade on a doorway / window (10 knife hits or an explosive)
 --           Barbed Wire    a coil on the floor: anyone in it crawls (client GadgetEffects caps your
@@ -504,6 +505,7 @@ local function flashbang(_player: Player, character: Model, _root: BasePart, abi
 	end
 	GadgetService.Gesture(character, "Flashbang")
 	local grenade = grenadeModel("Flashbang", DARK, Color3.fromRGB(200, 200, 200))
+	grenade:SetAttribute("Warn", "FLASH")
 	throwGrenade(character, look, grenade, 1.5, function(position)
 		grenade:Destroy()
 		AbilityEffect:FireAllClients("Flashbang", position, ability.Radius or 20, ability.Duration or 4)
@@ -572,6 +574,34 @@ end
 
 -- ─── Defend ────────────────────────────────────────────────────────────────────
 
+-- Siege's Y10S2 electricity: while a section is electrified, any electronic device touching it
+-- (either team's: drones, cameras, jammers, alarms, claymores) is fried. Breach charges and
+-- thermite have their own fizzle (FRY_TIME).
+local TOUCH_MARGIN = 1.2 -- studs off the steel that still count as touching it
+local FRIES = { Drone = true, Claymore = true }
+local function fryTouching(section: BasePart, battery: Model)
+	while battery.Parent and section.Parent and section:GetAttribute("Electrified") do
+		local candidates = deployables():GetChildren()
+		local map = Workspace:FindFirstChild("Map")
+		local cameras = map and map:FindFirstChild("Cameras")
+		if cameras then
+			table.move(cameras:GetChildren(), 1, #cameras:GetChildren(), #candidates + 1, candidates)
+		end
+		local half = section.Size / 2 + Vector3.one * TOUCH_MARGIN
+		for _, other in candidates do
+			local body = other:IsA("Model") and other.PrimaryPart
+			if not body or other == battery or other.Name == "ShockWire" or not (other:GetAttribute("Electronic") or FRIES[other.Name]) then
+				continue
+			end
+			local p = section.CFrame:PointToObjectSpace(body.Position)
+			if math.abs(p.X) <= half.X and math.abs(p.Y) <= half.Y and math.abs(p.Z) <= half.Z then
+				fry(other :: Model)
+			end
+		end
+		task.wait(0.2)
+	end
+end
+
 local function shockWire(player: Player, character: Model, _root: BasePart, _ability: Abilities.Ability, look: Vector3): boolean
 	local hit = aim(character, look)
 	local cf = hit and onSurface(hit, false)
@@ -610,6 +640,7 @@ local function shockWire(player: Player, character: Model, _root: BasePart, _abi
 		section:SetAttribute("Electrified", nil)
 	end)
 	DestructionEvent:FireAllClients("Spark", hit.Position, 1, EMP_BLUE, Enum.Material.Neon)
+	task.spawn(fryTouching, section, model)
 	return true
 end
 
@@ -804,6 +835,7 @@ local function impactGrenade(player: Player, character: Model, _root: BasePart, 
 	GadgetService.Gesture(character, "ImpactGrenade")
 	local grenade = part("ImpactGrenade", Vector3.new(0.4, 0.55, 0.4), CFrame.new(position), DARK, Enum.Material.Metal, deployables())
 	part("Band", Vector3.new(0.45, 0.14, 0.45), CFrame.new(position), Color3.fromRGB(255, 120, 40), Enum.Material.Neon, grenade)
+	grenade:SetAttribute("Warn", "IMPACT")
 	task.spawn(function()
 		local thrownAt = os.clock()
 		local hit: RaycastResult? = nil
@@ -893,7 +925,7 @@ local function fragGrenade(player: Player, character: Model, _root: BasePart, ab
 	end
 	GadgetService.Gesture(character, "FragGrenade")
 	local grenade = grenadeModel("FragGrenade", Color3.fromRGB(70, 78, 58), Color3.fromRGB(150, 150, 140))
-	grenade:SetAttribute("Warn", "FRAG") -- (GadgetEffects: a warning icon for anyone close)
+	grenade:SetAttribute("Warn", "FRAG") -- (GadgetWarnings: a warning icon for anyone close)
 	throwGrenade(character, look, grenade, ability.Duration or 3, function(position)
 		grenade:Destroy()
 		bang(player, position, BREAK_RADIUS.Frag, ability.Radius or 18, FRAG_DAMAGE, nil)
@@ -930,7 +962,6 @@ local function claymore(player: Player, character: Model, root: BasePart, abilit
 	part("Sensor", Vector3.new(0.12, 0.12, 0.06), facing * CFrame.new(0, 0.12, -0.15), Color3.fromRGB(255, 40, 40), Enum.Material.Neon, model)
 	local laser = part("Laser", Vector3.new(0.04, 0.04, CLAYMORE_LASER), facing * CFrame.new(0, 0.12, -0.2 - CLAYMORE_LASER / 2), Color3.fromRGB(255, 40, 40), Enum.Material.Neon, model)
 	laser.Transparency = 1 -- (shows once armed)
-	model:SetAttribute("Warn", "CLAYMORE")
 	model.Parent = deployables()
 	GadgetService.Gesture(character, "Claymore", CFrame.lookAt(ground.Position, ground.Position + Vector3.yAxis, forward))
 
