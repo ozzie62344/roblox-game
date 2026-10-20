@@ -46,7 +46,9 @@ Music.Contexts = {
 		{ Name = "Tension Repeat Drones 39", Id = "rbxassetid://1843739491", Volume = 0.35, Looped = true }, -- Prep: APM "Tension Repeat Drones 39" (2:09)
 	},
 	Tension = {
-		{ Name = "Heavy Drone 25", Id = "rbxassetid://1843729378", Volume = 0.16, Looped = true }, -- Tension: APM "Heavy Drone 25" (2:05)
+		-- (barely there: it plays over a round's last 30 s and the defuser, when footsteps matter most.
+		-- 0.05 x the default 0.7 MUSIC setting stays under a crouch step heard through two walls)
+		{ Name = "Heavy Drone 25", Id = "rbxassetid://1843729378", Volume = 0.05, Looped = true }, -- Tension: APM "Heavy Drone 25" (2:05)
 	},
 }
 
