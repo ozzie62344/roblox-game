@@ -67,8 +67,12 @@ local PlayerData = {}
 PlayerData.PurchaseHistory = 200 -- receipts remembered in Purchases (the oldest are dropped)
 
 local STORE_NAME = "PlayerData_v1"
-local AUTOSAVE_INTERVAL = 180
-local LOCK_EXPIRY = 120 -- seconds: a lock older than this was left by a crashed server
+local AUTOSAVE_INTERVAL = 60 -- every autosave also renews the lock
+local LOCK_EXPIRY = 150 -- seconds: a lock older than this was left by a crashed server
+-- A live server's lock must never look abandoned, even after one failed autosave
+assert(LOCK_EXPIRY > AUTOSAVE_INTERVAL * 2, "PlayerData: LOCK_EXPIRY must outlast two autosaves")
+local RELEASE_TRIES = 3 -- the last save when a player leaves is retried this many times
+local RELEASE_RETRY = 2 -- seconds between those tries
 local LOAD_RETRY = 2 -- seconds between tries while another server still holds the lock
 local LOAD_TRIES = 15 -- then take it anyway
 -- Studio test sessions stop abruptly and all share JobId "", so they don't lock
@@ -79,6 +83,7 @@ type Session = {
 	saving: boolean, -- false: no DataStore, nothing is written
 	dirty: boolean,
 	saveQueued: boolean,
+	leaving: boolean, -- the last save has started: autosaves still in flight write nothing
 }
 
 local sessions: { [Player]: Session } = {}
@@ -299,14 +304,19 @@ local function save(player: Player, release: boolean): boolean
 	if not session or not session.saving or not dataStore then
 		return false
 	end
-	if not session.dirty and not release then
-		return true
+	if release then
+		session.leaving = true
 	end
+	-- (saved even when nothing changed: the write renews the lock)
 	session.dirty = false
 	local data = session.data
 	local written = false
 	local ok, err = pcall(function()
 		dataStore:UpdateAsync(key(player), function(old)
+			if session.leaving and not release then
+				written = false
+				return nil -- they've left: the last save has the data, and this would lock them again
+			end
 			local lock = typeof(old) == "table" and old.Lock or nil
 			if USE_LOCKS and typeof(lock) == "table" and lock.Job ~= game.JobId then
 				written = false
@@ -404,6 +414,21 @@ function PlayerData.OnLeaving(hook: (Player) -> ())
 	table.insert(leavingHooks, hook)
 end
 
+-- The last save (player leaving, server closing), retried: one failure would lose everything
+-- since the last autosave
+local function releaseSave(player: Player)
+	for attempt = 1, RELEASE_TRIES do
+		local session = sessions[player]
+		if not session or not session.saving or save(player, true) then
+			return
+		end
+		if attempt < RELEASE_TRIES then
+			task.wait(RELEASE_RETRY)
+		end
+	end
+	warn(`PlayerData: gave up saving {player.Name} after {RELEASE_TRIES} tries`)
+end
+
 local function onPlayerRemoving(player: Player)
 	if sessions[player] then
 		for _, hook in leavingHooks do
@@ -413,14 +438,14 @@ local function onPlayerRemoving(player: Player)
 			end
 		end
 	end
-	save(player, true)
+	releaseSave(player)
 	sessions[player] = nil
 end
 
 local function onPlayerAdded(player: Player)
 	local data = load(player)
 	local saving = data ~= nil
-	sessions[player] = { data = data or newData(), saving = saving, dirty = false, saveQueued = false }
+	sessions[player] = { data = data or newData(), saving = saving, dirty = false, saveQueued = false, leaving = false }
 	if not player.Parent then
 		onPlayerRemoving(player) -- left while loading: hand the lock back
 		return
@@ -451,7 +476,7 @@ function PlayerData.Start()
 		for player in sessions do
 			pending += 1
 			task.spawn(function()
-				save(player, true)
+				releaseSave(player)
 				pending -= 1
 			end)
 		end
