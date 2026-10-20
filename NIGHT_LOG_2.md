@@ -4,6 +4,18 @@ Decisions and reasoning, item by item. Nothing was run in Roblox; every change w
 with luau-lsp (Roblox definitions + a Rojo sourcemap), and Lune tests were run where noted. What to
 test in Studio is in REVIEW_2.md.
 
+## Summary
+
+| # | Item | Result |
+|---|---|---|
+| 1 | Weak tables | Fixed all 9 (the 3 asked for, then the other 6 with the same approach). No weak tables left. |
+| 2 | Five small gameplay bugs | All already fixed on Oct 19; no code changed. |
+| 3 | No shooting while scanning / droning / on cams | Already in shot validation since Oct 19; no code changed. |
+| 4 | Lune tests | 4 new test files (85 checks) plus a loader; all 5 test files pass. Clan role permissions skipped (not cleanly separable). |
+| 5 | CLAUDE.md | Written from the code. |
+
+Nothing pushed. `.claude/launch.json` never staged. No files touched in Store.luau, Robux or receipt code, or the lobby slide.
+
 ## 1. Weak tables
 
 Background (NIGHT_LOG.md item 5): a weak table can lose an entry keyed by a game object even while
