@@ -62,6 +62,7 @@ local staminaBar: Frame
 local staminaFill: Frame
 local wheelAngles: { [Weld]: number } = {} -- every drone's wheels (spinWheels)
 local headings: { [Model]: number } = {}
+local lastSafe: Vector3? = nil -- where your drone last had floor right under it (fell-through guard)
 
 -- How badly enemy jammers interfere at `position` (the same jammers GadgetService.Jammed counts)
 local function jamAt(position: Vector3): number
@@ -196,6 +197,21 @@ local function tickStamina(dt: number, sprinting: boolean)
 	staminaFill.BackgroundColor3 = if winded then Color3.fromRGB(255, 95, 70) else Color3.new(1, 1, 1)
 end
 
+-- The drone is small and sits on floors only 0.4 studs thick; if it ever slips through one
+-- (snapped upright on an edge, say), nothing is under it any more: put it back on the last floor
+-- it had. Every map has floor under every spot inside it, so "nothing below" only means that.
+local function keepOnMap(drone: Model, body: BasePart)
+	local below = Workspace:Raycast(body.Position, Vector3.new(0, -300, 0), ignoring(drone))
+	if below then
+		if below.Distance <= 2 then
+			lastSafe = body.Position
+		end
+	elseif lastSafe then
+		body.AssemblyLinearVelocity = Vector3.zero
+		body.CFrame = CFrame.new(lastSafe + Vector3.new(0, 0.5, 0)) * body.CFrame.Rotation
+	end
+end
+
 local function update(dt: number)
 	local drone = if player:GetAttribute("Droning") then myDrone() else nil
 	if not drone then
@@ -212,6 +228,7 @@ local function update(dt: number)
 		-- free the mouse: put them away (Left Alt still brings them back until the round starts).
 		driving = drone
 		state.droning = true
+		lastSafe = nil -- (a different drone, or a new round)
 		state.draftOpen = false
 		local look = body.CFrame.LookVector
 		yaw, pitch = math.atan2(-look.X, -look.Z), 0
@@ -245,6 +262,7 @@ local function update(dt: number)
 	body.AssemblyLinearVelocity = Vector3.new(horizontal.X, body.AssemblyLinearVelocity.Y, horizontal.Z)
 	body.AssemblyAngularVelocity = Vector3.zero
 	body.CFrame = CFrame.new(body.Position) * facing -- upright, facing where you look
+	keepOnMap(drone, body)
 
 	camera.CameraType = Enum.CameraType.Scriptable -- every frame, in case anything else reset it
 	local shake = CFrame.Angles((math.random() - 0.5) * 0.08 * jam, (math.random() - 0.5) * 0.08 * jam, (math.random() - 0.5) * 0.12 * jam)
