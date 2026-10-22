@@ -30,6 +30,7 @@ local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
 local PlayerSettings = require(ReplicatedStorage.Shared.PlayerSettings)
 local Progression = require(ReplicatedStorage.Shared.Progression)
 local Ranked = require(ReplicatedStorage.Shared.Ranked)
+local Store = require(ReplicatedStorage.Shared.Store)
 local Skins = require(ReplicatedStorage.Shared.Skins)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 
@@ -59,6 +60,7 @@ export type Data = {
 	RankedWins: number,
 	Purchases: { string }, -- Robux store (StoreService): PurchaseIds of receipts already granted, newest last
 	StarterPackGranted: boolean, -- the Starter Pack pass's credits and skin have been given (StoreService)
+	GiftedPasses: { [string]: boolean }, -- passes given rather than bought (Key: "VIP"...): a gift or the dev panel (StoreService)
 	ClanId: string, -- the clan they're in (ClanService checks it against the clan), "" = none
 }
 
@@ -102,7 +104,7 @@ local function newData(): Data
 		Xp = 0, RewardedLevel = 1, Kills = 0, Headshots = 0, Wins = 0, Matches = 0, DailyDay = 0, DailyStreak = 0, ChallengeDay = 0, Challenges = {},
 		TutorialDone = false, TutorialSeen = false,
 		Mmr = Ranked.StartMmr, RankedMatches = 0, RankedWins = 0,
-		Purchases = {}, StarterPackGranted = false,
+		Purchases = {}, StarterPackGranted = false, GiftedPasses = {},
 		ClanId = "",
 	}
 end
@@ -205,6 +207,13 @@ local function fromStored(stored: any): Data
 		data.ClanId = stored.ClanId
 	end
 	data.StarterPackGranted = stored.StarterPackGranted == true
+	if typeof(stored.GiftedPasses) == "table" then
+		for key, owned in stored.GiftedPasses do
+			if owned == true and typeof(key) == "string" and Store.PassByKey[key] then
+				data.GiftedPasses[key] = true
+			end
+		end
+	end
 	return data
 end
 
@@ -343,6 +352,7 @@ local function save(player: Player, release: boolean): boolean
 				RankedWins = data.RankedWins,
 				Purchases = data.Purchases,
 				StarterPackGranted = data.StarterPackGranted,
+				GiftedPasses = data.GiftedPasses,
 				ClanId = data.ClanId,
 				Lock =if USE_LOCKS and not release then { Job = game.JobId, At = os.time() } else nil,
 			}

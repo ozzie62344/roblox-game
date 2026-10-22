@@ -7,12 +7,14 @@ local RunService = game:GetService("RunService")
 
 local Abilities = require(ReplicatedStorage.Shared.Abilities)
 local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
+local Store = require(ReplicatedStorage.Shared.Store)
 local AbilityService = require(script.Parent.AbilityService)
 local Dummies = require(script.Parent.Dummies)
 local MapService = require(script.Parent.MapService)
 local ProgressService = require(script.Parent.ProgressService)
 local RoundService = require(script.Parent.RoundService)
 local ShopService = require(script.Parent.ShopService)
+local StoreService = require(script.Parent.StoreService)
 local WeaponService = require(script.Parent.WeaponService)
 
 local DevAction = ReplicatedStorage.Remotes.DevAction :: RemoteEvent
@@ -86,6 +88,21 @@ local actions: { [string]: (player: Player, arg: any) -> () } = {
 			return
 		end
 		ProgressService.GiveLevels(target, levels)
+	end,
+
+	-- Give anyone in the server a game pass for good (saved as a gifted pass: StoreService)
+	GivePass = function(_, arg)
+		if typeof(arg) ~= "table" then
+			return
+		end
+		local target, key = arg.Player, arg.Key
+		if typeof(target) ~= "Instance" or not target:IsA("Player") or target.Parent ~= Players then
+			return
+		end
+		if typeof(key) ~= "string" or not Store.PassByKey[key] then
+			return
+		end
+		StoreService.GrantPass(target, key)
 	end,
 
 	RefillAmmo = function(player)

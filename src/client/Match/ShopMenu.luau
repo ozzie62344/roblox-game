@@ -436,7 +436,9 @@ end
 -- The BUY buttons: R$ price, OWNED, or COMING SOON (no Id pasted into shared/Store yet)
 local function refreshStore()
 	if starterCard then
-		starterCard.Visible = not storeOwned(Store.StarterPack) -- (theirs already: nothing to sell)
+		-- (theirs already: nothing to sell, unless it can still be bought as a gift for someone)
+		local giftable = (Store.GiftByPass[Store.StarterPack.Key] or { ProductId = 0 }).ProductId ~= 0
+		starterCard.Visible = giftable or not storeOwned(Store.StarterPack)
 	end
 	for key, button in storeButtons do
 		local item: any = Store.ByKey[key]
@@ -541,6 +543,86 @@ local function perkCard(parent: Instance, order: number, item: any, lines: { str
 	return frame
 end
 
+-- ─── Gifts ─────────────────────────────────────────────────────────────────────
+-- A pass card's GIFT button: pick someone else in this server, and the server checks it and
+-- shows Roblox's purchase prompt (StoreService). Only for passes whose gift product is set up.
+
+local giftPicker: Frame? = nil
+
+local function closeGiftPicker()
+	if giftPicker then
+		giftPicker:Destroy()
+		giftPicker = nil
+	end
+end
+
+local function openGiftPicker(passKey: string)
+	closeGiftPicker()
+	local pass = Store.PassByKey[passKey]
+	local others = {}
+	for _, other in Players:GetPlayers() do
+		if other ~= player then
+			table.insert(others, other)
+		end
+	end
+	local back = Instance.new("Frame")
+	back.Name = "GiftPicker"
+	back.Size = UDim2.fromScale(1, 1)
+	back.BackgroundColor3 = Color3.new(0, 0, 0)
+	back.BackgroundTransparency = 0.45
+	back.Active = true
+	back.ZIndex = 50
+	back.Parent = gui
+	giftPicker = back
+	local rows = math.max(#others, 1)
+	local panel = Instance.new("Frame")
+	panel.AnchorPoint = Vector2.new(0.5, 0.5)
+	panel.Position = UDim2.fromScale(0.5, 0.5)
+	panel.Size = UDim2.fromOffset(420, 130 + rows * 52)
+	panel.BackgroundColor3 = MenuStyle.Panel
+	panel.ZIndex = 51
+	MenuStyle.Corner(panel, UDim.new(0, 14))
+	MenuStyle.Rim(panel, GOLD, 3)
+	panel.Parent = back
+	MenuStyle.FitToScreen(panel, Vector2.new(420, 130 + rows * 52))
+	local title = MenuStyle.Text(panel, `GIFT {string.upper(pass.Name)} TO...`, UDim2.new(1, -30, 0, 34), UDim2.new(0.5, 0, 0, 12), Vector2.new(0.5, 0))
+	title.TextColor3 = GOLD
+	title.ZIndex = 52
+	if #others == 0 then
+		local none = MenuStyle.Text(panel, "NOBODY ELSE IS IN THIS SERVER", UDim2.new(1, -30, 0, 22), UDim2.new(0.5, 0, 0, 62), Vector2.new(0.5, 0))
+		none.ZIndex = 52
+		thinOutline(none, 1.5)
+	end
+	for i, other in others do
+		local owns = Store.Owns(other, passKey)
+		local b = MenuStyle.Button(panel, if owns then `{other.DisplayName} · HAS IT` else other.DisplayName, if owns then MenuStyle.Grey else MenuStyle.Green, UDim2.new(1, -40, 0, 44), UDim2.new(0.5, 0, 0, 50 + (i - 1) * 52), Vector2.new(0.5, 0))
+		b.ZIndex = 52
+		b.Activated:Connect(function()
+			if owns then
+				return
+			end
+			Shop:FireServer("Gift", other, passKey)
+			closeGiftPicker()
+		end)
+	end
+	local cancel = MenuStyle.Button(panel, "Cancel", MenuStyle.Grey, UDim2.fromOffset(200, 44), UDim2.new(0.5, 0, 1, -14), Vector2.new(0.5, 1))
+	cancel.ZIndex = 52
+	cancel.Activated:Connect(closeGiftPicker)
+end
+
+-- A small GIFT button in a pass card's top-right corner (no gift product yet: no button)
+local function giftButton(card: TextButton, passKey: string)
+	local gift = Store.GiftByPass[passKey]
+	if not gift or gift.ProductId == 0 then
+		return
+	end
+	local b = MenuStyle.Button(card, "Gift", MenuStyle.Blue, UDim2.fromOffset(84, 32), UDim2.new(1, -8, 0, 8), Vector2.new(1, 0))
+	b.ZIndex = card.ZIndex + 2
+	b.Activated:Connect(function()
+		openGiftPicker(passKey)
+	end)
+end
+
 -- Across the whole screen: a row of credit packs, then the Starter Pack and the passes
 local function buildRobuxPanel(content: Frame)
 	robuxHeading = MenuStyle.Text(content, "PAID WITH ROBUX · THANKS FOR SUPPORTING THE GAME!", UDim2.fromOffset(640, 26), UDim2.fromOffset(0, 90))
@@ -595,6 +677,7 @@ local function buildRobuxPanel(content: Frame)
 	local perks = section(3, "PACKS & PASSES", Vector2.new(348, 236))
 	for i, pass in Store.Passes do -- (the Starter Pack first)
 		local card = perkCard(perks, i, pass, pass.Perks)
+		giftButton(card, pass.Key)
 		if pass == Store.StarterPack then
 			starterCard = card
 		end
@@ -602,15 +685,16 @@ local function buildRobuxPanel(content: Frame)
 end
 
 -- "VIP · THANK YOU!" across the top, whichever screen you're on (StoreService granted it)
-local function showStoreBanner(key: string)
+-- `title` / `subText` replace the usual lines (gifts: "VIP · GIFT FROM ANN")
+local function showStoreBanner(key: string, title: string?, subText: string?)
 	local item: any = Store.ByKey[key]
 	if not item then
 		return
 	end
 	local label = storeBanner:FindFirstChild("Label") :: TextLabel
 	local sub = storeBanner:FindFirstChild("Sub") :: TextLabel
-	label.Text = `{string.upper(item.Name)} · THANK YOU!`
-	sub.Text = if isPass(item) then table.concat(item.Perks, " · ") else `+{formatCredits(item.Credits)} credits`
+	label.Text = title or `{string.upper(item.Name)} · THANK YOU!`
+	sub.Text = subText or if isPass(item) then table.concat(item.Perks, " · ") else `+{formatCredits(item.Credits)} credits`
 	local scale = storeBanner:FindFirstChildOfClass("UIScale") :: UIScale
 	storeBanner.Visible = true
 	scale.Scale = 0.4
@@ -1236,6 +1320,13 @@ function ShopMenu.Start()
 			bought(a)
 		elseif event == "Store" and typeof(a) == "string" then
 			showStoreBanner(a)
+		elseif event == "Gifted" and typeof(a) == "string" and typeof(b) == "string" and Store.PassByKey[b] then
+			showStoreBanner(b, `{string.upper(Store.PassByKey[b].Name)} · GIFT FROM {string.upper(a)}!`)
+		elseif event == "GiftSent" and typeof(b) == "string" and Store.PassByKey[b] then
+			local to = if typeof(a) == "string" and a ~= "" then ` TO {string.upper(a)}` else ""
+			showStoreBanner(b, `{string.upper(Store.PassByKey[b].Name)} GIFT SENT{to}`, "THANKS FOR SUPPORTING THE GAME!")
+		elseif event == "GiftRefused" and typeof(a) == "string" then
+			showStoreBanner(Store.StarterPack.Key, "COULDN'T SEND THE GIFT", a)
 		end
 	end)
 

@@ -82,6 +82,7 @@ stop a match, switch maps and hand out gadgets, coins and levels.
 | Bomb / defuser | `ObjectiveService` | `Match/ObjectiveController` | `MatchConfig` |
 | Player data (save locks, autosave) | `PlayerData` | | |
 | Credits shop / Robux store | `ShopService`, `StoreService` | `Match/ShopMenu`, `ModsMenu` | `Skins`, `Store` |
+| Pass gifts (Robux gift products, dev panel grants) | `StoreService` (gifted passes in `PlayerData.GiftedPasses`; a `Gifts_v1` DataStore holds each buyer's pending choice and each recipient's inbox), `GiftInbox` | `Match/ShopMenu` (GIFT button + picker), `Dev/DevPanel` | `Store.Gifts` |
 | XP, levels, daily rewards, challenges, leaderboards | `ProgressService`, `LeaderboardService` | `Match/ProgressMenu` | `Progression` |
 | Ranked | `RankedService` | `Match/RankBadge`, results screen | `Ranked` |
 | Parties / clans / custom matches | `PartyService`, `ClanService`, `CustomMatchService` | `Match/PartyMenu`, `ClanMenu`, `CustomMatchMenu` | `Clans`, `CustomMatch` |

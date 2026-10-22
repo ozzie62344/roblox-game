@@ -49,6 +49,15 @@ export type Pass = {
 	Perks: { string }, -- lines on its card
 }
 
+-- A pass bought as a present for someone else: a DEVELOPER PRODUCT (Roblox only sells a game pass to
+-- the account buying it), granted to the recipient as a gifted pass (StoreService)
+export type Gift = {
+	Key: string, -- never change (saved in pending gifts)
+	Pass: string, -- the Store.Passes Key it gives
+	ProductId: number, -- the Developer Product's ID (0 = not set up yet: no GIFT button)
+	Robux: number,
+}
+
 local Store = {}
 
 -- Credit packs, smallest first (the bigger the pack, the more credits per Robux)
@@ -92,9 +101,20 @@ Store.Passes = {
 } :: { Pass }
 
 -- Lookups (only items that are set up: Id 0 is skipped)
+-- Gifts: one developer product per pass (create them like the credit packs: Monetization →
+-- Developer Products, named "Gift VIP" etc., same price as the pass, then paste the ID here)
+Store.Gifts = {
+	{ Key = "GiftStarterPack", Pass = "StarterPack", ProductId = 0, Robux = 99 },
+	{ Key = "GiftVIP", Pass = "VIP", ProductId = 0, Robux = 299 },
+	{ Key = "GiftDoubleXp", Pass = "DoubleXp", ProductId = 0, Robux = 199 },
+} :: { Gift }
+
 Store.Products = {} :: { Product }
 Store.ProductById = {} :: { [number]: Product }
 Store.PassById = {} :: { [number]: Pass }
+Store.PassByKey = {} :: { [string]: Pass }
+Store.GiftById = {} :: { [number]: Gift }
+Store.GiftByPass = {} :: { [string]: Gift } -- pass Key → its gift product
 Store.ByKey = {} :: { [string]: Product | Pass }
 
 for _, product in Store.CreditPacks do
@@ -108,8 +128,17 @@ for _, product in Store.Products do
 end
 for _, pass in Store.Passes do
 	Store.ByKey[pass.Key] = pass
+	Store.PassByKey[pass.Key] = pass
 	if pass.GamePassId ~= 0 then
 		Store.PassById[pass.GamePassId] = pass
+	end
+end
+
+for _, gift in Store.Gifts do
+	assert(Store.PassByKey[gift.Pass], `Store: gift {gift.Key} names an unknown pass`)
+	Store.GiftByPass[gift.Pass] = gift
+	if gift.ProductId ~= 0 then
+		Store.GiftById[gift.ProductId] = gift
 	end
 end
 

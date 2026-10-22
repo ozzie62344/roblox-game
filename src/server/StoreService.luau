@@ -25,12 +25,14 @@
 --   Shop:FireClient(player, "Store", key)    a purchase was granted (the shop's banner)
 -- Items whose ProductId / GamePassId is still 0 are skipped (the shop shows COMING SOON).
 
+local DataStoreService = game:GetService("DataStoreService")
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Store = require(ReplicatedStorage.Shared.Store)
+local GiftInbox = require(script.Parent.GiftInbox)
 local PlayerData = require(script.Parent.PlayerData)
 local ShopService = require(script.Parent.ShopService)
 
@@ -42,9 +44,22 @@ local RECEIPT_WAIT = 20 -- seconds a receipt waits for the player's data to load
 local LOAD_WAIT = 120 -- seconds to wait for someone's data on joining before giving up on them
 local PASS_TRIES = 3 -- UserOwnsGamePassAsync tries (it's a web call: it can fail)
 local IS_STUDIO = RunService:IsStudio()
+local GIFT_STORE = "Gifts_v1" -- keys: Inbox_<recipient UserId>, Pending_<buyer UserId>_<gift Key>
+local GIFT_CHECK_EVERY = 60 -- seconds between checks of everyone's inbox (gifts bought in another server)
+local GIFT_REQUEST_GAP = 3 -- seconds between one player's gift requests
 
 local passes: { [Player]: { [string]: boolean } } = {} -- owned passes by Key, checked once per session
 local handling: { [string]: boolean } = {} -- PurchaseIds whose receipt is being handled right now
+local lastGiftRequest: { [Player]: number } = {}
+local claiming: { [Player]: boolean } = {} -- an inbox claim is running for them
+
+local giftStore: DataStore? = nil
+do
+	local ok, result = pcall(DataStoreService.GetDataStore, DataStoreService, GIFT_STORE)
+	if ok then
+		giftStore = result
+	end
+end
 
 function StoreService.HasPass(player: Player, key: string): boolean
 	local owned = passes[player]
@@ -148,6 +163,125 @@ local function checkPass(player: Player, pass: Store.Pass)
 	end
 end
 
+-- ─── Gifted passes ─────────────────────────────────────────────────────────────
+-- Owned through a gift or the dev panel rather than bought: saved in their data (GiftedPasses)
+-- and treated exactly like the real pass (setOwned).
+
+-- Gives `player` the pass `key` for good. False if their data isn't loaded.
+function StoreService.GrantPass(player: Player, key: string): boolean
+	local pass = Store.PassByKey[key]
+	if not pass or not PlayerData.Update(player, function(d)
+		d.GiftedPasses[key] = true
+	end, true) then
+		return false
+	end
+	setOwned(player, pass)
+	return true
+end
+
+local function inboxKey(userId: number): string
+	return "Inbox_" .. userId
+end
+
+local function pendingKey(buyerId: number, gift: Store.Gift): string
+	return `Pending_{buyerId}_{gift.Key}`
+end
+
+-- Hands over every gift waiting for `player` (bought for them in any server). The pass goes into
+-- their data and is saved BEFORE the gift is marked as given, so a failure part way only means it
+-- is given again next time (harmless: a pass is owned or not).
+local function claimInbox(player: Player)
+	local store = giftStore
+	if not store or claiming[player] or not PlayerData.Get(player) or not PlayerData.IsSaving(player) then
+		return
+	end
+	claiming[player] = true
+	local ok, stored = pcall(store.GetAsync, store, inboxKey(player.UserId))
+	local waiting = if ok then GiftInbox.Unclaimed(GiftInbox.Clean(stored)) else {}
+	local given: { string } = {}
+	for _, entry in waiting do
+		if StoreService.GrantPass(player, entry.pass) then
+			table.insert(given, entry.id)
+			Shop:FireClient(player, "Gifted", entry.from, entry.pass)
+		end
+	end
+	if #given > 0 and PlayerData.SaveNow(player) then
+		local marked, err = pcall(store.UpdateAsync, store, inboxKey(player.UserId), function(old)
+			local list = GiftInbox.Clean(old)
+			GiftInbox.MarkClaimed(list, given)
+			return list
+		end)
+		if not marked then
+			warn(`StoreService: couldn't mark {player.Name}'s gifts as given (they'll be given again, harmlessly): {err}`)
+		end
+	end
+	claiming[player] = nil
+end
+
+-- Shop:FireServer("Gift", recipient, passKey): check it, remember who it's for (where a receipt
+-- can find it even after a server restart), then show the buyer Roblox's purchase prompt
+local function requestGift(player: Player, recipient: any, key: any)
+	local now = os.clock()
+	if now - (lastGiftRequest[player] or 0) < GIFT_REQUEST_GAP then
+		return
+	end
+	lastGiftRequest[player] = now
+	local gift = if typeof(key) == "string" then Store.GiftByPass[key] else nil
+	local store = giftStore
+	if not gift or gift.ProductId == 0 or not store then
+		return
+	end
+	if typeof(recipient) ~= "Instance" or not recipient:IsA("Player") or recipient.Parent ~= Players or recipient == player then
+		return
+	end
+	local pass = Store.PassByKey[gift.Pass]
+	if StoreService.HasPass(recipient, gift.Pass) then
+		Shop:FireClient(player, "GiftRefused", `{string.upper(recipient.DisplayName)} ALREADY HAS {string.upper(pass.Name)}`)
+		return
+	end
+	local ok, err = pcall(store.SetAsync, store, pendingKey(player.UserId, gift), { to = recipient.UserId, at = os.time() })
+	if not ok then
+		warn(`StoreService: couldn't save {player.Name}'s gift choice: {err}`)
+		Shop:FireClient(player, "GiftRefused", "COULDN'T START THE GIFT · TRY AGAIN")
+		return
+	end
+	MarketplaceService:PromptProductPurchase(player, gift.ProductId)
+end
+
+-- A gift product's receipt: into the recipient's inbox (idempotent by PurchaseId). Granted only
+-- once that's written; the buyer doesn't need to be in this server.
+local function handleGiftReceipt(buyerId: number, gift: Store.Gift, purchaseId: string): Enum.ProductPurchaseDecision
+	local store = giftStore
+	if not store then
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	local ok, pending = pcall(store.GetAsync, store, pendingKey(buyerId, gift))
+	local to = if ok and typeof(pending) == "table" and typeof(pending.to) == "number" then pending.to else nil
+	if not to then
+		warn(`StoreService: gift receipt {purchaseId} from {buyerId}: no recipient saved`)
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	local buyer = Players:GetPlayerByUserId(buyerId)
+	local from = if buyer then buyer.DisplayName else "Someone"
+	local written, err = pcall(store.UpdateAsync, store, inboxKey(to), function(old)
+		local list = GiftInbox.Clean(old)
+		GiftInbox.Add(list, { id = purchaseId, pass = gift.Pass, from = from })
+		return list
+	end)
+	if not written then
+		warn(`StoreService: couldn't deliver gift receipt {purchaseId}: {err}`)
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	local recipient = Players:GetPlayerByUserId(to)
+	if recipient then
+		task.spawn(claimInbox, recipient) -- (they're here: give it now)
+	end
+	if buyer then
+		Shop:FireClient(buyer, "GiftSent", if recipient then recipient.DisplayName else "", gift.Pass)
+	end
+	return Enum.ProductPurchaseDecision.PurchaseGranted
+end
+
 -- ─── Developer products ────────────────────────────────────────────────────────
 
 -- (inside a PlayerData.Update) What the product gives, and the receipt noted as granted
@@ -193,6 +327,21 @@ local function handleReceipt(player: Player, product: Store.Product, purchaseId:
 end
 
 local function processReceipt(receipt: { [string]: any }): Enum.ProductPurchaseDecision
+	local gift = Store.GiftById[receipt.ProductId]
+	if gift then
+		local giftId = tostring(receipt.PurchaseId)
+		if handling[giftId] then
+			return Enum.ProductPurchaseDecision.NotProcessedYet -- (already on it)
+		end
+		handling[giftId] = true
+		local ok, result = pcall(handleGiftReceipt, receipt.PlayerId, gift, giftId)
+		handling[giftId] = nil
+		if not ok then
+			warn(`StoreService: gift receipt {giftId} failed: {result}`)
+			return Enum.ProductPurchaseDecision.NotProcessedYet
+		end
+		return result
+	end
 	local player = Players:GetPlayerByUserId(receipt.PlayerId)
 	local product = Store.ProductById[receipt.ProductId]
 	if not player then
@@ -229,12 +378,20 @@ local function onPlayerAdded(player: Player)
 	if not data then
 		return
 	end
+	-- Passes they were given (gifts, the dev panel) count as owned
+	for key in data.GiftedPasses do
+		local pass = Store.PassByKey[key]
+		if pass then
+			setOwned(player, pass)
+		end
+	end
 	-- Passes checked before their data was in: their skins now
 	for _, pass in Store.Passes do
 		if StoreService.HasPass(player, pass.Key) then
 			givePassSkin(player, pass)
 		end
 	end
+	claimInbox(player) -- (gifts bought for them while they were away)
 end
 
 function StoreService.Start()
@@ -254,8 +411,25 @@ function StoreService.Start()
 		task.spawn(onPlayerAdded, player)
 	end
 	Players.PlayerAdded:Connect(onPlayerAdded)
+	Shop.OnServerEvent:Connect(function(player, action, a, b)
+		if action == "Gift" then
+			requestGift(player, a, b)
+		end
+	end)
+	-- Gifts bought in another server turn up within a minute
+	task.spawn(function()
+		while true do
+			task.wait(GIFT_CHECK_EVERY)
+			for _, player in Players:GetPlayers() do
+				task.spawn(claimInbox, player)
+			end
+		end
+	end)
+
 	Players.PlayerRemoving:Connect(function(player)
 		passes[player] = nil
+		lastGiftRequest[player] = nil
+		claiming[player] = nil
 	end)
 end
 

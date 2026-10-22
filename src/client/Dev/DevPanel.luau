@@ -5,6 +5,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Abilities = require(ReplicatedStorage.Shared.Abilities)
 local MatchConfig = require(ReplicatedStorage.Shared.MatchConfig)
+local Store = require(ReplicatedStorage.Shared.Store)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 local state = require(script.Parent.Parent.PlayerState)
 local WeaponController = require(script.Parent.Parent.Combat.WeaponController)
@@ -288,7 +289,7 @@ local function build()
 	coinsLayout.Padding = UDim.new(0, 4)
 	coinsLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	coinsLayout.Parent = coins
-	heading(coins, "COINS + LEVELS (pick a player)", 1)
+	heading(coins, "COINS + LEVELS + PASSES (pick a player)", 1)
 	local target: Player = player
 	local pickRow = Instance.new("Frame")
 	pickRow.Size = UDim2.new(1, 0, 0, 30)
@@ -373,6 +374,41 @@ local function build()
 			task.delay(0.5, showTarget)
 		end)
 		b.Parent = levelButtons
+	end
+	-- Game passes: give the picked player one for good (✓ = they own it, bought or given)
+	local passButtons = Instance.new("Frame")
+	passButtons.Size = UDim2.new(1, 0, 0, 0)
+	passButtons.AutomaticSize = Enum.AutomaticSize.Y
+	passButtons.LayoutOrder = 5
+	passButtons.BackgroundTransparency = 1
+	passButtons.Parent = coins
+	local passGrid = amountGrid:Clone()
+	passGrid.CellSize = UDim2.new(1 / #Store.Passes, -5, 0, 28)
+	passGrid.Parent = passButtons
+	local passLabels: { [string]: TextButton } = {}
+	local refreshPasses: () -> ()
+	for i, pass in Store.Passes do
+		local b = Instance.new("TextButton")
+		b.LayoutOrder = i
+		styleButton(b, string.upper(pass.Name))
+		b.Activated:Connect(function()
+			DevAction:FireServer("GivePass", { Player = target, Key = pass.Key })
+			task.delay(1, refreshPasses)
+		end)
+		b.Parent = passButtons
+		passLabels[pass.Key] = b
+	end
+	function refreshPasses()
+		for key, b in passLabels do
+			b.Text = `{if target:GetAttribute(key) == true then "✓ " else "GIVE "}{string.upper(Store.PassByKey[key].Name)}`
+		end
+	end
+	table.insert(refreshers, refreshPasses)
+	refreshPasses()
+	for _, arrow in { previous, nextButton } do
+		arrow.Activated:Connect(function()
+			task.defer(refreshPasses) -- (after the picker has moved)
+		end)
 	end
 	showTarget()
 
